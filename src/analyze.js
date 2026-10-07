@@ -1063,7 +1063,7 @@ export function analyze(files, rootName, progress = () => {}) {
           }
         } else if (recv.charCodeAt(0) >= 65 && recv.charCodeAt(0) <= 90) {
           const all = local.get(name) && g.get(name) ? cands.concat(local.get(name)) : cands;
-          const own = [...new Set(all)].filter(c => nodes[c].parent >= 0 && nodes[nodes[c].parent].name === recv && isClassy(nodes[nodes[c].parent].kind));
+          const own = [...new Set(all)].filter(c => nodes[c].parent >= 0 && (nodes[nodes[c].parent].name === recv || nodes[nodes[c].parent].name.endsWith('.' + recv)) && isClassy(nodes[nodes[c].parent].kind));
           if (own.length) targets = own;
           else if (COMMON.has(name)) continue;
         } else if (COMMON.has(name)) continue;

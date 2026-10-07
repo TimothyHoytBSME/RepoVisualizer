@@ -431,8 +431,8 @@ const SQL = {
 };
 
 const GEN_DEFS = [
-  [R`\b(?:function|func|fn|def|defp|defmacro|defn-?|fun|sub|proc|procedure|rpc)[ \t]+([A-Za-z_][\w?!']*)`, 'function'],
-  [R`\b(?:class|struct|interface|enum|trait|module|defmodule|record|type|contract|library|message|service|input|schema)[ \t]+([A-Za-z_][\w.]*)`, 'class'],
+  [R`(?:^|[^@\w.])(?:function|func|fn|def|defp|defmacro|defmacrop|defguard|defdelegate|defn-?|fun|sub|proc|procedure|rpc)[ \t]+([A-Za-z_][\w?!']*)`, 'function'],
+  [R`(?:^|[^@\w.])(?:class|struct|interface|enum|trait|module|defmodule|record|type|contract|library|message|service|input|schema)[ \t]+([A-Za-z_][\w.]*)`, 'class'],
 ];
 const gen = (exts, syntax) => ({ group: 'gen', exts, syntax: { quotes: '"', triple: true, multi: '"', ...syntax }, defs: GEN_DEFS });
 const GENS = [
