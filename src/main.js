@@ -105,6 +105,8 @@ async function load(getSource, nodeKey) {
     if (!nodeKey && m.focus) nodeKey = 'f:' + m.focus;
     const gid = nodeKey ? g.byKey.get(nodeKey) : undefined;
     setMap(app.mapType, gid ?? -1);
+    app.pendingFit = gid === undefined;
+    showHint();
     const notes = [];
     if (m.skipped) notes.push(`${fmt(m.skipped)} files skipped (too large)`);
     if (m.failed) notes.push(`${fmt(m.failed)} couldn't be read`);
@@ -162,6 +164,7 @@ function refresh() {
 
 function select(i, instant, push = !instant) {
   if (i < 0 || !app.view) return;
+  if (push) app.pendingFit = false;
   app.sel = i;
   app.hl = -1;
   refresh();
@@ -272,7 +275,7 @@ function pick(sx, sy, slop) {
   return best;
 }
 
-function fitView() {
+function fitView(min = 0.03) {
   if (!app.nb || !renderer) return;
   const { x, y } = app.lay;
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
@@ -281,7 +284,7 @@ function fitView() {
     if (y[i] < y0) y0 = y[i]; if (y[i] > y1) y1 = y[i];
   }
   const pad = 50, H = renderer.H - Math.abs(viewOffset()) * 2;
-  const s = clamp(Math.min((renderer.W - pad * 2) / Math.max(1, x1 - x0), (H - pad * 2) / Math.max(1, y1 - y0)), 0.03, 2.5);
+  const s = clamp(Math.min((renderer.W - pad * 2) / Math.max(1, x1 - x0), (H - pad * 2) / Math.max(1, y1 - y0)), min, 2.5);
   app.follow = false;
   app.goto = { x: (x0 + x1) / 2, y: (y0 + y1) / 2, scale: s };
   app.dirty = true;
@@ -307,6 +310,7 @@ function togglePanel(force) {
 
 const api = {
   pan(dx, dy) {
+    app.pendingFit = false;
     app.cam.x -= dx / app.cam.scale;
     app.cam.y -= dy / app.cam.scale;
     app.follow = false;
@@ -314,6 +318,7 @@ const api = {
     app.dirty = true;
   },
   zoomAt(f, sx, sy) {
+    app.pendingFit = false;
     if (!renderer) return;
     const { cam } = app;
     const centered = sx === undefined;
@@ -442,6 +447,7 @@ function frame(t) {
     }
     app.dirty = true;
   }
+  if (app.pendingFit && app.lay.alpha < 0.08) { app.pendingFit = false; fitView(0.35); }
   if (app.dirty) paint();
 }
 
@@ -465,6 +471,12 @@ function renderResults() {
   results.hidden = false;
   results.querySelector('.on')?.scrollIntoView({ block: 'nearest' });
 }
+function subseq(q, s) {
+  let j = 0;
+  for (let i = 0; i < s.length && j < q.length; i++) if (s[i] === q[j]) j++;
+  return j === q.length;
+}
+
 function runSearch() {
   const q = search.value.trim().toLowerCase();
   if (!q || !app.g) { closeResults(); return; }
@@ -475,6 +487,7 @@ function runSearch() {
     let s;
     if (i >= 0) s = nm === q ? 0 : i === 0 ? 1 : 2;
     else if (n.kind === 'file' && n.path.toLowerCase().includes(q)) s = 3;
+    else if (q.length > 1 && subseq(q, nm)) s = 4;
     else continue;
     found.push([s, nm.length, n.id]);
   }
@@ -569,6 +582,26 @@ window.addEventListener('drop', e => {
   if (entries.length === 1 && entries[0].isFile && /\.zip$/i.test(entries[0].name)) { loadFiles(files); return; }
   load(async (p, signal) => loadLocal(await scanEntries(entries, p, signal), p, signal));
 });
+
+function showHint() {
+  if (store.get('rv:hinted')) return;
+  store.set('rv:hinted', '1');
+  const touch = matchMedia('(pointer: coarse)').matches;
+  const el = $('#hint');
+  el.innerHTML = touch
+    ? '<b>Tap</b> a node to select it · <b>drag</b> to move · <b>pinch</b> to zoom · <b>press and hold</b> to peek'
+    : '<b>Click</b> a node to select it · <b>drag</b> to pan · <b>scroll</b> to zoom · <b>arrows + Enter</b> to move by keyboard';
+  el.hidden = false;
+  const hide = () => { el.hidden = true; stage.removeEventListener('pointerdown', hide); };
+  stage.addEventListener('pointerdown', hide);
+  setTimeout(hide, 9000);
+}
+
+app.share = () => {
+  const url = location.href;
+  if (navigator.share) navigator.share({ title: document.title, url }).catch(() => {});
+  else navigator.clipboard?.writeText(url).then(() => toast('Link copied'), () => toast(url));
+};
 
 let toastTimer = 0;
 function toast(msg) {
