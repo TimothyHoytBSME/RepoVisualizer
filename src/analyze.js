@@ -178,13 +178,15 @@ function extractDefs(masked, L, starts, lines) {
 const OPEN = '([{<', CLOSE = ')]}>';
 
 const FIELD_MODS = new Set('public private protected internal static final readonly override abstract virtual new required lateinit open transient volatile const sealed partial'.split(' '));
-const CTOR = /^(?:constructor|__init__|init|initialize)$/;
+const CTOR = /^(?:constructor|__init__|__construct|init|initialize)$/;
 const MODS = new Set('final const out ref in params this readonly volatile struct unsigned signed static register mut inout var val let'.split(' '));
 const lastSeg = s => { const m = s.match(/[A-Za-z_]\w*/g); return m ? m[m.length - 1] : null; };
 const CALL_VARS = [
   /\b(?:let|var|val|const|auto)[ \t]+([A-Za-z_$][\w$]*)[ \t]*=[ \t]*(?:try[!?]?[ \t]+|await[ \t]+)*(?:[\w$]+[ \t]*\.[ \t]*)*([A-Za-z_$][\w$]*)[ \t]*\(/g,
   /\b([A-Za-z_]\w*)(?:[ \t]*,[ \t]*\w+)?[ \t]*:=[ \t]*(?:\w+\.)*([A-Za-z_]\w*)[ \t]*\(/g,
 ];
+const PHP_CALL = /\$(\w+)[ \t]*=[ \t]*(?:\$?\w+[ \t]*(?:->|::)[ \t]*)*(\w+)[ \t]*\(/g;
+const PHP_NEW = /\$(\w+)[ \t]*=[ \t]*new[ \t]+\\?(?:\w+\\)*([A-Z]\w*)()()/g;
 const CALL_VARS_PLAIN = /^[ \t]*([A-Za-z_]\w*)[ \t]*=[ \t]*(?:await[ \t]+)?(?:[\w]+\.)*([A-Za-z_]\w*)[ \t]*\(/gm;
 const RET = [
   /^\s*(?:async\s+)?(?:throws\s+|rethrows\s+)?->\s*&?(?:mut\s+)?(?:impl\s+|dyn\s+)?(?:[a-z]\w*(?:::|\.))*([A-Za-z_]\w*)/,
@@ -725,7 +727,7 @@ export function analyze(files, rootName, progress = () => {}) {
         if (tn && !MODS.has(tn) && tn !== 'auto') (defs[di].types ??= new Map()).set(m[2], tn);
       }
     }
-    for (const re of L.group === 'py' || L.group === 'rb' ? [CALL_VARS_PLAIN] : L.group === 'go' ? CALL_VARS : CALL_VARS.slice(0, 1)) {
+    for (const re of L.group === 'py' || L.group === 'rb' ? [CALL_VARS_PLAIN] : L.group === 'go' ? CALL_VARS : L.group === 'php' ? [PHP_CALL] : CALL_VARS.slice(0, 1)) {
       for (const m of masked.matchAll(re)) {
         if (m[2] === 'require' || m[2] === 'import') continue;
         const ln = lineAt(starts, m.index + m[0].length - 1), di = fnAt[ln];
@@ -739,7 +741,7 @@ export function analyze(files, rootName, progress = () => {}) {
         if (di >= 0 && m[1] !== m[2]) (defs[di].types ??= new Map()).set(m[1], '@' + m[2]);
       }
     }
-    for (const re of L.group === 'go' ? VAR_TYPES : L.group === 'py' || L.group === 'rb' ? [] : VAR_TYPES.slice(0, 1)) {
+    for (const re of L.group === 'go' ? VAR_TYPES : L.group === 'php' ? [PHP_NEW] : L.group === 'py' || L.group === 'rb' ? [] : VAR_TYPES.slice(0, 1)) {
       for (const m of masked.matchAll(re)) {
         const ty = m[2] || m[3] || m[4];
         if (!ty) continue;
@@ -1025,6 +1027,24 @@ export function analyze(files, rootName, progress = () => {}) {
         if (selfOf.get(o) === v) break;
         const ft = fieldTypes.get(o), fy = ft && ft.get(v);
         if (fy) { t = fy; break; }
+      }
+      if (!t) {
+        let cls = src;
+        while (cls !== fid && cls >= 0 && !isClassy(nodes[cls].kind)) cls = nodes[cls].parent;
+        if (cls !== fid && cls >= 0 && basesOf.has(cls)) {
+          const seen = new Set([cls]);
+          let level = [cls];
+          for (let d = 0; d < 6 && level.length && !t; d++) {
+            const next = [];
+            for (const k of level) for (const b of basesOf.get(k) || []) for (const c2 of classes(b, nodes[k].file)) if (!seen.has(c2)) {
+              seen.add(c2);
+              const fy = fieldTypes.get(c2)?.get(v);
+              if (fy) { t = fy; break; }
+              next.push(c2);
+            }
+            level = next;
+          }
+        }
       }
       if (!t && info.types && info.types.has(v) && !(info.scopes && info.scopeNames.has(v))) {
         let shadowed = false;
