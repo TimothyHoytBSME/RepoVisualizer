@@ -163,6 +163,11 @@ function sfc(path, text) {
 
 const LOCAL_DECL = /(?:^|[;{}(,])[ \t]*(?:(?:final|const|out|using|ref|in|readonly|let|var|struct|enum|union|unsigned|signed|static|volatile|register|long|short|auto)[ \t]+)*([A-Za-z_][\w.]*(?:<[^;={}()\n]*>)?(?:\[[^\]\n]*\])*[?*&]*)[ \t]+[*&]*([A-Za-z_]\w*)[ \t]*(?=[=;:,)]|in\b)/gm;
 
+function notSig(t, i) {
+  const e = t.indexOf('\n', i), line = t.slice(i, e < 0 ? t.length : e), a = line.indexOf('=>');
+  return a < 0 || !/^\s*[A-Za-z_$][\w$.]*(?:<[^>\n]*>)?(?:\[\])*\s*(?:[|&]\s*[A-Za-z_$][\w$.]*(?:<[^>\n]*>)?(?:\[\])*\s*)*[;,]?\s*$/.test(line.slice(a + 2));
+}
+
 function jsBinds(raw) {
   const out = [];
   const names = list => list.split(',').map(p => p.trim().split(/\s+as\s+|\s*:\s*/).pop().trim()).filter(n => /^[A-Za-z_$][\w$]*$/.test(n));
@@ -200,6 +205,7 @@ const JS = {
     [R`\b(?:const|let|var)\s+(${W})(?![\w$]|\s*=\s*(?:require\s*\(|await\s+import\s*\())`, 'variable', (t, i) => !/\bfor\s*\(\s*(?:const|let|var)\s+$/.test(t.slice(Math.max(0, i - 40), i))],
     [R`^[ \t]*(?:(?:static|async|get|set|public|private|protected|readonly|override|abstract|declare)\s+)*\*?\s*(#?${W})\s*(?:<[^>\n]*>)?\((?:[^()]|\([^()]*\))*\)\s*(?::[^{;\n]+)?\{`, 'method'],
     [R`^[ \t]*(?:(?:static|public|private|protected|readonly)\s+)*(#?${W})\s*(?::[^=;\n]+)?=\s*(?:async\s*)?(?:\([^()]*\)|${W})\s*=>`, 'method'],
+    [R`^[ \t]*(${W})\s*:\s*(?:async\s*)?(?:function\b\s*\*?\s*(?:${W}\s*)?\(|(?:\([^()]*\)|${W})\s*(?::[^=;\n]+)?=>)`, 'prop', notSig],
   ],
   clean: s => s.replace(/^#/, ''),
   prep: sfc,

@@ -667,6 +667,7 @@ export function analyze(files, rootName, progress = () => {}) {
     for (const d of defs) {
       if (d.kind === 'impl') { d.drop = true; continue; }
       if (d.kind === 'extension') { d.kind = 'class'; d.ext = true; }
+      else if (d.kind === 'prop') { d.kind = 'function'; d.ext = true; }
       if (d.drop) continue;
       let p = d.up, ownerName = d.owner;
       while (p && p.drop) {
