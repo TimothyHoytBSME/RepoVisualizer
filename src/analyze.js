@@ -875,7 +875,7 @@ export function analyze(files, rootName, progress = () => {}) {
         if (rt && !/^(?:void|Unit|None|Void|self|Self|this|[A-Z]\d?)$/.test(rt)) retOf.set(d.name, retOf.has(d.name) && retOf.get(d.name) !== rt ? null : rt);
         else if (retOf.has(d.name)) retOf.set(d.name, null);
       }
-      if (isClassy(d.kind) && !d.ext) {
+      if (isClassy(d.kind)) {
         const rest = lines[d.line].slice(d.idx - starts[d.line] + d.name.length);
         let m, list = null;
         if (L.group === 'py') { if ((m = /^\s*\(([^)]*)\)/.exec(rest))) list = m[1].split(',').filter(x => !x.includes('=')); }
@@ -886,6 +886,7 @@ export function analyze(files, rootName, progress = () => {}) {
           const bs = list.map(x => lastSeg(x.replace(/\(.*$/, ''))).filter(b => b && b !== d.name && !L.kw.has(b));
           if (bs.length) basesOf.set(d.node, bs.slice(0, 6));
         }
+        if (d.ext) basesOf.set(d.node, [d.name, ...(basesOf.get(d.node) || [])].slice(0, 6));
       }
       if (p && isClassy(p.kind)) {
         let ft = fieldTypes.get(p.node);
@@ -1105,7 +1106,16 @@ export function analyze(files, rootName, progress = () => {}) {
     if (ow && !(cp && cp.name === ow)) { addIdx(byType, ow, n.name, n.id); addIdx(byOwner, ow, n.name, n.id); }
   }
   const ofType = (t, name, f) => { const l = byType.get(t)?.get(name) || (aliasOf.has(t) ? byType.get(aliasOf.get(t))?.get(name) : null); return l ? l.filter(c => !fnLocalSet.has(nodes[c].parent) || nodes[c].file === f) : null; };
-  const classes = (name, f) => (aliasOf.has(name) && classByName.get(aliasOf.get(name)) || classByName.get(name) || []).filter(c => !fnLocalSet.has(c) || nodes[c].file === f).slice(0, 4);
+  const clsRank = new Map();
+  const classes = (name, f) => {
+    const all = aliasOf.has(name) && classByName.get(aliasOf.get(name)) || classByName.get(name) || [];
+    if (all.length <= 4) return all.filter(c => !fnLocalSet.has(c) || nodes[c].file === f);
+    let ranked = clsRank.get(name);
+    if (!ranked) clsRank.set(name, (ranked = all.filter(c => !fnLocalSet.has(c)).sort((a, b) => (basesOf.has(b) - basesOf.has(a)) || ((byClass.get(b)?.size || 0) - (byClass.get(a)?.size || 0)))));
+    const out = all.filter(c => nodes[c].file === f);
+    for (const c of ranked) { if (out.length >= 4) break; if (!out.includes(c)) out.push(c); }
+    return out.slice(0, 4);
+  };
   const derivedOf = new Map();
   for (const [c, bs] of basesOf) for (const b of bs) { const l = derivedOf.get(b); if (l) l.push(c); else derivedOf.set(b, [c]); }
   const inSubclasses = (t, name) => {
@@ -1151,14 +1161,15 @@ export function analyze(files, rootName, progress = () => {}) {
     gvt.set(key, gvt.has(key) && gvt.get(key) !== v ? null : v);
   }
   done = 0;
+  const testFile = new Map();
   for (const info of infos) {
     if (++done % 50 === 0) progress({ phase: 'Linking', done, total: infos.length });
-    if (!info.owner) continue;
+    if (!info.owner || /\.gradle(?:\.kts)?$/.test(info.f.path)) continue;
     const { L, masked, starts, owner, defPos, local, id: fid } = info;
     const g = names.get(L.group);
     const fdir = nodes[fid].parent;
     const nf = L.group === 'c' || L.group === 'py' ? notField : () => true, srcTest = TEST_PATH.test(nodes[fid].path), srcEx = EX_PATH.test(nodes[fid].path), exRoot = srcEx ? EX_ROOT.exec(nodes[fid].path)?.[0] : null;
-    const out = new Map(), impCache = new Map();
+    const out = new Map(), impCache = new Map(), strictBare = IMPLICIT_THIS.has(L.group) && L.group !== 'rb' && !/\.(?:kts?|scala|sc|groovy|gradle)$/.test(nodes[fid].path);
     const idc = new Map();
     const countWords = !TEST_PATH.test(info.f.path);
     if (countWords) info.idc = idc;
@@ -1291,7 +1302,7 @@ export function analyze(files, rootName, progress = () => {}) {
         while (e > 0 && isW(masked.charCodeAt(e - 1))) e--;
         if (e === ne) return null;
         const name = masked.slice(e, ne), T = recvTypeAt(e, depth, src);
-        const r = T === undefined ? callT(name) : T ? retIn(T, name) : null;
+        const r = T === undefined ? callT(name) : T ? retIn(T, name) || (typeNames.has(name) && /^[A-Z]/.test(name) ? name : null) : null;
         return r || (targ && !targ.includes('[]') && typeNames.has(targ) ? targ : null);
       }
       if (!isW(c)) return null;
@@ -1516,6 +1527,7 @@ export function analyze(files, rootName, progress = () => {}) {
               : member ? preferImported(cands.filter(c => (memberish.has(c) || (nodes[c].parent >= 0 && isClassy(nodes[nodes[c].parent].kind))) && nf(c)), info)
               : masked.charCodeAt(at + name.length) === 33 ? cands : cands.filter(c => AMBIENT.test(nodes[c].path));
             if (!srcTest) targets = targets.filter(c => !TEST_PATH.test(nodes[c].path));
+            if (strictBare && !member) targets = targets.filter(c => { const p = nodes[c].parent; if (p < 0 || !isClassy(nodes[p].kind)) return true; for (let o = src; o >= 0; o = nodes[o].parent) if (o === p) return true; return false; });
             if (!srcEx) targets = targets.filter(c => !EX_PATH.test(nodes[c].path));
             else if (exRoot) targets = targets.filter(c => { const r = EX_ROOT.exec(nodes[c].path); return !r || r[0] === exRoot; });
             if (!targets.length) continue;
@@ -1543,6 +1555,7 @@ export function analyze(files, rootName, progress = () => {}) {
       if (targets.length > MAXC) continue;
       for (const t of targets) {
         if (t === src || nodes[t].parent === src || nodes[src].parent === t) continue;
+        if (!srcTest) { const tf = nodes[t].file; let tt = testFile.get(tf); if (tt === undefined) testFile.set(tf, (tt = TEST_PATH.test(nodes[tf].path))); if (tt) continue; }
         const k = src * 4194304 + t;
         const prev = out.get(k);
         if (prev === undefined || (prev === 'ref' && type === 'dep')) out.set(k, type);

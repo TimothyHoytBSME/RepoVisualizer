@@ -253,6 +253,17 @@ function sfc(path, text) {
 
 const LOCAL_DECL = /(?:^|[;{}(,])[ \t]*(?:(?:final|const|out|using|ref|in|readonly|let|var|struct|enum|union|unsigned|signed|static|volatile|register|long|short|auto)[ \t]+)*([A-Za-z_][\w.]*(?:<[^;={}()\n]*>)?(?:\[[^\]\n]*\])*[?*&]*)[ \t]+[*&]*([A-Za-z_]\w*)[ \t]*(?=[=;:,)]|in\b)/gm;
 
+const bodiless = tail => (t, i) => {
+  let q = t.indexOf('(', i), d = 0;
+  if (q < 0) return false;
+  for (const lim = Math.min(t.length, q + 3000); q < lim; q++) {
+    const c = t.charCodeAt(q);
+    if (c === 40) d++;
+    else if (c === 41 && --d === 0) break;
+  }
+  return d === 0 && tail.test(t.slice(q + 1, q + 200));
+};
+
 function notSig(t, i) {
   const e = t.indexOf('\n', i), line = t.slice(i, e < 0 ? t.length : e), a = line.indexOf('=>');
   return a < 0 || !/^\s*[A-Za-z_$][\w$.]*(?:<[^>\n]*>)?(?:\[\])*\s*(?:[|&]\s*[A-Za-z_$][\w$.]*(?:<[^>\n]*>)?(?:\[\])*\s*)*[;,]?\s*$/.test(line.slice(a + 2));
@@ -387,7 +398,8 @@ const JVM = {
     [R`@interface[ \t]+(${N})`, 'type'],
     [R`\b(?:fun|def)[ \t]+(?:(?:<(?:[^<>\n]|<[^<>\n]*>)*>)[ \t]*)?(?:[\w.]+(?:<(?:[^<>\n]|<[^<>\n]*>)*>)?\??\.)?(${N})`, 'function'],
     [R`^[ \t]*(?:(?:@[\w.:]+(?:\([^)\n]*\))?|private|public|protected|internal|override|lateinit|const|open|static|final|inline|actual|expect|abstract|external|lazy|implicit)[ \t]+)*(?:val|var)[ \t]+(?:(?:<(?:[^<>\n]|<[^<>\n]*>)*>)[ \t]*)?(?:[\w.]+(?:<(?:[^<>\n]|<[^<>\n]*>)*>)?\??\.)?(${N})`, 'variable', null, true],
-    [R`^[ \t]*(?:(?:public|private|protected|static|final|volatile|transient)[ \t]+)+(?!class\b|interface\b|enum\b|record\b|abstract\b|void\b)[\w<>\[\],.? ]+?[ \t]+(${N})[ \t]*(?:=|;)`, 'variable'],
+    [R`^[ \t]*(?:@[\w.]+(?:\([^)\n]*\))?[ \t]+)*(?:(?:public|protected|abstract|static|default|synchronized|native)[ \t]+)*(?:<[^>\n]*>[ \t]*)?(?!return\b|new\b|throw\b|else\b|case\b|yield\b|package\b|import\b)[A-Za-z_][\w.]*(?:<[^\n;{}=()]*>)?(?:\[\])*[ \t]+(${N})[ \t]*\(`, 'function', bodiless(/^\s*(?:throws\s+[\w.,\s]+)?;/)],
+    [R`^[ \t]*(?:@[\w.]+(?:\([^)\n]*\))?[ \t]+)*(?:(?:public|private|protected|static|final|volatile|transient)[ \t]+)+(?!class\b|interface\b|enum\b|record\b|abstract\b|void\b)[\w<>\[\],.? ]+?[ \t]+(${N})[ \t]*(?:=|;)`, 'variable'],
   ],
   extra: t => cfuncs(t).concat(ctorProps(t)), localDecl: LOCAL_DECL,
   anon: [/\{[ \t]*\(?([A-Za-z_]\w*(?:[ \t]*:[ \t]*[\w.<>?]+)?(?:[ \t]*,[ \t]*[A-Za-z_]\w*(?:[ \t]*:[ \t]*[\w.<>?]+)?)*)\)?[ \t]*->/g],
@@ -402,7 +414,8 @@ const CS = {
   defs: [
     [R`\b(?:class|interface|enum|struct|record)[ \t]+(${N})`, 'class'],
     [R`\bdelegate[ \t]+[\w<>\[\],.? ]+[ \t]+(${N})[ \t]*\(`, 'type'],
-    [R`^[ \t]*(?:(?:public|private|protected|internal|static|virtual|override|abstract|readonly|required|new|sealed|const)[ \t]+)+[\w<>\[\],.?]+[ \t]+(${N})[ \t]*(?:\{[ \t]*(?:get|set|init)\b|=>|=(?!=)|;)`, 'variable'],
+    [R`^[ \t]*(?:\[[^\]\n]*\][ \t]*)*(?:(?:public|protected|internal|static|abstract|new|extern|unsafe)[ \t]+)*(?!return\b|new\b|throw\b|else\b|case\b|yield\b|await\b|using\b|goto\b)[A-Za-z_][\w.]*(?:<[^\n;{}=()]*>)?(?:\[\])?\??[ \t]+(${N})[ \t]*(?:<[^>\n]*>)?\(`, 'function', bodiless(/^\s*(?:where\s[^;{]*)?;/)],
+    [R`^[ \t]*(?:\[[^\]\n]*\][ \t]*)*(?:(?:public|private|protected|internal|static|virtual|override|abstract|readonly|required|new|sealed|const)[ \t]+)+[\w<>\[\],.?]+[ \t]+(${N})[ \t]*(?:\{[ \t]*(?:get|set|init)\b|=>|=(?!=)|;)`, 'variable'],
     [R`^[ \t]*(?:(?:public|private|protected|internal|static|virtual|override|abstract|sealed|async|new|extern|unsafe|partial|readonly)[ \t]+)*[A-Za-z_][\w.]*(?:<[^>\n]*>)?(?:\[\])?\??[ \t]+(${N})[ \t]*(?:<[^>\n]*>)?\((?:[^()]|\([^()]*\))*\)[ \t]*(?:where[ \t][^=\n]*)?=>`, 'function'],
   ],
   extra: cfuncs,
