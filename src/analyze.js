@@ -53,6 +53,7 @@ function keywords(infos, nodes, edges, add) {
 }
 const EDGE_CODE = { ref: 1, contain: 2, dep: 3 };
 export const EDGE_NAMES = ['', 'ref', 'contain', 'dep'];
+const AMBIENT = /\.d\.[mc]?ts$/;
 const isFn = k => k === 'function' || k === 'method';
 const SELF = new Set(['this', 'self', 'Self', 'static', 'me']);
 const COMMON = new Set(`each map filter reduce forEach get set put add remove delete has contains size length count keys values entries items push pop shift unshift append insert extend clear close open read write flush call apply bind toString equals hashCode compareTo next hasNext iterator then catch finally emit on off once parse format join split replace trim match test exec find first last sort reverse slice copy clone merge reset cancel value name type id data message error list log debug info warn trace dispose description key path url status result index text String Error Get Set Write Read Close Len Open Value Type Status ToString Equals GetHashCode Add Remove Count Contains Clear Dispose Any Select Where First FirstOrDefault ToList ToArray Single Max Min Sum OrderBy Include unwrap expect as_bytes as_str as_ref as_mut is_none is_some is_ok is_err is_empty iter iter_mut into_iter to_string to_owned unwrap_or map_err ok err lines bytes chars len borrow kind start end`.split(/\s+/));
@@ -551,6 +552,7 @@ export function analyze(files, rootName, progress = () => {}) {
     let masked = L.syntax ? mask(text, L) : null;
     info.specs = L.imports ? L.imports(text, masked) : [];
     if (L.binds) info.binds = L.binds(text);
+    info.module = L.explicit && (L.group !== 'js' || (masked != null && /\b(?:import|export|require)\b/.test(masked)));
     if (L.pkg && masked) {
       const pm = L.pkg.exec(masked);
       if (pm) info.pkg = pm[1];
@@ -792,7 +794,8 @@ export function analyze(files, rootName, progress = () => {}) {
           }
           if (!targets.length) {
             if (cands.length > MAXC) continue;
-            targets = cands;
+            targets = info.module && !member && !(L.pkgDir && info.pkg != null) && masked.charCodeAt(at + name.length) !== 33 ? cands.filter(c => AMBIENT.test(nodes[c].path)) : cands;
+            if (!targets.length) continue;
             if (cands.length > 1 || L.explicit || member) type = 'ref';
           } else if (member && !viaImport && targets.length > 1) type = 'ref';
         } else if (member && targets.length > 1) type = 'ref';
