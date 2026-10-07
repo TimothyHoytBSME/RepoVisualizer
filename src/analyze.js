@@ -230,7 +230,7 @@ function suffixMap(entries) {
   return map;
 }
 
-function makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, goMods, names }) {
+function makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, goMods, names, swiftMods }) {
   const suffix = suffixMap(fileIds);
   const csFirst = new Set([...csNs].map(n => n.split('.')[0]));
   const dirSuffix = suffixMap([...dirs.keys()].map(d => [d, d]));
@@ -422,6 +422,10 @@ function makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, goMods, names }) {
       return csFirst.has(first) ? null : first;
     },
     mod: spec => spec.split('.')[0],
+    swift(spec) {
+      const m = spec.split('.')[0];
+      return swiftMods.has(m) || dirs.has('Sources/' + m) || dirs.has(m) ? null : m;
+    },
     dart(spec, info) {
       if (spec.startsWith('dart:')) return spec;
       const m = /^package:([^/]+)\/(.*)$/.exec(spec);
@@ -511,6 +515,7 @@ export function analyze(files, rootName, progress = () => {}) {
   const fileIds = new Map();
   const infos = [];
   const goMods = [];
+  const swiftMods = new Set();
   for (const f of sorted) {
     if (fileIds.has(f.path)) continue;
     const i = f.path.lastIndexOf('/');
@@ -523,6 +528,7 @@ export function analyze(files, rootName, progress = () => {}) {
     dirFiles.get(dir).push(id);
     edges.push({ s: parent, t: id, type: 'contain' });
     if (L) infos.push({ id, f, L, dir });
+    if (f.path === 'Package.swift' || f.path.endsWith('/Package.swift')) for (const m of f.text.matchAll(/\.(?:target|library|executableTarget|testTarget)\s*\(\s*name:\s*"([^"]+)"/g)) swiftMods.add(m[1]);
     if (f.path === 'go.mod' || f.path.endsWith('/go.mod')) {
       const m = /^module\s+"?([^\s"]+)/m.exec(f.text);
       if (m) goMods.push({ dir, mod: m[1] });
@@ -634,7 +640,7 @@ export function analyze(files, rootName, progress = () => {}) {
     if (info.pkg != null) pkgOf.set(info.id, info.pkg);
   }
 
-  const resolve = makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, goMods, names });
+  const resolve = makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, goMods, names, swiftMods });
   const libs = new Map();
   for (const info of infos) {
     info.imported = new Set();
@@ -660,6 +666,16 @@ export function analyze(files, rootName, progress = () => {}) {
         info.imported.add(t);
         edges.push({ s: info.id, t, type: info.L.linkType || 'dep' });
       }
+    }
+  }
+
+  const infoOf = new Map(infos.map(i => [i.id, i]));
+  const FACADE = /^(?:__init__\.pyi?|index\.[mc]?[jt]sx?|mod\.rs|lib\.rs)$/;
+  for (const info of infos) {
+    for (const t of [...info.imported]) {
+      if (!FACADE.test(nodes[t].name)) continue;
+      const ti = infoOf.get(t);
+      if (ti) for (const u of ti.imported) if (u !== info.id) info.imported.add(u);
     }
   }
 

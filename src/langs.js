@@ -297,7 +297,7 @@ const SWIFT = {
     [R`\btypealias[ \t]+(${N})`, 'type'],
   ],
   imports: (raw, m) => grab([], /^[ \t]*(?:@\w+[ \t]+)*import[ \t]+(?:(?:class|struct|enum|protocol|func|var|let|typealias)[ \t]+)?([\w.]+)/gm, m),
-  resolve: 'mod',
+  resolve: 'swift',
 };
 
 const DART = {
