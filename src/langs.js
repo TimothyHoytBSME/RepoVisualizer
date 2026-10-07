@@ -377,6 +377,7 @@ const CS = {
     [R`\b(?:class|interface|enum|struct|record)[ \t]+(${N})`, 'class'],
     [R`\bdelegate[ \t]+[\w<>\[\],.? ]+[ \t]+(${N})[ \t]*\(`, 'type'],
     [R`^[ \t]*(?:(?:public|private|protected|internal|static|virtual|override|abstract|readonly|required|new|sealed|const)[ \t]+)+[\w<>\[\],.?]+[ \t]+(${N})[ \t]*(?:\{[ \t]*(?:get|set|init)\b|=>|=(?!=)|;)`, 'variable'],
+    [R`^[ \t]*(?:(?:public|private|protected|internal|static|virtual|override|abstract|sealed|async|new|extern|unsafe|partial|readonly)[ \t]+)*[A-Za-z_][\w.]*(?:<[^>\n]*>)?(?:\[\])?\??[ \t]+(${N})[ \t]*(?:<[^>\n]*>)?\((?:[^()]|\([^()]*\))*\)[ \t]*(?:where[ \t][^=\n]*)?=>`, 'function'],
   ],
   extra: cfuncs,
   imports: (raw, m) => grab([], /^[ \t]*(?:global[ \t]+)?using[ \t]+(?:static[ \t]+)?(?:\w+[ \t]*=[ \t]*)?([\w.]+)[ \t]*;/gm, m),
