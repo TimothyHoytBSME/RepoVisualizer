@@ -1049,6 +1049,7 @@ export function analyze(files, rootName, progress = () => {}) {
         if (!hit.size) continue;
         targets = [...hit];
       }
+      if (member && recv && info.ext && info.ext.has(recv) && !local.has(recv)) continue;
       if (member && recv) {
         let selfT = null;
         if (!SELF.has(recv) && info.scopes && info.scopeNames.has(recv)) {
