@@ -178,7 +178,13 @@ function extractDefs(masked, L, starts, lines) {
   if (L.extra) for (const d of L.extra(masked)) push(d.name, d.idx, d.kind, true, d.owner, d.self);
   found.sort((a, b) => a.idx - b.idx);
   const skip = SKIP_SAME[L.group];
-  for (const d of found) d.end = blockEnd(lines, d.line, skip, d.kind === 'class' ? L.head : null);
+  for (const d of found) {
+    if (L.group === 'c' && /^[ \t]*#[ \t]*define\b/.test(lines[d.line])) {
+      let e = d.line;
+      while (e + 1 < lines.length && /\\[ \t]*$/.test(lines[e])) e++;
+      d.end = e;
+    } else d.end = blockEnd(lines, d.line, skip, d.kind === 'class' ? L.head : null);
+  }
   return found;
 }
 
@@ -907,6 +913,7 @@ export function analyze(files, rootName, progress = () => {}) {
       const cPriv = L.group === 'c' && isFn(d.kind) && !(p && isClassy(p.kind)) && !C_HEADER.test(f.path) && /\bstatic\b/.test(pre.trim() ? pre : lines[d.line - 1] || '');
       if (cPriv) privC.add(d.node);
       if (L.group === 'rs' && /\bmacro_rules!/.test(lines[d.line])) macros.add(d.node);
+      if (L.group === 'c' && /^[ \t]*#[ \t]*define\b/.test(lines[d.line])) privC.add(d.node);
       if (!d.ext && !inFn && !(L.priv && L.priv.test(pre))) {
         const a = g.get(d.name);
         if (a) a.push(d.node); else g.set(d.name, [d.node]);

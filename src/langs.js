@@ -330,6 +330,7 @@ const C = {
   syntax: { ...C_SYN, rawCpp: true },
   kw: kw(`__attribute__ __declspec __asm__ __inline__ __restrict__ __extension__ __typeof__ alignas alignof decltype noexcept static_assert auto break case char const continue default do double else enum extern float for goto if inline int long register restrict return short signed sizeof static struct switch typedef union unsigned void volatile while bool true false NULL nullptr class namespace template typename public private protected virtual override final new delete this using operator friend explicit const_cast static_cast dynamic_cast reinterpret_cast try catch throw std include define ifdef ifndef endif elif pragma size_t uint8_t uint16_t uint32_t uint64_t int8_t int16_t int32_t int64_t string vector self nil YES NO id`),
   defs: [
+    [R`^[ \t]*#[ \t]*define[ \t]+(${N})\(`, 'function'],
     [R`^[ \t]*#[ \t]*define[ \t]+(${N})`, 'variable'],
     [R`\b(?:struct|class|union|enum(?:[ \t]+class)?)[ \t]+(?:(?:[A-Z_][A-Z0-9_]*(?:\([^()\n]*\))?|\[\[[^\]\n]*\]\]|__declspec\([^()\n]*\)|alignas\([^()\n]*\))[ \t]+)*(?:${N}::)*(${N})[ \t]*(?:final[ \t]*)?(?::(?!:)[^;{]*)?\{`, 'class'],
     [R`\bnamespace[ \t]+(${N})[ \t]*\{`, 'ns'],
