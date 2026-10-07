@@ -746,7 +746,7 @@ export function analyze(files, rootName, progress = () => {}) {
     const defs = extractDefs(masked, L, starts, lines);
     const stack = [];
     for (const d of defs) {
-      while (stack.length && stack[stack.length - 1].end < d.line) stack.pop();
+      while (stack.length && (stack[stack.length - 1].end < d.line || (stack[stack.length - 1].kind === 'field' && stack[stack.length - 1].line === d.line))) stack.pop();
       d.up = stack.length ? stack[stack.length - 1] : null;
       stack.push(d);
     }

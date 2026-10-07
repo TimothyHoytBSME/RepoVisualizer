@@ -427,6 +427,14 @@ const RB = {
     [R`^[ \t]*([A-Z][A-Z0-9_]*)[ \t]*=(?!=)`, 'variable'],
   ],
   clean: s => s.replace(/=$/, ''),
+  extra: t => {
+    const out = [];
+    for (const m of t.matchAll(/^[ \t]*attr_(?:reader|accessor|writer)[ \t]+([^\n]+)/gm)) {
+      const base = m.index + m[0].length - m[1].length;
+      for (const x of m[1].matchAll(/:(\w+\??)/g)) out.push({ name: x[1], idx: base + x.index + 1, kind: 'field' });
+    }
+    return out;
+  },
   anon: [/(?:\bdo|\{)[ \t]*\|([^|\n]*)\|/g],
   imports: (raw, m) => grab([], /\b(require_relative|require|load)[ \t(]+['"]([^'"]+)['"]/g, raw, m, 2, x => (x[1] === 'require_relative' ? 'rel:' : '') + x[2]),
   resolve: 'rb',
