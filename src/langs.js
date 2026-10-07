@@ -257,6 +257,7 @@ const PY = {
     [R`^[ \t]*(?:async[ \t]+)?def[ \t]+(${N})`, 'function'],
     [R`^[ \t]*class[ \t]+(${N})`, 'class'],
     [R`^[ \t]*(${N})[ \t]*(?::[^=\n]+)?=(?!=)`, 'variable'],
+    [R`^[ \t]+(${N})[ \t]*:[ \t]*(?:[\w.]+(?:\[[\w., \[\]|]*\])?(?:[ \t]*\|[ \t]*[\w.]+)*)[ \t]*$`, 'variable'],
   ],
   imports: pyImports, binds: pyBinds, resolve: 'py',
 };
