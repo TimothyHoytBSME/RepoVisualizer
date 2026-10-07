@@ -299,7 +299,7 @@ const C = {
   defs: [
     [R`^[ \t]*#[ \t]*define[ \t]+(${N})`, 'variable'],
     [R`\b(?:struct|class|union|enum(?:[ \t]+class)?)[ \t]+(${N})[ \t]*(?:final[ \t]*)?(?::[^;{]*)?\{`, 'class'],
-    [R`\bnamespace[ \t]+(${N})[ \t]*\{`, 'module'],
+    [R`\bnamespace[ \t]+(${N})[ \t]*\{`, 'ns'],
     [R`^[ \t]*typedef\b[^;\n]*?\b(${N})[ \t]*(?:\[[^\]]*\])?[ \t]*;`, 'type'],
     [R`^\}[ \t]*(${N})[ \t]*;`, 'type'],
     [R`^[ \t]*@(?:interface|implementation|protocol)[ \t]+(${N})`, 'class'],
