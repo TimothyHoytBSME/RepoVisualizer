@@ -26,7 +26,7 @@ Share a view with a link like `?repo=pallets/flask&node=f:src/flask/app.py&depth
 The root folder's details show the language mix and the most used files and symbols (by how many other non-test files use them).
 - **Keyword map**: the distinctive words used across the code, linked to the files that use them.
 
-The funnel button shows or hides tests, variables, libraries and uncertain links, sets the direction and the node limit, saves the map as an image, and holds the color legend. When the limit trims a big neighborhood, labels show "+N" where nodes were hidden; click the +N (or press E on a highlighted node) to show them in place. Press ? for all controls.
+The funnel button shows or hides tests, variables, libraries and uncertain links, sets the direction and the node limit, switches node colors between kind and folder (to see module boundaries), saves the map as an image, and holds the color legend. When the limit trims a big neighborhood, labels show "+N" where nodes were hidden; click the +N (or press E on a highlighted node) to show them in place. Press ? for all controls.
 
 ## Controls
 

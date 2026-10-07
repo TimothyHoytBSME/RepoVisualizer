@@ -1,7 +1,7 @@
 import { parseRepo, loadGitHub, loadLocal, dropEntries, scanEntries, saveLocal, loadSaved, recent } from './source.js';
 import { indexGraph, buildView, neighborhood, defaultNode, isTest, shortestPath, withPath, edgeBetween } from './graph.js';
 import { LayoutHost } from './layout-host.js';
-import { Renderer, FlatRenderer, readPalette, nodeStyle } from './render.js';
+import { Renderer, FlatRenderer, readPalette, nodeStyle, GROUP_COLORS } from './render.js';
 import { attachControls, makeGamepad } from './controls.js';
 import { Panel } from './panel.js';
 
@@ -69,6 +69,14 @@ function applyTheme(t) {
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => applyTheme(store.get('rv:theme')));
 applyTheme(store.get('rv:theme'));
 $('#theme').value = store.get('rv:theme') || 'auto';
+app.colorBy = store.get('rv:colorBy') === 'folder' ? 'folder' : 'kind';
+$('#color-by').value = app.colorBy;
+$('#color-by').addEventListener('change', e => { app.colorBy = e.target.value; store.set('rv:colorBy', app.colorBy); folderLegend(); app.dirty = true; });
+function folderLegend() {
+  const el = $('#folder-legend'), gs = app.style?.groups;
+  el.hidden = app.colorBy !== 'folder' || !gs || !gs.length;
+  if (!el.hidden) el.innerHTML = gs.map((k, j) => `<span style="--c:${GROUP_COLORS[j]}">${k.replace(/[&<>]/g, c => `&#${c.charCodeAt(0)};`)}</span>`).join('') + '<span class="other">other</span>';
+}
 $('#theme').addEventListener('change', e => { store.set('rv:theme', e.target.value); applyTheme(e.target.value); });
 
 function showStatus(text, frac, cancellable = false) {
@@ -179,6 +187,7 @@ function setMap(type, gid = -1, push = false) {
   store.set('rv:map', type);
   app.view = buildView(app.g, type, app.filters);
   app.style = nodeStyle(app.g, app.view);
+  folderLegend();
   app.lay?.dispose();
   app.lay = new LayoutHost(app.view);
   app.lay.onFresh = kick;
@@ -660,7 +669,7 @@ function frame(t) {
 
 function paint() {
   dirtyFlag = false;
-  renderer.draw({ g: app.g, view: app.view, nb: app.nb, lay: app.lay, cam: app.cam, pal: app.pal, style: app.style, sel: app.sel, hl: app.hl, hover: app.hover, ver: app.ver, marks: app.marks });
+  renderer.draw({ g: app.g, view: app.view, nb: app.nb, lay: app.lay, cam: app.cam, pal: app.pal, style: app.style, sel: app.sel, hl: app.hl, hover: app.hover, ver: app.ver, marks: app.marks, colorBy: app.colorBy });
   updatePeek();
 }
 kick();

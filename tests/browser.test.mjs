@@ -118,6 +118,11 @@ const state = page => page.evaluate(() => {
   await page.waitForTimeout(300);
   const mk = await page.evaluate(() => { const a = window.__rv.app; return a.marks ? [...a.marks].every(i => a.g.nodes[a.view.ids[i]].name.toLowerCase().includes('label')) && a.marks.size : 0; });
   check('typing a search marks matching nodes on the map', mk > 0, mk);
+  await page.evaluate(() => { const el = document.querySelector('#color-by'); el.value = 'folder'; el.dispatchEvent(new Event('change')); });
+  await page.waitForTimeout(200);
+  const cb = await page.evaluate(() => ({ mode: window.__rv.app.colorBy, legend: !document.querySelector('#folder-legend').hidden && document.querySelectorAll('#folder-legend span').length }));
+  check('color by folder', cb.mode === 'folder' && cb.legend > 1, cb);
+  await page.evaluate(() => { const el = document.querySelector('#color-by'); el.value = 'kind'; el.dispatchEvent(new Event('change')); });
   await page.fill('#search', '');
   await page.evaluate(() => document.activeElement.blur());
 

@@ -78,6 +78,10 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 #legend span { color: var(--muted); }
 #legend span[class^="k-"]::before { background: var(--c); }
 #legend .k-file::before, #legend .k-dir::before { border-radius: 2px; }
+#folder-legend { display: flex; flex-wrap: wrap; gap: 4px 10px; padding: 2px 6px 6px; font-size: 12px; max-width: 240px; color: var(--muted); }
+#folder-legend[hidden] { display: none; }
+#folder-legend span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; }
+#folder-legend span::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--c, var(--muted)); margin-right: 5px; vertical-align: 1px; }
 #legend .k-lib::before { border-radius: 1px; transform: rotate(45deg) scale(.85); }
 #legend span.k-keyword::before { background: none; box-shadow: inset 0 0 0 2px var(--c); }
 #legend .edge-key::before { display: none; }

@@ -140,8 +140,18 @@ export function readPalette() {
   const p = { bg: hex(v('--bg')), fg: hex(v('--fg')), muted: hex(v('--muted')), accent: hex(v('--accent')), css: {}, kinds: [] };
   for (const n of ['--bg', '--fg', '--muted', '--accent']) p.css[n.slice(2)] = v(n).trim();
   for (const k of KINDS) p.kinds.push(hex(v('--k-' + k)));
+  p.groups = GROUP_COLORS.map(hex);
   return p;
 }
+
+export const GROUP_COLORS = ['#4e79a7', '#f28e2b', '#e15759', '#76b7b2', '#59a14f', '#edc948', '#b07aa1', '#ff9da7', '#9c755f'];
+const CONTAINERS = /^(src|lib|libs|packages|crates|cmd|internal|pkg|app|apps|modules|source|sources|components)$/i;
+const groupKey = n => {
+  if (!n.path || n.kind === 'lib') return null;
+  const seg = (n.kind === 'dir' ? n.path + '/x' : n.path).split('/');
+  if (seg.length < 2) return '/';
+  return CONTAINERS.test(seg[0]) && seg.length > 2 ? seg[0] + '/' + seg[1] : seg[0];
+};
 
 const SHAPE = { file: 1, dir: 1, lib: 2, keyword: 3 };
 
@@ -157,7 +167,24 @@ export function nodeStyle(g, view) {
     shape[i] = SHAPE[n.kind] || 0;
     label[i] = (n.kind === 'file' || n.kind === 'dir') && seen.get(n.kind + n.name) > 1 && n.parent > 0 ? g.nodes[n.parent].name + '/' + n.name : n.name;
   }
-  return { kind, rad, shape, label };
+  const group = new Uint8Array(view.n), keys = new Array(view.n), cnt = new Map();
+  let total = 0;
+  for (let i = 0; i < view.n; i++) { const k = groupKey(g.nodes[view.ids[i]]); keys[i] = k; if (k) { cnt.set(k, (cnt.get(k) || 0) + 1); total++; } }
+  for (let pass = 0; pass < 2; pass++) {
+    const top = [...cnt].sort((a, b) => b[1] - a[1])[0];
+    if (!top || top[1] < total * 0.6) break;
+    cnt.delete(top[0]);
+    for (let i = 0; i < view.n; i++) {
+      if (keys[i] !== top[0]) continue;
+      const n = g.nodes[view.ids[i]], rest = (n.kind === 'dir' ? n.path + '/x' : n.path).slice(top[0].length + 1).split('/');
+      const k = rest.length > 1 ? top[0] + '/' + rest[0] : top[0];
+      keys[i] = k;
+      cnt.set(k, (cnt.get(k) || 0) + 1);
+    }
+  }
+  const groups = [...cnt].sort((a, b) => b[1] - a[1]).slice(0, GROUP_COLORS.length).map(x => x[0]), gi = new Map(groups.map((k, j) => [k, j]));
+  for (let i = 0; i < view.n; i++) group[i] = keys[i] == null ? 255 : gi.has(keys[i]) ? gi.get(keys[i]) : 254;
+  return { kind, rad, shape, label, group, groups };
 }
 
 export class Renderer {
@@ -245,7 +272,7 @@ export class Renderer {
 
   draw(s) {
     if (this.lost) return;
-    const key = [s.nb, s.sel, s.hl, s.hover, s.pal, s.ver, s.marks];
+    const key = [s.nb, s.sel, s.hl, s.hover, s.pal, s.ver, s.marks, s.colorBy];
     const same = this.packKey && key.every((v, i) => v === this.packKey[i]);
     this.packKey = key;
     const { view, nb, lay, cam, pal, style, sel, hl, hover, marks } = s;
@@ -286,7 +313,7 @@ export class Renderer {
     const nd = this.nodeData;
     for (let k = nodes.length - 1, j = 0; k >= 0; k--, j++) {
       const i = nodes[k];
-      const c = pal.kinds[kind[i]];
+      const c = s.colorBy === 'folder' ? (style.group[i] < 254 ? pal.groups[style.group[i]] : pal.muted) : pal.kinds[kind[i]];
       const o = j * 8;
       nd[o] = x[i]; nd[o + 1] = y[i]; nd[o + 2] = rad[i];
       nd[o + 3] = c[0]; nd[o + 4] = c[1]; nd[o + 5] = c[2]; nd[o + 6] = marks ? (marks.has(i) ? 1 : i === sel ? fade(depth[i]) : 0.25) : fade(depth[i]);
