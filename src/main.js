@@ -518,14 +518,15 @@ if (narrow()) togglePanel(true);
 
 let gamepadOn = false;
 const pollPad = makeGamepad(api);
-let lastPoll = 0;
-setInterval(() => {
-  if (gamepadOn && app.nb && performance.now() - lastPoll > 90) { lastPoll = performance.now(); pollPad(lastPoll); }
-}, 50);
+let lastPoll = 0, padTimer = 0;
 window.addEventListener('gamepaddisconnected', () => {
   gamepadOn = [...(navigator.getGamepads?.() || [])].some(p => p && p.connected);
+  if (!gamepadOn) { clearInterval(padTimer); padTimer = 0; }
 });
-window.addEventListener('gamepadconnected', () => { gamepadOn = true; kick(); toast('Gamepad connected: left stick pans, D-pad moves, A selects, LB/RB depth'); });
+window.addEventListener('gamepadconnected', () => {
+  if (!padTimer) padTimer = setInterval(() => {
+    if (gamepadOn && app.nb && performance.now() - lastPoll > 90) { lastPoll = performance.now(); pollPad(lastPoll); }
+  }, 50); gamepadOn = true; kick(); toast('Gamepad connected: left stick pans, D-pad moves, A selects, LB/RB depth'); });
 
 function updatePeek() {
   const i = app.touchPeek >= 0 ? app.touchPeek : app.hl >= 0 ? app.hl : app.hover;
