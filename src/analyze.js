@@ -1054,6 +1054,25 @@ export function analyze(files, rootName, progress = () => {}) {
   }
   const ofType = (t, name, f) => { const l = byType.get(t)?.get(name) || (aliasOf.has(t) ? byType.get(aliasOf.get(t))?.get(name) : null); return l ? l.filter(c => !fnLocalSet.has(nodes[c].parent) || nodes[c].file === f) : null; };
   const classes = (name, f) => (aliasOf.has(name) && classByName.get(aliasOf.get(name)) || classByName.get(name) || []).filter(c => !fnLocalSet.has(c) || nodes[c].file === f).slice(0, 4);
+  const derivedOf = new Map();
+  for (const [c, bs] of basesOf) for (const b of bs) { const l = derivedOf.get(b); if (l) l.push(c); else derivedOf.set(b, [c]); }
+  const inSubclasses = (t, name) => {
+    const out = new Set(), seen = new Set([t]);
+    let level = [t];
+    for (let d = 0; d < 4 && level.length && seen.size < 40; d++) {
+      const next = [];
+      for (const b of level) for (const c of derivedOf.get(b) || []) {
+        const cn = nodes[c].name;
+        if (seen.has(cn)) continue;
+        seen.add(cn);
+        next.push(cn);
+        for (const h of byClass.get(c)?.get(name) || []) out.add(h);
+        for (const h of byOwner.get(cn)?.get(name) || []) out.add(h);
+      }
+      level = next;
+    }
+    return [...out];
+  };
   const notField = c => !(nodes[c].kind === 'variable' && nodes[c].parent >= 0 && isClassy(nodes[nodes[c].parent].kind));
   const memberIn = (cls, name) => {
     const seen = new Set([cls]);
@@ -1234,6 +1253,10 @@ export function analyze(files, rootName, progress = () => {}) {
             const hit = new Set();
             for (const c of classes(selfT, fid)) for (const h of memberIn(c, name) || []) hit.add(h);
             if (hit.size) targets = [...hit];
+            else {
+              const sub = inSubclasses(selfT, name);
+              if (sub.length) { targets = sub; if (sub.length > 1) type = 'ref'; }
+            }
           }
         } else if (SELF.has(recv)) {
           let cls = src;
