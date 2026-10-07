@@ -256,13 +256,16 @@ function afterParams(t, from) {
 
 const LOOPS = {
   js: [/\bfor\s*\(\s*(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s+of\s+(?:this\.)?([A-Za-z_$][\w$]*)\s*\)/g],
-  py: [/^[ \t]*(?:async[ \t]+)?for[ \t]+(\w+)[ \t]+in[ \t]+(?:self\.)?(\w+)[ \t]*:/gm],
+  py: [/\bfor[ \t]+(\w+)[ \t]+in[ \t]+(?:self\.)?(\w+)\b(?![ \t]*[.(\[])/g],
   jvm: [/\bfor\s*\(\s*(?:val\s+|var\s+)?(\w+)\s+in\s+(?:this\.)?(\w+)\s*\)/g],
   swift: [/\bfor\s+(\w+)\s+in\s+(?:self\.)?(\w+)\s*\{/g],
   go: [/\bfor\s+\w+\s*,\s*(\w+)\s*:=\s*range\s+(?:\w+\.)?(\w+)/g],
   rs: [/\bfor\s+(\w+)\s+in\s+&?(?:mut\s+)?(?:self\.)?(\w+)/g],
   cs: [/\bforeach\s*\(\s*var\s+(\w+)\s+in\s+(?:this\.)?(\w+)\s*\)/g],
 };
+const CB_NAMES = 'forEach|map|filter|some|every|find|findLast|findIndex|flatMap|sort|each|each_with_index|select|reject|collect|flat_map|compactMap|first|contains|allSatisfy|forEachIndexed|mapNotNull|filterNot|any|all|none|sumOf|associateBy|groupBy|onEach|sortedBy|maxBy|minBy|forEachOrdered';
+const CB = new RegExp(`(?:\\b(?:this|self)\\.|@)?([A-Za-z_$][\\w$]*)[ \\t]*[?!]?\\.[ \\t]*(?:${CB_NAMES})[ \\t]*(?:\\([ \\t]*(?:async[ \\t]*)?)?[ \\t]*$`);
+const CB_IT = new RegExp(`(?:\\bthis\\.)?([A-Za-z_]\\w*)[ \\t]*[?!]*\\.[ \\t]*(?:${CB_NAMES})[ \\t]*\\{(?![^\\n]*->)`, 'g');
 const VAR_TYPES = [
   /\b(?:const|let|var|val|auto)[ \t]+([A-Za-z_$][\w$]*)[ \t]*(?::[ \t]*([A-Za-z_][\w.]*(?:<[^=;\n]*>)?(?:\[\])*\??))?[ \t]*(?:=[ \t]*(?:new[ \t]+([A-Za-z_][\w.]*)|([A-Z]\w*)[ \t]*[({]))?/g,
   /\b([A-Za-z_]\w*)[ \t]*:=[ \t]*&?(?:[a-z]\w*\.)?([A-Z]\w*)[ \t]*\{/g,
@@ -903,9 +906,15 @@ export function analyze(files, rootName, progress = () => {}) {
           if (m[1] === undefined) ns = params(masked, m.index, L, (tm = new Map()));
           else ns = (m[1].replace(/:[^,]*/g, '').match(L.idAll) || []).filter(w => !L.kw.has(w));
           if (!ns.length) continue;
+          const at0 = m[1] !== undefined && L.group === 'js' ? m.index + m[0].indexOf(m[1]) : m.index, cb = CB.exec(masked.slice(Math.max(0, at0 - 120), at0));
+          if (cb && !(tm && tm.has(ns[0]))) (tm ??= new Map()).set(ns[0], '@' + cb[1]);
           const a = lineAt(starts, m.index);
           scopes.push({ a, b: blockEnd(lines, a, skipOf(L)), names: new Set(ns), types: tm && tm.size ? tm : null });
         }
+      }
+      if (L.group === 'jvm') for (const m of masked.matchAll(CB_IT)) {
+        const a = lineAt(starts, m.index);
+        scopes.push({ a, b: blockEnd(lines, a, skipOf(L)), names: new Set(['it']), types: new Map([['it', '@' + m[1]]]) });
       }
       if (scopes.length) {
         info.scopes = scopes;
