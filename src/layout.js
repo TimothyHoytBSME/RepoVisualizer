@@ -1,5 +1,5 @@
 const STRENGTH = -60;
-const SPACE = 26;
+const SPACE = 34;
 const MIN_ALPHA = 0.004;
 
 export function place(L, nb, sel, hx = 0, hy = 0) {
@@ -51,7 +51,7 @@ export class Layout {
       this.la[i] = a; this.lb[i] = b;
       this.ls[i] = 1 / Math.min(da, db);
       this.lbias[i] = da / (da + db);
-      this.ld[i] = 36 + 4 * Math.sqrt(Math.min(da, db));
+      this.ld[i] = 50 + 5 * Math.sqrt(Math.min(da, db));
     }
     let maxD = 0;
     for (const u of nb.nodes) if (nb.depth[u] > maxD) maxD = nb.depth[u];
@@ -62,7 +62,7 @@ export class Layout {
     let prev = 0;
     for (let d = 1; d <= maxD; d++) {
       const inner = prev + (d === 1 ? 30 : 24);
-      const outer = Math.max(inner + 70, Math.sqrt(inner * inner + (cnt[d] * SPACE * SPACE) / Math.PI));
+      const outer = Math.max(inner + 90, Math.sqrt(inner * inner + (cnt[d] * SPACE * SPACE) / Math.PI));
       this.rIn[d] = inner;
       this.rOut[d] = outer;
       prev = outer;

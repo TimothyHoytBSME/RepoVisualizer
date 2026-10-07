@@ -36,13 +36,26 @@
     <canvas id="labels"></canvas>
     <div id="peek" hidden></div>
     <div id="hud">
-      <label for="depth">Depth <b id="depth-val">2</b></label>
+      <label for="depth"><span class="dl">Depth </span><b id="depth-val">2</b></label>
       <input id="depth" type="range" min="1" max="8" step="1" value="2">
       <span id="counts"></span>
+      <button id="fit-btn" class="hud-btn" title="Fit to screen (F)" aria-label="Fit to screen">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+      </button>
+      <button id="filter-btn" class="hud-btn" title="Filters and legend (T toggles tests)" aria-label="Filters and legend" aria-expanded="false" aria-controls="filters">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16l-6 7.5V19l-4-2v-4.5z"/></svg>
+      </button>
     </div>
-    <div id="legend" aria-hidden="true">
-      <span class="k-file">file</span><span class="k-class">class</span><span class="k-function">function</span><span class="k-method">method</span><span class="k-variable">variable</span><span class="k-type">type</span><span class="k-lib">library</span><span class="k-dir">folder</span>
-      <span class="edge-key"><i class="arrow"></i>uses</span><span class="edge-key"><i></i>related</span>
+    <div id="filters" hidden>
+      <div class="ft">Show</div>
+      <label><input type="checkbox" data-f="tests"> Tests &amp; specs</label>
+      <label><input type="checkbox" data-f="vars"> Variables &amp; constants</label>
+      <label><input type="checkbox" data-f="libs"> External libraries</label>
+      <div class="ft">Legend</div>
+      <div id="legend">
+        <span class="k-file">file</span><span class="k-class">class</span><span class="k-function">function</span><span class="k-method">method</span><span class="k-variable">variable</span><span class="k-type">type</span><span class="k-module">module</span><span class="k-lib">library</span><span class="k-dir">folder</span>
+        <span class="edge-key"><i class="arrow"></i>uses</span><span class="edge-key"><i></i>related / contains</span>
+      </div>
     </div>
     <div id="status" hidden><div id="status-text"></div><div class="bar"><i id="status-bar"></i></div></div>
     <div id="toast" hidden></div>

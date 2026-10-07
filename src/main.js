@@ -23,6 +23,7 @@ const app = {
   depth: clamp(+store.get('rv:depth') || 2, 1, MAX_DEPTH),
   cam: { x: 0, y: 0, scale: narrow() ? 0.85 : 1 },
   follow: false, goto: null, dirty: true, pal: readPalette(), ver: 0,
+  filters: Object.assign({ tests: false, vars: true, libs: true }, (() => { try { return JSON.parse(store.get('rv:filters')) || {}; } catch { return {}; } })()),
 };
 const panel = new Panel(panelEl, $('#peek'), app);
 
@@ -133,7 +134,7 @@ function setMap(type, gid = -1) {
   app.mapType = type;
   $('#map-type').value = type;
   store.set('rv:map', type);
-  app.view = buildView(app.g, type);
+  app.view = buildView(app.g, type, app.filters);
   app.style = nodeStyle(app.g, app.view);
   app.lay?.dispose();
   app.lay = new LayoutHost(app.view);
@@ -236,6 +237,33 @@ function pick(sx, sy, slop) {
   return best;
 }
 
+function fitView() {
+  if (!app.nb || !renderer) return;
+  const { x, y } = app.lay;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const i of app.nb.nodes) {
+    if (x[i] < x0) x0 = x[i]; if (x[i] > x1) x1 = x[i];
+    if (y[i] < y0) y0 = y[i]; if (y[i] > y1) y1 = y[i];
+  }
+  const pad = 50, H = renderer.H - Math.abs(viewOffset()) * 2;
+  const s = clamp(Math.min((renderer.W - pad * 2) / Math.max(1, x1 - x0), (H - pad * 2) / Math.max(1, y1 - y0)), 0.03, 2.5);
+  app.follow = false;
+  app.goto = { x: (x0 + x1) / 2, y: (y0 + y1) / 2, scale: s };
+  app.dirty = true;
+}
+
+function setFilter(k, v) {
+  app.filters[k] = v;
+  store.set('rv:filters', JSON.stringify(app.filters));
+  syncFilters();
+  if (app.g) setMap(app.mapType, app.view.ids[app.sel]);
+}
+
+function syncFilters() {
+  for (const box of document.querySelectorAll('#filters input[data-f]')) box.checked = app.filters[box.dataset.f] !== false;
+  $('#filter-btn').classList.toggle('on', Object.values(app.filters).some(v => v === false));
+}
+
 function togglePanel(force) {
   panelEl.classList.toggle('collapsed', force);
   if (narrow()) app.follow = true;
@@ -313,6 +341,8 @@ const api = {
     app.dirty = true;
   },
   recenter() { app.follow = true; app.goto = null; app.dirty = true; },
+  fit: () => fitView(),
+  toggleTests() { setFilter('tests', !app.filters.tests); },
   togglePanel: () => togglePanel(),
   cycleMap() { if (app.g) setMap(app.mapType === 'code' ? 'files' : 'code', app.view.ids[app.sel]); },
   openSource: () => openSource(),
@@ -320,6 +350,18 @@ const api = {
 app.togglePanel = api.togglePanel;
 attachControls(stage, api);
 $('#panel-btn').addEventListener('click', () => togglePanel());
+$('#fit-btn').addEventListener('click', () => fitView());
+$('#filter-btn').addEventListener('click', e => {
+  e.stopPropagation();
+  const box = $('#filters');
+  box.hidden = !box.hidden;
+  $('#filter-btn').setAttribute('aria-expanded', String(!box.hidden));
+});
+document.addEventListener('pointerdown', e => {
+  if (!$('#filters').hidden && !e.target.closest('#filters, #filter-btn')) { $('#filters').hidden = true; $('#filter-btn').setAttribute('aria-expanded', 'false'); }
+});
+for (const box of document.querySelectorAll('#filters input[data-f]')) box.addEventListener('change', () => setFilter(box.dataset.f, box.checked));
+syncFilters();
 if (narrow()) togglePanel(true);
 
 let gamepadOn = false;
@@ -339,17 +381,24 @@ function frame(t) {
   if (!app.nb || !renderer) return;
   if (app.lay.run(9)) { app.dirty = true; app.ver++; }
   const { cam, lay } = app;
-  const ti = app.follow ? app.sel : app.goto ? app.goto.i : -1;
-  if (ti >= 0) {
-    const tx = lay.x[ti], ty = lay.y[ti] - viewOffset() / cam.scale;
+  const go = app.goto;
+  const ti = app.follow ? app.sel : go && go.i != null ? go.i : -1;
+  if (ti >= 0 || go) {
+    let ts = null;
+    if (ti < 0 && go.scale) {
+      ts = go.scale;
+      cam.scale += (ts - cam.scale) * 0.2;
+      if (Math.abs(ts - cam.scale) < ts * 0.002) cam.scale = ts;
+    }
+    const tx = ti >= 0 ? lay.x[ti] : go.x, ty = (ti >= 0 ? lay.y[ti] : go.y) - viewOffset() / cam.scale;
     const dx = tx - cam.x, dy = ty - cam.y;
-    if (Math.abs(dx) * cam.scale < 0.4 && Math.abs(dy) * cam.scale < 0.4) {
+    if (Math.abs(dx) * cam.scale < 0.4 && Math.abs(dy) * cam.scale < 0.4 && (ts === null || cam.scale === ts)) {
       cam.x = tx; cam.y = ty;
       app.goto = null;
     } else {
       cam.x += dx * 0.2; cam.y += dy * 0.2;
-      app.dirty = true;
     }
+    app.dirty = true;
   }
   if (app.dirty) paint();
 }

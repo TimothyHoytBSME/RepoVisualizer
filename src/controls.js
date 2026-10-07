@@ -11,7 +11,7 @@ export function attachControls(el, api) {
   };
 
   el.addEventListener('pointerdown', e => {
-    if (e.button > 0) return;
+    if (e.button > 0 || (e.target !== el && !(e.target instanceof HTMLCanvasElement))) return;
     rect = el.getBoundingClientRect();
     el.focus({ preventScroll: true });
     el.setPointerCapture(e.pointerId);
@@ -92,7 +92,7 @@ export function attachControls(el, api) {
       '+': () => api.zoomAt(1.25), '=': () => api.zoomAt(1.25), '-': () => api.zoomAt(0.8), _: () => api.zoomAt(0.8),
       '[': () => api.depth(-1), ']': () => api.depth(1),
       '/': () => api.focusSearch(), Escape: () => api.escape(),
-      c: () => api.recenter(), Home: () => api.recenter(),
+      c: () => api.recenter(), Home: () => api.recenter(), f: () => api.fit(), t: () => api.toggleTests(),
       p: () => api.togglePanel(), m: () => api.cycleMap(), o: () => api.openSource(),
     };
     const f = map[k];
@@ -126,7 +126,7 @@ export function makeGamepad(api) {
     if (Math.abs(zt) > 0.05) { api.zoomAt(Math.exp(zt * 0.04)); active = true; }
     const acts = {
       0: () => api.activate(), 1: () => api.recenter(), 2: () => api.togglePanel(), 3: () => api.cycleMap(),
-      4: () => api.depth(-1), 5: () => api.depth(1), 9: () => api.openSource(),
+      4: () => api.depth(-1), 5: () => api.depth(1), 8: () => api.fit(), 9: () => api.openSource(),
       12: () => api.move(0, -1), 13: () => api.move(0, 1), 14: () => api.move(-1, 0), 15: () => api.move(1, 0),
     };
     for (const i in acts) {

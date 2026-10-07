@@ -30,12 +30,23 @@ export function edgesOf(g, id, dir) {
   return r;
 }
 
-export function buildView(g, type) {
+export const TEST_PATH = /(^|\/)(tests?|__tests__|spec|specs|testing|testdata|e2e)\/|[._-](test|spec)s?\.[^/]+$|(^|\/)test_[^/]*$|(^|\/)conftest\.py$/i;
+
+export function isTest(n) {
+  return n.kind !== 'lib' && !!n.path && TEST_PATH.test(n.kind === 'dir' ? n.path + '/' : n.path);
+}
+
+export function buildView(g, type, filters = {}) {
   const files = type === 'files';
   const keep = files ? k => STRUCT.has(k) : k => k !== 'dir';
+  const shown = n => keep(n.kind)
+    && !(filters.tests === false && isTest(n))
+    && !(filters.vars === false && n.kind === 'variable')
+    && !(filters.libs === false && n.kind === 'lib');
   const local = new Int32Array(g.nodes.length).fill(-1);
   const ids = [];
-  for (const n of g.nodes) if (keep(n.kind)) { local[n.id] = ids.length; ids.push(n.id); }
+  for (const n of g.nodes) if (shown(n)) { local[n.id] = ids.length; ids.push(n.id); }
+  if (!ids.length) for (const n of g.nodes) if (keep(n.kind)) { local[n.id] = ids.length; ids.push(n.id); }
   const n = ids.length;
   const lift = id => (STRUCT.has(g.nodes[id].kind) ? id : g.nodes[id].file);
   const { s: ES, t: ET, type: TY } = g.edges;

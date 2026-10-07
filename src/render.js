@@ -1,7 +1,7 @@
 import { DEP, REF, CONTAIN } from './graph.js';
 
 export const KINDS = ['dir', 'file', 'lib', 'class', 'type', 'module', 'function', 'method', 'variable'];
-const BASE_R = { dir: 8, file: 7, lib: 6, class: 6.5, type: 5.5, module: 6, function: 5, method: 4.5, variable: 4 };
+const BASE_R = { dir: 5.2, file: 4.6, lib: 4, class: 4.2, type: 3.6, module: 4, function: 3.3, method: 3, variable: 2.7 };
 
 const HEAD = `#version 300 es
 uniform vec2 uCenter; uniform float uScale; uniform vec2 uHalf; uniform float uDpr;
@@ -141,7 +141,7 @@ export function nodeStyle(g, view) {
     const n = g.nodes[view.ids[i]];
     const k = KINDS.indexOf(n.kind);
     kind[i] = k < 0 ? 6 : k;
-    rad[i] = (BASE_R[n.kind] || 5) + Math.min(9, 1.3 * Math.log2(1 + view.deg[i]));
+    rad[i] = (BASE_R[n.kind] || 3.3) + Math.min(5, 0.8 * Math.log2(1 + view.deg[i]));
   }
   return { kind, rad };
 }

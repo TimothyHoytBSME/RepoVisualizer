@@ -47,7 +47,7 @@ The following list serves as a constant reminder of all the requirements/outcome
 - Compatible with mouse, keyboard, touch, and gamepad.
 - Maps are condensed, connected webs of nodes and edges that can be traversed graphically. The primary map is the code map.
 - Nodes are files, directories, keywords, functions, libraries, etc. Edges are how two nodes relate (reference, dependency, etc.).
-- Visually pleasant and minimalistic.
+- Visually pleasant and minimalistic. Node circles stay small relative to edge lengths so maps feel open, not cramped.
 - There is always a selected node. The map can be panned without changing the selected node; click/tap/Enter/gamepad button selects a new node.
 - A slider sets the connection depth (how many steps from the selected node) shown on the map, with a displayed count of the nodes and edges within that range.
 - The code map's nodes are the variables/functions/constants/etc. across an entire repo, with their names visible on the map.
