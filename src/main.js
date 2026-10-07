@@ -50,7 +50,18 @@ fit();
   const on = () => { mq.removeEventListener('change', on); fit(); watchDpr(); };
   mq.addEventListener('change', on);
 })();
-matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { app.pal = readPalette(); app.dirty = true; });
+function applyTheme(t) {
+  if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+  else delete document.documentElement.dataset.theme;
+  app.pal = readPalette();
+  const meta = document.querySelector('meta[name="theme-color"]:not([media])') || Object.assign(document.head.appendChild(document.createElement('meta')), { name: 'theme-color' });
+  meta.content = getComputedStyle(document.documentElement).getPropertyValue('--panel').trim();
+  app.dirty = true;
+}
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => applyTheme(store.get('rv:theme')));
+applyTheme(store.get('rv:theme'));
+$('#theme').value = store.get('rv:theme') || 'auto';
+$('#theme').addEventListener('change', e => { store.set('rv:theme', e.target.value); applyTheme(e.target.value); });
 
 function showStatus(text, frac) {
   $('#status').hidden = false;
