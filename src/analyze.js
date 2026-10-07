@@ -584,7 +584,7 @@ export function analyze(files, rootName, progress = () => {}) {
 
   const names = new Map();
   const localsOf = new Map();
-  const ownerOf = new Map(), selfOf = new Map(), memberish = new Set(), typesOf = new Map(), fieldTypes = new Map(), retOf = new Map();
+  const ownerOf = new Map(), selfOf = new Map(), memberish = new Set(), typesOf = new Map(), fieldTypes = new Map(), retOf = new Map(), basesOf = new Map();
   const pkgOf = new Map();
   const csNs = new Set();
   let done = 0;
@@ -705,6 +705,18 @@ export function analyze(files, rootName, progress = () => {}) {
         if (rt && !/^(?:void|Unit|None|Void|self|Self|this)$/.test(rt)) retOf.set(d.name, retOf.has(d.name) && retOf.get(d.name) !== rt ? null : rt);
         else if (retOf.has(d.name)) retOf.set(d.name, null);
       }
+      if (isClassy(d.kind) && !d.ext) {
+        const rest = lines[d.line].slice(d.idx - starts[d.line] + d.name.length);
+        let m, list = null;
+        if (L.group === 'py') { if ((m = /^\s*\(([^)]*)\)/.exec(rest))) list = m[1].split(',').filter(x => !x.includes('=')); }
+        else if ((m = /^\s*(?:<[^>{]*>)?\s*(?:\([^)]*\)\s*)?(?:extends|implements|:|<)\s*([^{]*)/.exec(rest))) {
+          list = m[1].replace(/<[^<>]*(?:<[^<>]*>[^<>]*)*>/g, '').replace(/\b(?:implements|extends|public|private|protected|virtual|where|with)\b/g, ',').split(',');
+        }
+        if (list) {
+          const bs = list.map(x => lastSeg(x.replace(/\(.*$/, ''))).filter(b => b && b !== d.name && !L.kw.has(b));
+          if (bs.length) basesOf.set(d.node, bs.slice(0, 6));
+        }
+      }
       if (p && isClassy(p.kind)) {
         let ft = fieldTypes.get(p.node);
         if (d.kind === 'variable') {
@@ -821,8 +833,24 @@ export function analyze(files, rootName, progress = () => {}) {
     }
   }
 
-  const typeNames = new Set(ownerOf.values());
-  for (const n of nodes) if (isClassy(n.kind)) typeNames.add(n.name);
+  const typeNames = new Set(ownerOf.values()), classByName = new Map();
+  for (const n of nodes) if (isClassy(n.kind)) {
+    typeNames.add(n.name);
+    const a = classByName.get(n.name);
+    if (a) a.push(n.id); else classByName.set(n.name, [n.id]);
+  }
+  const memberIn = (cls, all) => {
+    const seen = new Set([cls]);
+    let level = [cls];
+    for (let depth = 0; depth < 6 && level.length; depth++) {
+      const hit = all.filter(c => level.includes(nodes[c].parent));
+      if (hit.length) return hit;
+      const next = [];
+      for (const k of level) for (const b of basesOf.get(k) || []) for (const c2 of (classByName.get(b) || []).slice(0, 4)) if (!seen.has(c2)) { seen.add(c2); next.push(c2); }
+      level = next;
+    }
+    return null;
+  };
 
   done = 0;
   for (const info of infos) {
@@ -914,8 +942,12 @@ export function analyze(files, rootName, progress = () => {}) {
         } else if (SELF.has(recv)) {
           let cls = src;
           while (cls !== fid && cls >= 0 && !isClassy(nodes[cls].kind)) cls = nodes[cls].parent;
-          const own = cls !== fid && cls >= 0 ? pool.filter(c => nodes[c].parent === cls) : [];
-          if (own.length) targets = own;
+          if (cls !== fid && cls >= 0) {
+            const all = local.get(name) && g.get(name) ? [...new Set(cands.concat(local.get(name)))] : pool;
+            const hit = memberIn(cls, all);
+            if (!hit) continue;
+            targets = hit;
+          }
         } else if (recv.charCodeAt(0) >= 65 && recv.charCodeAt(0) <= 90) {
           const all = local.get(name) && g.get(name) ? cands.concat(local.get(name)) : cands;
           const own = [...new Set(all)].filter(c => nodes[c].parent >= 0 && nodes[nodes[c].parent].name === recv && isClassy(nodes[nodes[c].parent].kind));
