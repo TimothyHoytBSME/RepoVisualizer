@@ -713,16 +713,18 @@ export function analyze(files, rootName, progress = () => {}) {
     }
     for (const re of L.group === 'py' || L.group === 'rb' ? [CALL_VARS_PLAIN] : L.group === 'go' ? CALL_VARS : CALL_VARS.slice(0, 1)) {
       for (const m of masked.matchAll(re)) {
-        const di = fnAt[lineAt(starts, m.index + m[0].length - 1)];
+        const ln = lineAt(starts, m.index + m[0].length - 1), di = fnAt[ln];
         if (di >= 0) (defs[di].types ??= new Map()).set(m[1], '()' + m[2]);
+        else if (indentOf(lines[ln]) === 0) (info.types ??= new Map()).set(m[1], '()' + m[2]);
       }
     }
     for (const re of L.group === 'go' ? VAR_TYPES : L.group === 'py' || L.group === 'rb' ? [] : VAR_TYPES.slice(0, 1)) {
       for (const m of masked.matchAll(re)) {
         const ty = m[2] || m[3] || m[4];
         if (!ty) continue;
-        const di = fnAt[lineAt(starts, m.index)];
+        const ln = lineAt(starts, m.index), di = fnAt[ln];
         if (di >= 0) (defs[di].types ??= new Map()).set(m[1], lastSeg(ty));
+        else if (indentOf(lines[ln]) === 0) (info.types ??= new Map()).set(m[1], lastSeg(ty));
       }
     }
     const owner = new Int32Array(lines.length).fill(info.id);
@@ -1033,6 +1035,11 @@ export function analyze(files, rootName, progress = () => {}) {
           const ft = fieldTypes.get(o), fy = ft && ft.get(recv);
           if (fy) { selfT = fy; break; }
         }
+        if (!selfT && info.types && info.types.has(recv) && !(info.scopes && info.scopeNames.has(recv))) {
+          let shadowed = false;
+          for (let o = src; o !== fid && o >= 0 && !shadowed; o = nodes[o].parent) shadowed = !!(localsOf.get(o)?.has(recv) || typesOf.get(o)?.has(recv));
+          if (!shadowed) selfT = info.types.get(recv);
+        }
         if (!selfT) for (let o = src; o !== fid && o >= 0; o = nodes[o].parent) {
           if (SELF.has(recv)) { if (isClassy(nodes[o].kind)) break; if (ownerOf.has(o)) { selfT = ownerOf.get(o); break; } continue; }
           const sv = selfOf.get(o);
@@ -1104,7 +1111,10 @@ export function analyze(files, rootName, progress = () => {}) {
               : masked.charCodeAt(at + name.length) === 33 ? cands : cands.filter(c => AMBIENT.test(nodes[c].path));
             if (!targets.length) continue;
             if (cands.length > 1 || L.explicit || member) type = 'ref';
-          } else if (member && !viaImport && targets.length > 1) type = 'ref';
+          } else if (member && targets.length > 1) {
+            const top = viaImport ? targets.filter(c => nodes[c].parent === nodes[c].file) : [];
+            if (top.length) targets = top; else type = 'ref';
+          }
         } else if (member && targets.length > 1) type = 'ref';
       }
       if (targets.length > MAXC) continue;
