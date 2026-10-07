@@ -226,6 +226,8 @@ const JS = {
     [R`^[ \t]*(?:(?:static|async|get|set|public|private|protected|readonly|override|abstract|declare)\s+)*\*?\s*(#?${W})\s*(?:<[^>\n]*>)?\((?:[^()]|\([^()]*\))*\)\s*(?::[^{;\n]+)?\{`, 'method'],
     [R`^[ \t]*(?:(?:static|public|private|protected|readonly)\s+)*(#?${W})\s*(?::[^=;\n]+)?=\s*(?:async\s*)?(?:\([^()]*\)|${W})\s*=>`, 'method'],
     [R`^[ \t]*(${W})\s*:\s*(?:async\s*)?(?:function\b\s*\*?\s*(?:${W}\s*)?\(|(?:\([^()]*\)|${W})\s*(?::[^=;\n]+)?=>)`, 'prop', notSig],
+    [R`^[ \t]*(?:module\.)?exports\.(${W})\s*=\s*(?:async\s*)?(?:function\b|\([^()]*\)\s*=>|${W}\s*=>)`, 'function'],
+    [R`^[ \t]*${W}\.prototype\.(${W})\s*=\s*(?:async\s*)?(?:function\b|\([^()]*\)\s*=>|${W}\s*=>)`, 'method'],
   ],
   clean: s => s.replace(/^#/, ''),
   prep: sfc,
