@@ -151,6 +151,23 @@ function goImports(raw) {
   return grab(out, /^import[ \t]+(?:[\w.]+[ \t]+)?"([^"]+)"/gm, raw);
 }
 
+function goBinds(raw) {
+  const out = [];
+  const one = (alias, path) => {
+    if (alias === '_' || alias === '.') return;
+    if (!alias) {
+      const segs = path.split('/');
+      let last = segs.pop();
+      if (/^v\d+$/.test(last) && segs.length) last = segs.pop();
+      alias = last.replace(/\.v\d+$/, '').replace(/^go-/, '').replace(/[^\w].*$/, '');
+    }
+    if (alias) out.push([alias, path]);
+  };
+  for (const m of raw.matchAll(/^import[ \t]*\(([\s\S]*?)\)/gm)) for (const x of m[1].matchAll(/^[ \t]*([\w.]+[ \t]+)?"([^"]+)"/gm)) one(x[1] && x[1].trim(), x[2]);
+  for (const x of raw.matchAll(/^import[ \t]+([\w.]+[ \t]+)?"([^"]+)"/gm)) one(x[1] && x[1].trim(), x[2]);
+  return out;
+}
+
 function rsExpand(s, out, depth = 0) {
   const i = s.indexOf('{');
   if (i < 0 || depth > 4) {
@@ -288,7 +305,7 @@ const GO = {
     [R`^[ \t]*type[ \t]+(${N})`, 'type'],
     [R`^(?:var|const)[ \t]+(${N})`, 'variable'],
   ],
-  extra: t => goGroups(t).concat(goMethods(t)), imports: goImports, resolve: 'go',
+  extra: t => goGroups(t).concat(goMethods(t)), imports: goImports, binds: goBinds, resolve: 'go',
   anon: [/\bfunc[ \t]*(?=\()/g],
 };
 
