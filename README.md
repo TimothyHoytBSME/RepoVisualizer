@@ -4,6 +4,8 @@ Explore a code repository as an interactive map of its files, functions, classes
 
 **Open the app:** https://timothyhoytbsme.github.io/RepoVisualizer/
 
+![RepoVisualizer showing the code map of its own source](preview.png)
+
 - Load any public GitHub repository (`owner/repo` or a link), or open a `.zip` / folder from your device. Local files never leave your device.
 - Select a node to see its code in context; hover or long-press to peek.
 - The depth slider controls how many steps away from the selected node are shown.
