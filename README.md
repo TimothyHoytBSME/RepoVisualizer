@@ -57,4 +57,5 @@ No build step: serve the folder with any static file server and open it.
 - `node tests/analyzer.test.mjs`: analyzer regression tests
 - `node tests/loading.test.mjs`: zip reading and GitHub link parsing
 - `node tests/browser.test.mjs`: end-to-end checks in headless Chromium (needs Playwright)
+- `node tests/inspect.mjs <repo dir> [sum|refs|file|into|diff]`: inspect what the analyzer finds in a local checkout
 
