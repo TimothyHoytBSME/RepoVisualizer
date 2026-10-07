@@ -56,7 +56,7 @@ export function attachControls(el, api) {
     clearTimeout(timer);
     if (pts.size === 0) {
       if (longPress) api.peekEnd();
-      else if (!moved && e.type === 'pointerup') api.tapAt(...loc(e), e.pointerType);
+      else if (!moved && e.type === 'pointerup') api.tapAt(...loc(e), e.pointerType, e.shiftKey);
       longPress = false;
       pinch = null;
     } else if (pts.size === 1) pinch = null;

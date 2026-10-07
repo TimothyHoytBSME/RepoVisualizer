@@ -474,10 +474,11 @@ const api = {
     if (i !== app.hover) { app.hover = i; app.dirty = true; }
     stage.style.cursor = i >= 0 ? 'pointer' : '';
   },
-  tapAt(sx, sy, type) {
+  tapAt(sx, sy, type, shift) {
     const i = pick(sx, sy, type === 'mouse' ? 5 : 14);
     if (i < 0) { if (app.hl >= 0) { app.hl = -1; app.dirty = true; } return; }
-    if (i !== app.sel) select(i);
+    if (shift && i !== app.sel) app.setPath(app.view.ids[i]);
+    else if (i !== app.sel) select(i);
     else if (narrow()) togglePanel(false);
     else { app.follow = true; app.dirty = true; }
   },
