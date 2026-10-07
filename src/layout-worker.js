@@ -30,7 +30,9 @@ self.onmessage = e => {
       lay.vx[u] = lay.vy[u] = 0;
       lay.placed[u] = 1;
     }
-    lay.set({ nodes, depth: m.depth, edges: m.edges, from: null }, m.sel);
+    if (!lay.from) lay.from = new Int32Array(lay.x.length);
+    for (let k = 0; k < nodes.length; k++) lay.from[nodes[k]] = m.par[k];
+    lay.set({ nodes, depth: m.depth, edges: m.edges, from: lay.from }, m.sel);
     loop();
   }
 };

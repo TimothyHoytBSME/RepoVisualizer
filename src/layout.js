@@ -1,6 +1,8 @@
 const STRENGTH = -60;
-const SPACE = 34;
+const SPACE = 42;
 const MIN_ALPHA = 0.004;
+const TAU = Math.PI * 2;
+const wrap = a => a - TAU * Math.round(a / TAU);
 
 export function place(L, nb, sel, hx = 0, hy = 0) {
   const { x, y, placed } = L;
@@ -27,6 +29,8 @@ export class Layout {
     this.placed = new Uint8Array(n);
     this.vdeg = new Int32Array(n);
     this.bnext = new Int32Array(n);
+    this.alo = new Float32Array(n);
+    this.ahi = new Float32Array(n);
     this.alpha = 0;
     this.cap = 0;
     this.stack = new Int32Array(2048);
@@ -67,10 +71,50 @@ export class Layout {
       this.rOut[d] = outer;
       prev = outer;
     }
+    this.sectors(nb, sel);
     const m = nb.nodes.length;
     this.theta2 = m > 3000 ? 1.44 : 0.81;
     this.decay = m > 8000 ? 0.045 : m > 2000 ? 0.03 : 0.0228;
     this.alpha = Math.max(this.alpha, 0.9);
+  }
+
+  sectors(nb, sel) {
+    const { x, y, alo, ahi } = this, { nodes, depth, from } = nb;
+    const m = nodes.length;
+    this.useSec = !!from && m > 2;
+    if (!this.useSec) return;
+    const order = Array.from(nodes).sort((a, b) => depth[a] - depth[b]);
+    const kids = new Map(), w = new Map();
+    for (const u of order) {
+      w.set(u, 1);
+      const p = u === sel ? -1 : from[u];
+      if (p >= 0 && p !== u) { const k = kids.get(p); if (k) k.push(u); else kids.set(p, [u]); }
+    }
+    for (let i = order.length - 1; i >= 0; i--) {
+      const u = order[i], p = u === sel ? -1 : from[u];
+      if (p >= 0 && w.has(p)) w.set(p, w.get(p) + w.get(u));
+    }
+    const sx = x[sel], sy = y[sel];
+    const ang = u => Math.atan2(y[u] - sy, x[u] - sx);
+    const split = (u, lo, hi) => {
+      const k = kids.get(u);
+      if (!k) return;
+      const mid = (lo + hi) / 2;
+      const rel = new Map(k.map(c => [c, wrap(ang(c) - mid)]));
+      k.sort((a, b) => rel.get(a) - rel.get(b));
+      let tot = 0;
+      for (const c of k) tot += w.get(c);
+      let a = lo;
+      if (u === sel) a = rel.get(k[0]) + mid - (w.get(k[0]) / tot) * Math.PI;
+      for (const c of k) {
+        const span = ((hi - lo) * w.get(c)) / tot;
+        alo[c] = a; ahi[c] = a + span;
+        split(c, a, a + span);
+        a += span;
+      }
+    };
+    for (const u of nodes) { alo[u] = -Math.PI; ahi[u] = Math.PI; }
+    split(sel, -Math.PI, Math.PI);
   }
 
   run(budget) {
@@ -83,7 +127,7 @@ export class Layout {
   get done() { return this.alpha < MIN_ALPHA; }
 
   tick() {
-    const { x, y, vx, vy, la, lb, ls, lbias, ld, sel, rIn, rOut } = this;
+    const { x, y, vx, vy, la, lb, ls, lbias, ld, sel, rIn, rOut, alo, ahi, useSec } = this;
     const { nodes, depth } = this.nb;
     const alpha = this.alpha;
     for (let i = 0; i < la.length; i++) {
@@ -108,6 +152,16 @@ export class Layout {
       if (target !== d) {
         const f = ((target - d) / d) * alpha * 0.2;
         vx[i] += dx * f; vy[i] += dy * f;
+      }
+      if (useSec) {
+        const span = ahi[i] - alo[i];
+        if (span < TAU - 1e-3) {
+          const r = wrap(Math.atan2(dy, dx) - (alo[i] + ahi[i]) / 2), h = span / 2;
+          if (r > h || r < -h) {
+            const f = (r > 0 ? h - r : -h - r) * alpha * 0.15;
+            vx[i] -= dy * f; vy[i] += dx * f;
+          }
+        }
       }
     }
     for (let k = 0; k < nodes.length; k++) {

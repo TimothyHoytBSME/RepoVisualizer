@@ -65,7 +65,9 @@ export class LayoutHost {
     }
     this.seq++;
     this.alpha = 0.9;
-    this.w.postMessage({ type: 'set', seq: this.seq, nodes: nb.nodes, depth: nb.depth, edges: nb.edges, sel, pos }, [pos.buffer]);
+    const par = new Int32Array(m);
+    for (let k = 0; k < m; k++) par[k] = nb.from ? nb.from[nb.nodes[k]] : -1;
+    this.w.postMessage({ type: 'set', seq: this.seq, nodes: nb.nodes, depth: nb.depth, edges: nb.edges, sel, pos, par }, [pos.buffer, par.buffer]);
   }
 
   run(budget) {

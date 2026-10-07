@@ -191,7 +191,7 @@ function refresh() {
 
 function select(i, instant, push = !instant) {
   if (i < 0 || !app.view) return;
-  if (push) app.pendingFit = false;
+  if (push) app.pendingFit = 'in';
   app.sel = i;
   app.hl = -1;
   refresh();
@@ -337,6 +337,16 @@ function pick(sx, sy, slop) {
   return best;
 }
 
+function zoomToSel() {
+  if (!app.nb || !renderer) return;
+  const { x, y } = app.lay, c = app.sel;
+  let r = 0;
+  for (const i of app.nb.nodes) r = Math.max(r, Math.hypot(x[i] - x[c], y[i] - y[c]));
+  const H = renderer.H - Math.abs(viewOffset()) * 2;
+  const s = clamp((Math.min(renderer.W, H) / 2 - 40) / Math.max(r, 1), 0.03, 1.6);
+  if (app.cam.scale < s * 0.7) { app.goto = { scale: s }; app.follow = true; app.dirty = true; }
+}
+
 function fitView(min = 0.03) {
   if (!app.nb || !renderer) return;
   const { x, y } = app.lay;
@@ -431,6 +441,7 @@ const api = {
     const ox = sx - renderer.W / 2, oy = sy - renderer.H / 2;
     const wx = ox / cam.scale + cam.x, wy = oy / cam.scale + cam.y;
     cam.scale = s;
+    if (app.goto && app.goto.scale) app.goto = null;
     if (!centered) {
       cam.x = wx - ox / s; cam.y = wy - oy / s;
       if (Math.abs(ox) + Math.abs(oy) > 40) { app.follow = false; app.goto = null; }
@@ -561,7 +572,7 @@ function frame(t) {
     if (ti >= 0 || go) {
       const before = cam.x + ',' + cam.y + ',' + cam.scale;
       let ts = null;
-      if (ti < 0 && go.scale) {
+      if (go && go.scale) {
         ts = go.scale;
         cam.scale += (ts - cam.scale) * 0.2;
         if (Math.abs(ts - cam.scale) < ts * 0.002) cam.scale = ts;
@@ -578,7 +589,7 @@ function frame(t) {
       if (before !== cam.x + ',' + cam.y + ',' + cam.scale) dirtyFlag = true;
     }
     if (app.pendingFit) {
-      if (app.lay.alpha < 0.08) { app.pendingFit = false; fitView(0.35); }
+      if (app.lay.alpha < 0.08) { const p = app.pendingFit; app.pendingFit = false; if (p === 'in') zoomToSel(); else fitView(0.35); }
       busy = true;
     }
     if (dirtyFlag) paint();
