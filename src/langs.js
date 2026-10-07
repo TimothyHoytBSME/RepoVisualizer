@@ -364,7 +364,7 @@ const DART = {
 const RB = {
   group: 'rb', flatVars: true, exts: 'rb rake gemspec ru',
   names: ['gemfile', 'rakefile', 'podfile', 'fastfile', 'vagrantfile', 'guardfile'],
-  syntax: { line: ['#'], block: [['=begin', '=end']], quotes: '\'"`', multi: '"' },
+  syntax: { line: ['#'], block: [['=begin', '=end']], quotes: '\'"`', multi: '"', heredoc: /<<[~-]?(['"]?)([A-Z_][A-Z0-9_]*)\1/g },
   id: /[A-Za-z_]\w*[!?]?/g,
   kw: kw(`alias and begin break case class def defined do else elsif end ensure false for if in module next nil not or redo rescue retry return self super then true undef unless until when while yield require require_relative attr_accessor attr_reader attr_writer include extend puts private protected public new raise lambda proc`),
   defs: [
@@ -380,7 +380,7 @@ const RB = {
 
 const PHP = {
   group: 'php', flatVars: true, paramLast: true, sigil: true, exts: 'php phtml', strip: /^(?:use|namespace)\b[^\n;{]*/gm,
-  syntax: { line: ['//', '#'], block: [['/*', '*/']], quotes: '\'"', multi: '\'"' },
+  syntax: { line: ['//', '#'], block: [['/*', '*/']], quotes: '\'"', multi: '\'"', heredoc: /<<<[ \t]*(['"]?)([A-Za-z_]\w*)\1/g },
   kw: kw(`abstract and array as break callable case catch class clone const continue declare default do echo else elseif empty enddeclare endfor endforeach endif endswitch endwhile extends final finally fn for foreach function global goto if implements include include_once instanceof insteadof interface isset list match namespace new or print private protected public readonly require require_once return static switch throw trait try unset use var while xor yield this self parent true false null string int float bool mixed void`),
   defs: [
     [R`\bfunction[ \t]+&?(${N})`, 'function'],
@@ -397,7 +397,7 @@ const PHP = {
 
 const LUA = {
   group: 'lua', exts: 'lua',
-  syntax: { line: ['--'], block: [['--[[', ']]']], quotes: '\'"' },
+  syntax: { line: ['--'], block: [['--[[', ']]'], ['[[', ']]']], quotes: '\'"' },
   kw: kw(`and break do else elseif end false for function goto if in local nil not or repeat return then true until while self require`),
   defs: [
     [R`^[ \t]*(?:local[ \t]+)?function[ \t]+([\w.:]+)`, 'function'],
@@ -411,7 +411,7 @@ const LUA = {
 
 const SH = {
   group: 'sh', exts: 'sh bash zsh ksh fish',
-  syntax: { line: ['#'], quotes: '\'"', hashWord: true },
+  syntax: { line: ['#'], quotes: '\'"', hashWord: true, heredoc: /<<-?(['"]?)([A-Z_][A-Z0-9_]*)\1/g },
   id: /[A-Za-z_][\w-]*/g,
   kw: kw(`if then else elif fi case esac for while until do done in function select time return local export readonly declare echo exit set unset shift source true false test cd`),
   defs: [
@@ -542,6 +542,21 @@ export function mask(text, L, cls) {
     if (cls) cls.fill(c, a, b);
   };
   const line = S.line || [], block = S.block || [], quotes = S.quotes || '', first = S.first, raw = S.raw || '', multi = S.multi || '';
+  if (S.heredoc) {
+    for (const m of text.matchAll(S.heredoc)) {
+      const id = m[2], ls = text.indexOf('\n', m.index);
+      if (ls < 0) continue;
+      let p = ls + 1, end = -1;
+      while (p < n) {
+        let q = text.indexOf('\n', p);
+        if (q < 0) q = n;
+        const t = text.slice(p, q).trim();
+        if (t === id || (t.startsWith(id) && /^[;,)\s]/.test(t.slice(id.length)))) { end = p + text.slice(p, q).indexOf(id) + id.length; break; }
+        p = q + 1;
+      }
+      if (end > 0) blank(ls + 1, end, 2);
+    }
+  }
   let i = 0;
   scan: while (i < n) {
     const code = out[i];
