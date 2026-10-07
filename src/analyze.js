@@ -53,6 +53,7 @@ function keywords(infos, nodes, edges, add) {
 }
 const EDGE_CODE = { ref: 1, contain: 2, dep: 3 };
 export const EDGE_NAMES = ['', 'ref', 'contain', 'dep'];
+const PROP_FN = /(?:\.[\w$]+\s*=|[\w$]+\s*:)\s*(?:async\s+)?function\s*\*?\s*$/;
 const AMBIENT = /\.d\.[mc]?ts$/;
 const isFn = k => k === 'function' || k === 'method';
 const SELF = new Set(['this', 'self', 'Self', 'static', 'me']);
@@ -541,7 +542,7 @@ export function analyze(files, rootName, progress = () => {}) {
 
   const names = new Map();
   const localsOf = new Map();
-  const ownerOf = new Map(), selfOf = new Map();
+  const ownerOf = new Map(), selfOf = new Map(), memberish = new Set();
   const pkgOf = new Map();
   const csNs = new Set();
   let done = 0;
@@ -630,6 +631,7 @@ export function analyze(files, rootName, progress = () => {}) {
       edges.push({ s: parent, t: d.node, type: 'contain' });
       if (d.locals) localsOf.set(d.node, d.locals);
       if (ownerName) ownerOf.set(d.node, ownerName);
+      if (L.group === 'js' && isFn(d.kind) && PROP_FN.test(lines[d.line].slice(Math.max(0, d.idx - starts[d.line] - 120), d.idx - starts[d.line]))) memberish.add(d.node);
       if (d.self) selfOf.set(d.node, d.self);
       if (isClassy(d.kind) && !d.ext && !types.has(d.name)) types.set(d.name, d);
       owner.fill(d.node, d.line, d.end + 1);
@@ -794,7 +796,9 @@ export function analyze(files, rootName, progress = () => {}) {
           }
           if (!targets.length) {
             if (cands.length > MAXC) continue;
-            targets = info.module && !member && !(L.pkgDir && info.pkg != null) && masked.charCodeAt(at + name.length) !== 33 ? cands.filter(c => AMBIENT.test(nodes[c].path)) : cands;
+            targets = !info.module || (L.pkgDir && info.pkg != null) ? cands
+              : member ? cands.filter(c => memberish.has(c) || (nodes[c].parent >= 0 && isClassy(nodes[nodes[c].parent].kind)))
+              : masked.charCodeAt(at + name.length) === 33 ? cands : cands.filter(c => AMBIENT.test(nodes[c].path));
             if (!targets.length) continue;
             if (cands.length > 1 || L.explicit || member) type = 'ref';
           } else if (member && !viaImport && targets.length > 1) type = 'ref';
