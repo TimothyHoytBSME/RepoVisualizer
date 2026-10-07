@@ -304,7 +304,7 @@ const C = {
     [R`^\}[ \t]*(${N})[ \t]*;`, 'type'],
     [R`^[ \t]*@(?:interface|implementation|protocol)[ \t]+(${N})`, 'class'],
     [R`^[ \t]*[-+][ \t]*\([^)]*\)[ \t]*(${N})`, 'method'],
-    [R`^[ \t]+(?!(?:return|using|typedef|friend|delete|goto|case|throw|co_return|co_yield|else|do|new|namespace|template|static_assert|operator|enum|struct|class|union)\b)(?:[A-Za-z_][\w:]*(?:<[^;\n]*>)?[ \t]*(?:\*|&|\bconst\b)*[ \t]+)+[*&]*(${N})[ \t]*(?:\[[^\]\n]*\][ \t]*)*(?:[A-Z_][A-Z_0-9]*\([^)\n]*\)[ \t]*)?(?:=[^;\n]*|\{[^;\n]*\})?;`, 'field'],
+    [R`^[ \t]+(?!(?:return|using|typedef|friend|delete|goto|case|throw|co_return|co_yield|else|do|new|namespace|template|static_assert|operator|enum|struct|class|union)\b)(?:[A-Za-z_][\w:]*(?:<[^;\n]*>)?[ \t]*(?:\*|&|\bconst\b)*[ \t]+)+[*&]*(${N})\b(?!\()[ \t]*(?:\[[^\]\n]*\][ \t]*)*(?:[A-Z_][A-Z_0-9]*\([^)\n]*\)[ \t]*)?(?:=[^;\n]*|\{[^;\n]*\})?;`, 'field'],
   ],
   extra: t => cfuncs(t, true), localDecl: LOCAL_DECL,
   imports: (raw, m) => grab([], /^[ \t]*#[ \t]*include[ \t]*([<"])([^>"\n]+)[>"]/gm, raw, m, 2, x => (x[1] === '<' ? '<' : '') + x[2]),
