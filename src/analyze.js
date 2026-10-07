@@ -184,7 +184,7 @@ function extractDefs(masked, L, starts, lines) {
       let e = d.line;
       while (e + 1 < lines.length && /\\[ \t]*$/.test(lines[e])) e++;
       d.end = e;
-    } else d.end = blockEnd(lines, d.line, skip, d.kind === 'class' ? L.head : null);
+    } else d.end = d.kind === 'field' ? d.line : blockEnd(lines, d.line, skip, d.kind === 'class' ? L.head : null);
   }
   return found;
 }
@@ -889,7 +889,7 @@ export function analyze(files, rootName, progress = () => {}) {
         let ft = fieldTypes.get(p.node);
         if (d.kind === 'variable') {
           const ln = lines[d.line], col = d.idx - starts[d.line];
-          const after = /^[ \t]*[?!]?[ \t]*:[ \t]*([^=;\n{]+)/.exec(ln.slice(col + d.name.length));
+          const after = /^[ \t]*[?!]?[ \t]*:[ \t]*([^=;\n{,)]+)/.exec(ln.slice(col + d.name.length));
           let ty = after ? tyOf(after[1]) : null;
           if (!ty && L.paramLast) ty = tyOf(ln.slice(0, col).split(/\s+/).filter(w => !FIELD_MODS.has(w)).join(' '));
           if (ty) { if (!ft) fieldTypes.set(p.node, (ft = new Map())); ft.set(d.name, ty); }

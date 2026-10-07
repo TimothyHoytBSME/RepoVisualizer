@@ -109,6 +109,21 @@ function ctypedefs(t) {
   return out;
 }
 
+function ctorProps(t) {
+  const out = [];
+  for (const m of t.matchAll(/\bclass[ \t]+\w+(?:<[^>\n]*>)?[ \t]*(?:(?:private|protected|internal|public)?[ \t]*constructor[ \t]*)?\(/g)) {
+    let d = 1, j = m.index + m[0].length;
+    const a = j;
+    for (const lim = Math.min(t.length, j + 4000); j < lim && d; j++) {
+      const c = t.charCodeAt(j);
+      if (c === 40) d++; else if (c === 41) d--;
+    }
+    if (d) continue;
+    for (const p of t.slice(a, j - 1).matchAll(/(?:^|,)\s*(?:@[\w.]+(?:\([^()]*\))?\s*)*(?:(?:private|protected|internal|public|override|open|final)\s+)*(?:val|var)\s+([A-Za-z_]\w*)/g)) out.push({ name: p[1], idx: a + p.index + p[0].length - p[1].length, kind: 'field' });
+  }
+  return out;
+}
+
 function goGroups(t) {
   const out = [];
   for (const m of t.matchAll(/^(var|const|type)[ \t]*\(\r?\n([\s\S]*?)^\)/gmd)) {
@@ -374,7 +389,7 @@ const JVM = {
     [R`^[ \t]*(?:(?:@[\w.:]+(?:\([^)\n]*\))?|private|public|protected|internal|override|lateinit|const|open|static|final|inline|actual|expect|abstract|external|lazy|implicit)[ \t]+)*(?:val|var)[ \t]+(?:(?:<(?:[^<>\n]|<[^<>\n]*>)*>)[ \t]*)?(?:[\w.]+(?:<(?:[^<>\n]|<[^<>\n]*>)*>)?\??\.)?(${N})`, 'variable', null, true],
     [R`^[ \t]*(?:(?:public|private|protected|static|final|volatile|transient)[ \t]+)+(?!class\b|interface\b|enum\b|record\b|abstract\b|void\b)[\w<>\[\],.? ]+?[ \t]+(${N})[ \t]*(?:=|;)`, 'variable'],
   ],
-  extra: cfuncs, localDecl: LOCAL_DECL,
+  extra: t => cfuncs(t).concat(ctorProps(t)), localDecl: LOCAL_DECL,
   anon: [/\{[ \t]*\(?([A-Za-z_]\w*(?:[ \t]*:[ \t]*[\w.<>?]+)?(?:[ \t]*,[ \t]*[A-Za-z_]\w*(?:[ \t]*:[ \t]*[\w.<>?]+)?)*)\)?[ \t]*->/g],
   imports: (raw, m) => grab([], /^[ \t]*import[ \t]+(?:static[ \t]+)?([\w.]+(?:\.\*)?)/gm, m),
   resolve: 'jvm',
