@@ -78,10 +78,20 @@ export class Panel {
     this.app = app;
     this.cur = -1;
     el.addEventListener('click', e => {
+      const nav = e.target.closest('[data-nav]');
+      if (nav) { e.stopPropagation(); if (nav.dataset.nav === 'back') history.back(); else history.forward(); return; }
       const t = e.target.closest('[data-n]');
       if (t) { e.preventDefault(); app.selectGlobal(+t.dataset.n); return; }
       if (e.target.closest('.ph') && !e.target.closest('a')) app.togglePanel();
     });
+  }
+
+  nav(back, fwd) {
+    this.canBack = back;
+    this.canFwd = fwd;
+    const b = this.el.querySelector('[data-nav="back"]'), f = this.el.querySelector('[data-nav="fwd"]');
+    if (b) b.disabled = !back;
+    if (f) f.disabled = !fwd;
   }
 
   chip(kind) { return `<span class="chip k-${kind}">${KIND_LABEL[kind] || kind}</span>`; }
@@ -139,7 +149,7 @@ export class Panel {
 
     const url = this.link(n);
     const loc = n.kind === 'keyword' ? `found in ${usedBy.length} files` : n.kind === 'lib' ? 'external library' : n.kind === 'dir' ? n.path || '/' : n.kind === 'file' ? n.path : `${n.path}:${n.line + 1}`;
-    let html = `<div class="ph"><div class="grip"></div><div class="pt">${this.chip(n.kind)}<span class="pname">${esc(n.name)}</span></div>
+    let html = `<div class="ph"><div class="grip"></div><div class="pt">${this.chip(n.kind)}<span class="pname">${esc(n.name)}</span><span class="pnav"><button type="button" data-nav="back" aria-label="Back" title="Back (Backspace)"${this.canBack ? '' : ' disabled'}>‹</button><button type="button" data-nav="fwd" aria-label="Forward" title="Forward"${this.canFwd ? '' : ' disabled'}>›</button></span></div>
       <div class="ppath">${url ? `<a href="${url}" target="_blank" rel="noopener">${esc(loc)} ↗</a>` : esc(loc)}</div></div><div class="pbody">`;
 
     if (n.path && n.kind !== 'dir' && files.has(n.path)) {

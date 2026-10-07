@@ -12,6 +12,14 @@ Explore a code repository as an interactive map of its files, functions, classes
 
 Share a view with a link like `?repo=pallets/flask&node=f:src/flask/app.py&depth=2`.
 
+## Maps
+
+- **Code map**: functions, classes, methods, variables, files and libraries, linked by what uses what.
+- **File map**: folders, files and libraries, with file-to-file dependencies.
+- **Keyword map**: the distinctive words used across the code, linked to the files that use them.
+
+The funnel button shows or hides tests, variables and libraries, and holds the color legend.
+
 ## Controls
 
 | Action | Mouse / touch | Keyboard | Gamepad |
@@ -20,8 +28,13 @@ Share a view with a link like `?repo=pallets/flask&node=f:src/flask/app.py&depth
 | Zoom | wheel / pinch | + / − | triggers |
 | Move highlight | — | arrows | D-pad / right stick |
 | Select | click / tap | Enter | A |
+| Back / forward | ‹ › in the details panel, browser back | Backspace, Alt+←/→ | B |
+| Peek | hover / long-press | (highlight shows it) | (highlight shows it) |
 | Depth | slider | [ / ] | LB / RB |
-| Recenter | click the selected node | C | B |
+| Fit to screen | ⛶ button | F | Back/Select |
+| Recenter | click the selected node | C | stick press |
+| Show/hide tests | funnel button | T | — |
 | Details panel | tap the sheet | P | X |
 | Switch map | menu | M | Y |
 | Search | search box | / | — |
+| Open repository | repo name in the top bar | O | Start |

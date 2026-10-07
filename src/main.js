@@ -131,7 +131,7 @@ function mapInto(gid) {
   return -1;
 }
 
-function setMap(type, gid = -1) {
+function setMap(type, gid = -1, push = false) {
   app.mapType = type;
   $('#map-type').value = type;
   store.set('rv:map', type);
@@ -143,7 +143,7 @@ function setMap(type, gid = -1) {
   let i = gid >= 0 ? mapInto(gid) : -1;
   if (i < 0) i = defaultNode(app.g, app.view);
   app.cam.x = app.cam.y = 0;
-  select(i, true);
+  select(i, true, push);
 }
 
 function refresh() {
@@ -156,7 +156,7 @@ function refresh() {
   app.dirty = true;
 }
 
-function select(i, instant) {
+function select(i, instant, push = !instant) {
   if (i < 0 || !app.view) return;
   app.sel = i;
   app.hl = -1;
@@ -165,19 +165,19 @@ function select(i, instant) {
   app.follow = true;
   app.goto = null;
   panel.show(app.view.ids[i]);
-  syncURL();
+  syncURL(push);
 }
 
-app.selectGlobal = gid => {
+app.selectGlobal = (gid, push = true) => {
   let i = app.view.local[gid];
   if (i < 0) {
     const k = app.g.nodes[gid].kind;
     const want = k === 'dir' ? 'files' : k === 'keyword' ? 'words' : 'code';
-    if (want !== app.mapType) { setMap(want, gid); return; }
+    if (want !== app.mapType) { setMap(want, gid, push); return; }
     i = mapInto(gid);
     if (i < 0) return;
   }
-  if (i !== app.sel) select(i); else app.follow = true;
+  if (i !== app.sel) select(i, false, push); else app.follow = true;
   if (narrow()) panelEl.classList.add('collapsed');
 };
 
@@ -196,7 +196,9 @@ $('#depth-val').textContent = app.depth;
 $('#map-type').value = app.mapType;
 $('#map-type').addEventListener('change', e => { if (app.g) setMap(e.target.value, app.view.ids[app.sel]); });
 
-function syncURL() {
+let navCur = history.state?.n ?? 0, navMax = navCur;
+
+function syncURL(push = false) {
   const q = new URLSearchParams();
   const m = app.meta;
   if (m && m.kind === 'github') {
@@ -206,13 +208,40 @@ function syncURL() {
   }
   if (app.view && app.sel >= 0) {
     const key = app.g.nodes[app.view.ids[app.sel]].key;
-    if (m && m.kind === 'github') q.set('node', key);
+    q.set('node', key);
     store.set('rv:node', key);
   }
   q.set('map', app.mapType);
   q.set('depth', app.depth);
-  history.replaceState(null, '', `${location.pathname}?${q}`);
+  const url = `${location.pathname}?${q}`;
+  if (push && url !== location.pathname + location.search) {
+    navMax = ++navCur;
+    history.pushState({ n: navCur }, '', url);
+  } else history.replaceState({ n: navCur }, '', url);
+  panel.nav(navCur > 0, navCur < navMax);
 }
+
+window.addEventListener('popstate', e => {
+  navCur = e.state?.n ?? 0;
+  if (navCur > navMax) navMax = navCur;
+  if (!app.g) return;
+  const q = new URLSearchParams(location.search);
+  const m = app.meta, repo = q.get('repo');
+  if (repo && m && m.kind === 'github' && repo.toLowerCase() !== `${m.owner}/${m.repo}`.toLowerCase()) {
+    const spec = parseRepo(repo);
+    if (spec) {
+      spec.ref = q.get('ref') || '';
+      spec.sub = q.get('path') || '';
+      loadRepo(spec, q.get('node'));
+      return;
+    }
+  }
+  const key = q.get('node'), gid = key ? app.g.byKey.get(key) : undefined;
+  const map = q.get('map');
+  if (MAPS.includes(map) && map !== app.mapType) setMap(map, gid ?? -1, false);
+  else if (gid !== undefined) app.selectGlobal(gid, false);
+  panel.nav(navCur > 0, navCur < navMax);
+});
 
 function viewOffset() {
   if (!narrow() || !app.g) return 0;
@@ -343,6 +372,7 @@ const api = {
     app.dirty = true;
   },
   recenter() { app.follow = true; app.goto = null; app.dirty = true; },
+  back() { if (navCur > 0) history.back(); },
   fit: () => fitView(),
   toggleTests() { setFilter('tests', !app.filters.tests); },
   togglePanel: () => togglePanel(),

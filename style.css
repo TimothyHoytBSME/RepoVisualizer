@@ -94,7 +94,11 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .ph { padding: 12px 14px 10px; border-bottom: 1px solid var(--line); }
 .grip { display: none; }
 .pt { display: flex; gap: 8px; align-items: center; min-width: 0; }
-.pname { font-weight: 600; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pname { font-weight: 600; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.pnav { margin-left: auto; display: flex; gap: 2px; flex: none; }
+.pnav button { width: 30px; height: 28px; border: 0; border-radius: 7px; background: none; color: var(--fg); font-size: 20px; line-height: 1; padding: 0 0 2px; }
+.pnav button:hover:not(:disabled) { background: var(--raise); }
+.pnav button:disabled { color: var(--muted); opacity: .35; cursor: default; }
 .ppath { color: var(--muted); font-size: 12px; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ppath a, .trunc a { color: var(--accent); text-decoration: none; }
 .pbody { flex: 1; overflow: auto; min-height: 0; overscroll-behavior: contain; }
