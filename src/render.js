@@ -373,7 +373,6 @@ export class Renderer {
       const key = gid * 64 + px * 2 + (sp ? 1 : 0);
       let w = this.widths.get(key);
       if (w === undefined) { ctx.font = font; w = ctx.measureText(name).width; this.widths.set(key, w); }
-      const lx = sx + r + 4, ly = sy;
       const hid = nb.hidden ? nb.hidden.get(i) : 0, suf = hid ? ` +${hid}` : '';
       let w2 = 0;
       if (hid) {
@@ -381,11 +380,18 @@ export class Renderer {
         w2 = this.widths.get(k2);
         if (w2 === undefined) { ctx.font = `500 ${px}px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`; w2 = ctx.measureText(suf).width; this.widths.set(k2, w2); }
       }
-      const c0 = Math.max(0, Math.floor(lx / CELL)), c1 = Math.min(cols - 1, Math.floor((lx + w + w2) / CELL));
-      const r0 = Math.max(0, Math.floor((ly - px / 2 - 1) / CELL)), r1 = Math.min(rows - 1, Math.floor((ly + px / 2 + 1) / CELL));
-      if (!sp) {
-        for (let rr = r0; rr <= r1; rr++) for (let cc = c0; cc <= c1; cc++) if (grid[rr * cols + cc]) return;
+      const tw = w + w2;
+      let lx = sx + r + 4, ly = sy, c0 = 0, c1 = 0, r0 = 0, r1 = 0, ok = false;
+      for (let at = 0; at < (sp ? 1 : 4) && !ok; at++) {
+        if (at === 1) { lx = sx - r - 4 - tw; ly = sy; }
+        else if (at === 2) { lx = sx - tw / 2; ly = sy - r - px / 2 - 3; }
+        else if (at === 3) { lx = sx - tw / 2; ly = sy + r + px / 2 + 3; }
+        c0 = Math.max(0, Math.floor(lx / CELL)); c1 = Math.min(cols - 1, Math.floor((lx + tw) / CELL));
+        r0 = Math.max(0, Math.floor((ly - px / 2 - 1) / CELL)); r1 = Math.min(rows - 1, Math.floor((ly + px / 2 + 1) / CELL));
+        ok = true;
+        if (!sp) for (let rr = r0; rr <= r1 && ok; rr++) for (let cc = c0; cc <= c1; cc++) if (grid[rr * cols + cc]) { ok = false; break; }
       }
+      if (!ok) return;
       for (let rr = r0; rr <= r1; rr++) grid.fill(1, rr * cols + c0, rr * cols + c1 + 1);
       ctx.font = font;
       ctx.globalAlpha = sp ? 1 : Math.max(0.45, 1 - 0.15 * Math.max(0, nb.depth[i] - 1));
