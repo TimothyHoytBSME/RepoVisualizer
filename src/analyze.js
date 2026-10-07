@@ -723,7 +723,7 @@ export function analyze(files, rootName, progress = () => {}) {
 
   const names = new Map();
   const localsOf = new Map();
-  const privC = new Set(), aliasOf = new Map(), retNode = new Map(), closureOf = new Map(), ownerOf = new Map(), selfOf = new Map(), memberish = new Set(), typesOf = new Map(), fieldTypes = new Map(), retOf = new Map(), basesOf = new Map();
+  const macros = new Set(), privC = new Set(), aliasOf = new Map(), retNode = new Map(), closureOf = new Map(), ownerOf = new Map(), selfOf = new Map(), memberish = new Set(), typesOf = new Map(), fieldTypes = new Map(), retOf = new Map(), basesOf = new Map();
   const pkgOf = new Map();
   const csNs = new Set();
   let done = 0;
@@ -906,6 +906,7 @@ export function analyze(files, rootName, progress = () => {}) {
       const pre = lines[d.line].slice(0, d.idx - starts[d.line]);
       const cPriv = L.group === 'c' && isFn(d.kind) && !(p && isClassy(p.kind)) && !C_HEADER.test(f.path) && /\bstatic\b/.test(pre.trim() ? pre : lines[d.line - 1] || '');
       if (cPriv) privC.add(d.node);
+      if (L.group === 'rs' && /\bmacro_rules!/.test(lines[d.line])) macros.add(d.node);
       if (!d.ext && !inFn && !(L.priv && L.priv.test(pre))) {
         const a = g.get(d.name);
         if (a) a.push(d.node); else g.set(d.name, [d.node]);
@@ -1486,6 +1487,11 @@ export function analyze(files, rootName, progress = () => {}) {
           if (!targets.length) continue;
           type = 'ref';
         }
+      }
+      if (L.group === 'rs') {
+        const bang = masked.charCodeAt(at + name.length) === 33 && masked.charCodeAt(at + name.length + 1) !== 61;
+        targets = targets.filter(c => bang === macros.has(c));
+        if (!targets.length) continue;
       }
       if (PATHSEG.has(L.group) && masked.charCodeAt(at + name.length) === 58 && masked.charCodeAt(at + name.length + 1) === 58) {
         targets = targets.filter(c => !isFn(nodes[c].kind));
