@@ -718,6 +718,7 @@ export function analyze(files, rootName, progress = () => {}) {
     }
     for (const re of L.group === 'py' || L.group === 'rb' ? [CALL_VARS_PLAIN] : L.group === 'go' ? CALL_VARS : CALL_VARS.slice(0, 1)) {
       for (const m of masked.matchAll(re)) {
+        if (m[2] === 'require' || m[2] === 'import') continue;
         const ln = lineAt(starts, m.index + m[0].length - 1), di = fnAt[ln];
         if (di >= 0) (defs[di].types ??= new Map()).set(m[1], '()' + m[2]);
         else if (indentOf(lines[ln]) === 0) (info.types ??= new Map()).set(m[1], '()' + m[2]);
@@ -1076,6 +1077,7 @@ export function analyze(files, rootName, progress = () => {}) {
         }
         if (selfT && selfT.startsWith('()')) {
           const call = selfT.slice(2);
+          if (!typeNames.has(call) && !retOf.has(call) && !g.has(call) && !local.has(call)) continue;
           selfT = typeNames.has(call) ? call : retOf.get(call) || null;
         }
         if (selfT) {
