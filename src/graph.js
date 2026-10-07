@@ -72,7 +72,20 @@ export function buildView(g, type, filters = {}) {
   return { type, ids, local, n, eA, eB, eT, start: adj.start, adj: adj.list, deg };
 }
 
-export function neighborhood(v, sel, depth) {
+function inducedEdges(v, order, d) {
+  const edges = [];
+  for (const u of order) {
+    for (let k = v.start[u]; k < v.start[u + 1]; k++) {
+      const e = v.adj[k];
+      const a = v.eA[e], b = v.eB[e];
+      const w = a === u ? b : a;
+      if (d[w] >= 0 && u === (a < b ? a : b)) edges.push(e);
+    }
+  }
+  return edges;
+}
+
+export function neighborhood(v, sel, depth, limit = Infinity) {
   const d = new Int32Array(v.n).fill(-1);
   const from = new Int32Array(v.n).fill(-1);
   const order = [sel];
@@ -86,16 +99,36 @@ export function neighborhood(v, sel, depth) {
       if (d[w] < 0) { d[w] = d[u] + 1; from[w] = u; order.push(w); }
     }
   }
-  const edges = [];
-  for (const u of order) {
-    for (let k = v.start[u]; k < v.start[u + 1]; k++) {
-      const e = v.adj[k];
-      const a = v.eA[e], b = v.eB[e];
-      const w = a === u ? b : a;
-      if (d[w] >= 0 && u === (a < b ? a : b)) edges.push(e);
+  const all = inducedEdges(v, order, d);
+  const total = { nodes: order.length, edges: all.length };
+  if (order.length <= limit) return { nodes: Int32Array.from(order), depth: d, from, edges: Int32Array.from(all), total };
+  const keep = new Uint8Array(v.n);
+  keep[sel] = 1;
+  let kept = 1, level = [sel];
+  for (let dd = 1; dd <= depth && kept < limit && level.length; dd++) {
+    const score = new Map();
+    for (const u of level) {
+      for (let k = v.start[u]; k < v.start[u + 1]; k++) {
+        const e = v.adj[k];
+        const w = v.eA[e] === u ? v.eB[e] : v.eA[e];
+        if (d[w] !== dd || keep[w]) continue;
+        const s = score.get(w);
+        if (s === undefined) { score.set(w, 1); from[w] = u; } else score.set(w, s + 1);
+      }
     }
+    const cands = [...score.keys()];
+    const room = dd < depth ? Math.max(1, Math.floor((limit - kept) * 0.7)) : limit - kept;
+    if (cands.length > room) {
+      cands.sort((a, b) => score.get(b) - score.get(a) || v.deg[b] - v.deg[a]);
+      cands.length = room;
+    }
+    for (const w of cands) keep[w] = 1;
+    kept += cands.length;
+    level = cands;
   }
-  return { nodes: Int32Array.from(order), depth: d, from, edges: Int32Array.from(edges) };
+  const nodes = order.filter(u => keep[u]);
+  for (const u of order) if (!keep[u]) d[u] = -1;
+  return { nodes: Int32Array.from(nodes), depth: d, from, edges: Int32Array.from(inducedEdges(v, nodes, d)), total };
 }
 
 export function defaultNode(g, v) {

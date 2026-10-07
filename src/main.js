@@ -24,6 +24,7 @@ const app = {
   depth: clamp(+store.get('rv:depth') || 2, 1, MAX_DEPTH),
   cam: { x: 0, y: 0, scale: narrow() ? 0.85 : 1 },
   follow: false, goto: null, dirty: true, pal: readPalette(), ver: 0,
+  limit: (() => { const v = store.get('rv:limit'); return v === null ? (narrow() ? 500 : 1200) : +v; })(),
   filters: Object.assign({ tests: false, vars: true, libs: true }, (() => { try { return JSON.parse(store.get('rv:filters')) || {}; } catch { return {}; } })()),
 };
 const panel = new Panel(panelEl, $('#peek'), app);
@@ -148,11 +149,14 @@ function setMap(type, gid = -1, push = false) {
 
 function refresh() {
   const { cam } = app;
-  app.nb = neighborhood(app.view, app.sel, app.depth);
+  app.nb = neighborhood(app.view, app.sel, app.depth, app.limit || Infinity);
   app.lay.set(app.nb, app.sel, cam.x, cam.y);
   renderer?.setLabelOrder(app.nb, app.style.rad);
   for (const k of ['hl', 'hover', 'touchPeek']) if (app[k] >= 0 && app.nb.depth[app[k]] < 0) app[k] = -1;
-  $('#counts').textContent = `${fmt(app.nb.nodes.length)} nodes · ${fmt(app.nb.edges.length)} edges`;
+  const { nodes, edges, total } = app.nb;
+  const part = (shown, all, word) => (all > shown ? `${fmt(shown)} of ${fmt(all)} ${word}` : `${fmt(shown)} ${word}`);
+  $('#counts').innerHTML = `<span>${part(nodes.length, total.nodes, 'nodes')}</span><span class="sep"> · </span><span>${part(edges.length, total.edges, 'edges')}</span>`;
+  $('#counts').title = total.nodes > nodes.length ? `Showing the ${fmt(nodes.length)} most connected of ${fmt(total.nodes)} nodes in range. Change the limit in the filter menu.` : '';
   app.dirty = true;
 }
 
@@ -393,6 +397,12 @@ document.addEventListener('pointerdown', e => {
   if (!$('#filters').hidden && !e.target.closest('#filters, #filter-btn')) { $('#filters').hidden = true; $('#filter-btn').setAttribute('aria-expanded', 'false'); }
 });
 for (const box of document.querySelectorAll('#filters input[data-f]')) box.addEventListener('change', () => setFilter(box.dataset.f, box.checked));
+$('#limit').value = String(app.limit);
+$('#limit').addEventListener('change', e => {
+  app.limit = +e.target.value;
+  store.set('rv:limit', app.limit);
+  if (app.view) refresh();
+});
 syncFilters();
 if (narrow()) togglePanel(true);
 
