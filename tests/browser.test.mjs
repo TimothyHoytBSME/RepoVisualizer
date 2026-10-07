@@ -110,6 +110,12 @@ const state = page => page.evaluate(() => {
   await page.keyboard.press('Enter');
   await page.waitForTimeout(400);
   check('search selects match', (await state(page)).sel.includes('neighborhood'));
+  await page.fill('#search', 'Renderer.draw');
+  await page.waitForTimeout(300);
+  const qs = await page.evaluate(() => document.querySelector('#results li.on .sub')?.textContent || '');
+  check('qualified search finds Class.member', qs.startsWith('src/render.js'), qs);
+  await page.fill('#search', '');
+  await page.evaluate(() => document.activeElement.blur());
 
   await page.keyboard.press('g');
   check('G starts path mode', await page.evaluate(() => document.activeElement.id === 'search' && document.activeElement.placeholder.startsWith('Path from')));

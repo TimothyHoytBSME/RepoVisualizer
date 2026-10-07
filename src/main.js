@@ -686,19 +686,24 @@ function subseq(q, s) {
 function runSearch() {
   const q = search.value.trim().toLowerCase();
   if (!q || !app.g) { closeResults(); return; }
-  const found = [];
-  for (const n of app.g.nodes) {
+  const found = [], g = app.g, dot = q.includes('.') && !q.startsWith('.');
+  if (!g.used) {
+    g.used = new Int32Array(g.nodes.length);
+    for (let k = 0; k < g.edges.t.length; k++) if (g.edges.type[k] !== 2) g.used[g.edges.t[k]]++;
+  }
+  for (const n of g.nodes) {
     const nm = n.name.toLowerCase();
     const i = nm.indexOf(q);
     let s;
     if (i >= 0) s = nm === q ? 0 : i === 0 ? 1 : 2;
+    else if (dot && n.key && n.key.slice(n.key.indexOf('#') + 1).toLowerCase().endsWith(q)) s = 0;
     else if (n.kind === 'file' && n.path.toLowerCase().includes(q)) s = 3;
     else if (q.length > 1 && subseq(q, nm)) s = 4;
     else continue;
-    found.push([s, nm.length, n.id]);
+    found.push([s, isTest(n) ? 1 : 0, -g.used[n.id], nm.length, n.id]);
   }
-  found.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
-  hits = found.slice(0, 50).map(f => f[2]);
+  found.sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2] || a[3] - b[3]);
+  hits = found.slice(0, 50).map(f => f[4]);
   hitIdx = 0;
   renderResults();
 }
