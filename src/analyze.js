@@ -277,7 +277,28 @@ function suffixMap(entries) {
   return map;
 }
 
-function makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, goMods, names, swiftMods, crates }) {
+function looseJSON(t) {
+  let o = '', i = 0;
+  const n = t.length;
+  while (i < n) {
+    const c = t[i];
+    if (c === '"') {
+      let j = i + 1;
+      while (j < n && t[j] !== '"') j += t[j] === '\\' ? 2 : 1;
+      o += t.slice(i, j + 1);
+      i = j + 1;
+    } else if (c === '/' && t[i + 1] === '/') {
+      const j = t.indexOf('\n', i);
+      i = j < 0 ? n : j;
+    } else if (c === '/' && t[i + 1] === '*') {
+      const j = t.indexOf('*/', i + 2);
+      i = j < 0 ? n : j + 2;
+    } else { o += c; i++; }
+  }
+  try { return JSON.parse(o.replace(/,(\s*[}\]])/g, '$1')); } catch { return null; }
+}
+
+function makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, goMods, names, swiftMods, crates, jsPkgs, jsAliases }) {
   const suffix = suffixMap(fileIds);
   const csFirst = new Set([...csNs].map(n => n.split('.')[0]));
   const dirSuffix = suffixMap([...dirs.keys()].map(d => [d, d]));
@@ -348,6 +369,24 @@ function makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, goMods, names, swi
       if (EXTERNAL.test(spec) && !spec.startsWith('node:')) return null;
       if (spec[0] === '.') return tryJs(join(info.dir, spec));
       if (spec[0] === '/') return tryJs(spec.slice(1));
+      for (const al of jsAliases) {
+        if (al.post == null ? spec !== al.pre : !(spec.startsWith(al.pre) && spec.endsWith(al.post) && spec.length >= al.pre.length + al.post.length)) continue;
+        const mid = al.post == null ? '' : spec.slice(al.pre.length, spec.length - al.post.length);
+        for (const t of al.targets) { const r = tryJs(t.replace('*', mid)); if (r != null) return r; }
+      }
+      if (jsPkgs.size) {
+        const segs = spec.split('/'), name = spec[0] === '@' ? segs.slice(0, 2).join('/') : segs[0];
+        const p = jsPkgs.get(name);
+        if (p) {
+          const rest = spec.slice(name.length + 1);
+          if (rest) { const r = tryJs(join(p.dir, rest)) ?? tryJs(join(p.dir, 'src/' + rest)); if (r != null) return r; }
+          else {
+            for (const e of p.entry) { const r = tryJs(join(p.dir, e.replace(/^\.\//, ''))); if (r != null) return r; }
+            const r = tryJs(join(p.dir, 'src')) ?? tryJs(p.dir) ?? tryJs(join(p.dir, 'lib'));
+            if (r != null) return r;
+          }
+        }
+      }
       const a = /^[@~#]\/(.*)$/.exec(spec);
       if (a) return tryJs('src/' + a[1]) ?? tryJs(a[1]);
       if (topDirs.has(spec.split('/')[0])) {
@@ -571,6 +610,7 @@ export function analyze(files, rootName, progress = () => {}) {
   const goMods = [];
   const swiftMods = new Set();
   const crates = new Map();
+  const jsPkgs = new Map(), jsAliases = [];
   for (const f of sorted) {
     if (fileIds.has(f.path)) continue;
     const i = f.path.lastIndexOf('/');
@@ -584,6 +624,21 @@ export function analyze(files, rootName, progress = () => {}) {
     edges.push({ s: parent, t: id, type: 'contain' });
     if (L) infos.push({ id, f, L, dir });
     if (f.path === 'Package.swift' || f.path.endsWith('/Package.swift')) for (const m of f.text.matchAll(/\.(?:target|library|executableTarget|testTarget)\s*\(\s*name:\s*"([^"]+)"/g)) swiftMods.add(m[1]);
+    if (/(?:^|\/)package\.json$/.test(f.path)) {
+      const j = looseJSON(f.text);
+      if (j && typeof j.name === 'string') jsPkgs.set(j.name, { dir, entry: [j.source, j.module, j.main, j.types].filter(x => typeof x === 'string') });
+    }
+    if (/(?:^|\/)[jt]sconfig[\w.-]*\.json$/.test(f.path)) {
+      const j = looseJSON(f.text), co = j && j.compilerOptions;
+      if (co && co.paths && typeof co.paths === 'object') {
+        const base = join(dir, co.baseUrl || '.') ?? dir;
+        for (const [pat, targets] of Object.entries(co.paths)) {
+          if (!Array.isArray(targets)) continue;
+          const star = pat.indexOf('*');
+          jsAliases.push({ pre: star < 0 ? pat : pat.slice(0, star), post: star < 0 ? null : pat.slice(star + 1), targets: targets.filter(x => typeof x === 'string').map(x => join(base, x) ?? x) });
+        }
+      }
+    }
     if (/(?:^|\/)Cargo\.toml$/.test(f.path)) {
       const m = /^\[package\][^[]*?^name\s*=\s*"([^"]+)"/m.exec(f.text);
       if (m) crates.set(m[1].replace(/-/g, '_'), dir);
@@ -630,7 +685,7 @@ export function analyze(files, rootName, progress = () => {}) {
     }
     for (const d of defs) {
       if (d.kind !== 'variable') continue;
-      for (let p = d.up; p; p = p.up) if (isFn(p.kind)) { d.drop = true; break; }
+      for (let p = d.up; p; p = p.up) if (isFn(p.kind) || p.kind === 'variable') { d.drop = true; break; }
     }
     for (const d of defs) {
       if (d.drop) {
@@ -810,7 +865,7 @@ export function analyze(files, rootName, progress = () => {}) {
     if (info.pkg != null) pkgOf.set(info.id, info.pkg);
   }
 
-  const resolve = makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, goMods, names, swiftMods, crates });
+  const resolve = makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, goMods, names, swiftMods, crates, jsPkgs, jsAliases });
   const libs = new Map();
   for (const info of infos) {
     info.imported = new Set();
