@@ -55,7 +55,7 @@ const EDGE_CODE = { ref: 1, contain: 2, dep: 3 };
 export const EDGE_NAMES = ['', 'ref', 'contain', 'dep'];
 const isFn = k => k === 'function' || k === 'method';
 const SELF = new Set(['this', 'self', 'Self', 'static', 'me']);
-const COMMON = new Set(`each map filter reduce forEach get set put add remove delete has contains size length count keys values entries items push pop shift unshift append insert extend clear close open read write flush call apply bind toString equals hashCode compareTo next hasNext iterator then catch finally emit on off once parse format join split replace trim match test exec find first last sort reverse slice copy clone merge reset cancel value name type id data message error list log debug info warn trace dispose description key path url status result index text String Error Get Set Write Read Close Len Open Value Type Status ToString Equals GetHashCode Add Remove Count Contains Clear Dispose Any Select Where First FirstOrDefault ToList ToArray Single Max Min Sum OrderBy Include`.split(/\s+/));
+const COMMON = new Set(`each map filter reduce forEach get set put add remove delete has contains size length count keys values entries items push pop shift unshift append insert extend clear close open read write flush call apply bind toString equals hashCode compareTo next hasNext iterator then catch finally emit on off once parse format join split replace trim match test exec find first last sort reverse slice copy clone merge reset cancel value name type id data message error list log debug info warn trace dispose description key path url status result index text String Error Get Set Write Read Close Len Open Value Type Status ToString Equals GetHashCode Add Remove Count Contains Clear Dispose Any Select Where First FirstOrDefault ToList ToArray Single Max Min Sum OrderBy Include unwrap expect as_bytes as_str as_ref as_mut is_none is_some is_ok is_err is_empty iter iter_mut into_iter to_string to_owned unwrap_or map_err ok err lines bytes chars len borrow kind start end`.split(/\s+/));
 const NOT_TYPE = new Set('return throw new else case yield await goto in is as out ref package import using namespace extends implements throws delete sizeof typeof echo print'.split(' '));
 const isW = c => (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95;
 const isClassy = k => k === 'class' || k === 'type';
@@ -606,9 +606,10 @@ export function analyze(files, rootName, progress = () => {}) {
         if (t) p = t;
       }
       if (d.kind === 'variable' && L.flatVars && !p && indentOf(lines[d.line]) > 0) { d.drop = true; continue; }
-      if (d.kind === 'method' && !(p && isClassy(p.kind))) d.kind = 'function';
-      else if (d.kind === 'function' && p && isClassy(p.kind)) d.kind = 'method';
-      d.qual = p ? p.qual + '.' + d.name : d.name;
+      const away = ownerName && !(p && isClassy(p.kind));
+      if (d.kind === 'method' && !(p && isClassy(p.kind)) && !away) d.kind = 'function';
+      else if (d.kind === 'function' && ((p && isClassy(p.kind)) || away)) d.kind = 'method';
+      d.qual = p ? p.qual + '.' + d.name : away ? ownerName + '.' + d.name : d.name;
       let key = 's:' + f.path + '#' + d.qual;
       const c = (keys.get(key) || 0) + 1;
       keys.set(key, c);
@@ -617,7 +618,7 @@ export function analyze(files, rootName, progress = () => {}) {
       d.node = add({ kind: d.kind, key, name: d.name, path: f.path, parent, file: info.id, line: d.line, end: d.end, group: L.group });
       edges.push({ s: parent, t: d.node, type: 'contain' });
       if (d.locals) localsOf.set(d.node, d.locals);
-      if (d.owner) ownerOf.set(d.node, d.owner);
+      if (ownerName) ownerOf.set(d.node, ownerName);
       if (d.self) selfOf.set(d.node, d.self);
       if (isClassy(d.kind) && !d.ext && !types.has(d.name)) types.set(d.name, d);
       owner.fill(d.node, d.line, d.end + 1);
@@ -711,7 +712,8 @@ export function analyze(files, rootName, progress = () => {}) {
       if (member && recv) {
         const pool = local.get(name) || cands;
         let selfT = null;
-        if (!SELF.has(recv)) for (let o = src; o !== fid && o >= 0; o = nodes[o].parent) {
+        for (let o = src; o !== fid && o >= 0; o = nodes[o].parent) {
+          if (SELF.has(recv)) { if (isClassy(nodes[o].kind)) break; if (ownerOf.has(o)) { selfT = ownerOf.get(o); break; } continue; }
           const sv = selfOf.get(o);
           if (sv) { if (sv === recv) selfT = ownerOf.get(o); break; }
         }
