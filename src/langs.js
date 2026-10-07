@@ -97,8 +97,8 @@ function goGroups(t) {
 
 function goMethods(t) {
   const out = [];
-  for (const m of t.matchAll(/^func[ \t]*\([ \t]*(?:\w+[ \t]+)?\*?[ \t]*(\w+)(?:\[[^\]]*\])?[ \t]*\)[ \t]*([A-Za-z_]\w*)/gmd)) {
-    out.push({ name: m[2], idx: m.indices[2][0], kind: 'method', owner: m[1] });
+  for (const m of t.matchAll(/^func[ \t]*\([ \t]*(?:(\w+)[ \t]+)?\*?[ \t]*(\w+)(?:\[[^\]]*\])?[ \t]*\)[ \t]*([A-Za-z_]\w*)/gmd)) {
+    out.push({ name: m[3], idx: m.indices[3][0], kind: 'method', owner: m[2], self: m[1] });
   }
   return out;
 }
@@ -160,6 +160,8 @@ function sfc(path, text) {
   }
   return DEC.decode(out);
 }
+
+const LOCAL_DECL = /(?:^|[;{}(,])[ \t]*(?:(?:final|const|out|using|ref|in|readonly|let|var|struct|enum|union|unsigned|signed|static|volatile|register|long|short|auto)[ \t]+)*([A-Za-z_][\w.]*(?:<[^;={}()\n]*>)?(?:\[[^\]\n]*\])*[?*&]*)[ \t]+[*&]*([A-Za-z_]\w*)[ \t]*(?=[=;:,)]|in\b)/gm;
 
 const C_SYN = { line: ['//'], block: [['/*', '*/']], quotes: '"', charQuote: true };
 
@@ -241,7 +243,7 @@ const C = {
     [R`^[ \t]*@(?:interface|implementation|protocol)[ \t]+(${N})`, 'class'],
     [R`^[ \t]*[-+][ \t]*\([^)]*\)[ \t]*(${N})`, 'method'],
   ],
-  extra: t => cfuncs(t, true),
+  extra: t => cfuncs(t, true), localDecl: LOCAL_DECL,
   imports: (raw, m) => grab([], /^[ \t]*#[ \t]*include[ \t]*([<"])([^>"\n]+)[>"]/gm, raw, m, 2, x => (x[1] === '<' ? '<' : '') + x[2]),
   resolve: 'c',
 };
@@ -264,13 +266,13 @@ const JVM = {
     [R`^[ \t]*(?:(?:@[\w.:]+(?:\([^)\n]*\))?|private|public|protected|internal|override|lateinit|const|open|static|final|inline|actual|expect|abstract|external|lazy|implicit)[ \t]+)*(?:val|var)[ \t]+(?:(?:<(?:[^<>\n]|<[^<>\n]*>)*>)[ \t]*)?(?:[\w.]+(?:<(?:[^<>\n]|<[^<>\n]*>)*>)?\??\.)?(${N})`, 'variable', null, true],
     [R`^[ \t]*(?:(?:public|private|protected|static|final|volatile|transient)[ \t]+)+(?!class\b|interface\b|enum\b|record\b|abstract\b|void\b)[\w<>\[\],.? ]+?[ \t]+(${N})[ \t]*(?:=|;)`, 'variable'],
   ],
-  extra: cfuncs,
+  extra: cfuncs, localDecl: LOCAL_DECL,
   imports: (raw, m) => grab([], /^[ \t]*import[ \t]+(?:static[ \t]+)?([\w.]+(?:\.\*)?)/gm, m),
   resolve: 'jvm',
 };
 
 const CS = {
-  paramLast: true, group: 'cs', pkgDir: true, exts: 'cs', priv: /\bprivate\b/, strip: /^[ \t]*(?:using|namespace)\b[^\n{]*/gm,
+  paramLast: true, group: 'cs', pkgDir: true, exts: 'cs', priv: /\bprivate\b/, strip: /^[ \t]*(?:using|namespace)\b[^\n{]*/gm, pkg: /^[ \t]*namespace[ \t]+([\w.]+)/m, localDecl: LOCAL_DECL,
   syntax: C_SYN,
   kw: kw(`abstract as base bool break byte case catch char checked class const continue decimal default delegate do double else enum event explicit extern false finally fixed float for foreach goto if implicit in int interface internal is lock long namespace new null object operator out override params private protected public readonly ref return sbyte sealed short sizeof stackalloc static string struct switch this throw true try typeof uint ulong unchecked unsafe ushort using virtual void volatile while var get set init value async await record required yield nameof dynamic List Task`),
   defs: [
@@ -288,7 +290,8 @@ const SWIFT = {
   syntax: { line: ['//'], block: [['/*', '*/']], quotes: '"', triple: true },
   kw: kw(`associatedtype class deinit enum extension fileprivate func import init inout internal let open operator private protocol public rethrows static struct subscript typealias var break case continue default defer do else fallthrough for guard if in repeat return switch where while as false is nil self Self super throw throws true try async await some any String Int Double Bool Array Dictionary`),
   defs: [
-    [R`\b(?:class|struct|enum|protocol|extension|actor)[ \t]+(${N})`, 'class'],
+    [R`\b(?:class|struct|enum|protocol|actor)[ \t]+(${N})`, 'class'],
+    [R`\bextension[ \t]+(${N})`, 'extension'],
     [R`\bfunc[ \t]+(${N})`, 'function'],
     [R`^[ \t]*(?:(?:private|public|internal|fileprivate|open|static|final|lazy|weak|unowned|override|class|@\w+)[ \t]+)*(?:let|var)[ \t]+(${N})`, 'variable'],
     [R`\btypealias[ \t]+(${N})`, 'type'],
@@ -298,7 +301,7 @@ const SWIFT = {
 };
 
 const DART = {
-  paramLast: true, group: 'dart', exts: 'dart',
+  paramLast: true, group: 'dart', exts: 'dart', localDecl: LOCAL_DECL,
   syntax: { line: ['//'], block: [['/*', '*/']], quotes: '\'"', triple: true },
   kw: kw(`abstract as assert async await break case catch class const continue covariant default deferred do dynamic else enum export extends extension external factory false final finally for get hide if implements import in interface is late library mixin new null on operator part required rethrow return set show static super switch sync this throw true try typedef var void while with yield int double num String bool List Map Set Future Stream Widget`),
   defs: [
@@ -327,7 +330,7 @@ const RB = {
 };
 
 const PHP = {
-  group: 'php', flatVars: true, exts: 'php phtml',
+  group: 'php', flatVars: true, paramLast: true, sigil: true, exts: 'php phtml', strip: /^(?:use|namespace)\b[^\n;{]*/gm,
   syntax: { line: ['//', '#'], block: [['/*', '*/']], quotes: '\'"', multi: '\'"' },
   kw: kw(`abstract and array as break callable case catch class clone const continue declare default do echo else elseif empty enddeclare endfor endforeach endif endswitch endwhile extends final finally fn for foreach function global goto if implements include include_once instanceof insteadof interface isset list match namespace new or print private protected public readonly require require_once return static switch throw trait try unset use var while xor yield this self parent true false null string int float bool mixed void`),
   defs: [
