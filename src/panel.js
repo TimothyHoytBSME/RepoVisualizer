@@ -1,5 +1,5 @@
 import { langOf, mask } from './langs.js';
-import { edgesOf } from './graph.js';
+import { edgesOf, isTest } from './graph.js';
 
 const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 const KIND_LABEL = { dir: 'folder', file: 'file', lib: 'library', class: 'class', type: 'type', module: 'module', function: 'function', method: 'method', variable: 'variable', keyword: 'keyword' };
@@ -118,8 +118,26 @@ export class Panel {
     const { g } = this.app, by = new Map();
     for (const n of g.nodes) if (n.kind === 'file') by.set(n.group || 'other', (by.get(n.group || 'other') || 0) + 1);
     const rows = [...by].sort((a, b) => b[1] - a[1]).map(([k, c]) => `<span class="lang"><b>${esc(LANG_NAMES[k] || k)}</b> ${c.toLocaleString()}</span>`).join('');
-    const s = g.stats || {};
-    return `<div class="rel overview"><div class="phd">Repository</div><div class="ovs">${(s.files || 0).toLocaleString()} files · ${(s.symbols || 0).toLocaleString()} symbols · ${(s.libs || 0).toLocaleString()} libraries</div><div class="langs">${rows}</div></div>`;
+    const s = g.stats || {}, hubs = this.hubs();
+    const top = (title, list) => list.length ? `<details class="rel" open><summary>${title} <span class="cnt">by files using them</span></summary><ul>${list.map(([id, c]) => this.item(id, `<span class="uses" title="Used from ${c} other file${c === 1 ? '' : 's'}">${c}</span>`)).join('')}</ul></details>` : '';
+    return `<div class="rel overview"><div class="phd">Repository</div><div class="ovs">${(s.files || 0).toLocaleString()} files · ${(s.symbols || 0).toLocaleString()} symbols · ${(s.libs || 0).toLocaleString()} libraries</div><div class="langs">${rows}</div></div>${top('Most used files', hubs.files)}${top('Most used symbols', hubs.syms)}`;
+  }
+
+  hubs() {
+    const { g } = this.app;
+    if (g.hubs) return g.hubs;
+    const N = g.nodes, { s, t, type } = g.edges, fileOf = i => (N[i].kind === 'file' ? i : N[i].file);
+    const byFile = new Map(), bySym = new Map();
+    const add = (m, k, v) => { let x = m.get(k); if (!x) m.set(k, (x = new Set())); x.add(v); };
+    for (let k = 0; k < s.length; k++) {
+      if (type[k] !== 3) continue;
+      const a = s[k], b = t[k], fa = fileOf(a), fb = fileOf(b);
+      if (fa == null || fb == null || fa < 0 || fb < 0 || fa === fb || isTest(N[fb]) || isTest(N[fa])) continue;
+      add(byFile, fb, fa);
+      if (N[b].kind !== 'file' && N[b].kind !== 'variable') add(bySym, b, fa);
+    }
+    const best = m => [...m].map(([id, set]) => [id, set.size]).filter(x => x[1] > 1).sort((a, b) => b[1] - a[1]).slice(0, 8);
+    return (g.hubs = { files: best(byFile), syms: best(bySym) });
   }
 
   pathHTML(id) {
