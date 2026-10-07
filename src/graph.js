@@ -56,6 +56,7 @@ export function buildView(g, type, filters = {}) {
     let s = ES[k], t = ET[k];
     const ty = TY[k];
     if (words ? g.nodes[t].kind !== 'keyword' : g.nodes[t].kind === 'keyword') continue;
+    if (ty === REF && filters.refs === false && !words) continue;
     if (files && ty !== CONTAIN) { s = lift(s); t = lift(t); }
     const a = local[s], b = local[t];
     if (!(a >= 0) || !(b >= 0) || a === b) continue;

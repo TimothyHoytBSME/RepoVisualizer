@@ -25,7 +25,7 @@ const app = {
   cam: { x: 0, y: 0, scale: narrow() ? 0.85 : 1 },
   follow: false, goto: null, dirty: true, pal: readPalette(), ver: 0,
   limit: (() => { const v = store.get('rv:limit'); return v === null ? (narrow() ? 500 : 1200) : +v; })(),
-  filters: Object.assign({ tests: false, vars: true, libs: true }, (() => { try { return JSON.parse(store.get('rv:filters')) || {}; } catch { return {}; } })()),
+  filters: Object.assign({ tests: false, vars: true, libs: true, refs: true }, (() => { try { return JSON.parse(store.get('rv:filters')) || {}; } catch { return {}; } })()),
 };
 const panel = new Panel(panelEl, $('#peek'), app);
 
