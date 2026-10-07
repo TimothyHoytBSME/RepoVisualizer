@@ -54,6 +54,7 @@ function keywords(infos, nodes, edges, add) {
 const EDGE_CODE = { ref: 1, contain: 2, dep: 3 };
 export const EDGE_NAMES = ['', 'ref', 'contain', 'dep'];
 const PROP_FN = /(?:\.[\w$]+\s*=|[\w$]+\s*:)\s*(?:async\s+)?function\s*\*?\s*$/;
+const IMPLICIT_THIS = new Set(['jvm', 'cs', 'swift', 'dart', 'c', 'rb']);
 const AMBIENT = /\.d\.[mc]?ts$/;
 const isFn = k => k === 'function' || k === 'method';
 const SELF = new Set(['this', 'self', 'Self', 'static', 'me']);
@@ -939,6 +940,11 @@ export function analyze(files, rootName, progress = () => {}) {
           const own = all.filter(c => ownerOf.get(c) === selfT || (nodes[c].parent >= 0 && nodes[nodes[c].parent].name === selfT && isClassy(nodes[nodes[c].parent].kind)));
           if (own.length) targets = own;
           else if (!typeNames.has(selfT)) continue;
+          else if (classByName.has(selfT)) {
+            const hit = new Set();
+            for (const c of classByName.get(selfT).slice(0, 4)) for (const h of memberIn(c, all) || []) hit.add(h);
+            if (hit.size) targets = [...hit];
+          }
         } else if (SELF.has(recv)) {
           let cls = src;
           while (cls !== fid && cls >= 0 && !isClassy(nodes[cls].kind)) cls = nodes[cls].parent;
@@ -962,6 +968,14 @@ export function analyze(files, rootName, progress = () => {}) {
           else if (!typeNames.has(rt) || COMMON.has(name)) continue;
         } else if (COMMON.has(name)) continue;
       } else if (member && COMMON.has(name)) continue;
+      if (!targets && !member && IMPLICIT_THIS.has(L.group)) {
+        let cls = src;
+        while (cls !== fid && cls >= 0 && !isClassy(nodes[cls].kind)) cls = nodes[cls].parent;
+        if (cls !== fid && cls >= 0 && basesOf.has(cls)) {
+          const hit = memberIn(cls, local.get(name) && g.get(name) ? [...new Set(cands.concat(local.get(name)))] : cands);
+          if (hit) targets = hit;
+        }
+      }
       if (!targets) {
         targets = local.get(name);
         if (!targets) {
