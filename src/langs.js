@@ -95,6 +95,14 @@ function goGroups(t) {
   return out;
 }
 
+function goMethods(t) {
+  const out = [];
+  for (const m of t.matchAll(/^func[ \t]*\([ \t]*(?:\w+[ \t]+)?\*?[ \t]*(\w+)(?:\[[^\]]*\])?[ \t]*\)[ \t]*([A-Za-z_]\w*)/gmd)) {
+    out.push({ name: m[2], idx: m.indices[2][0], kind: 'method', owner: m[1] });
+  }
+  return out;
+}
+
 function pyImports(raw, m) {
   const out = [];
   for (const x of m.matchAll(/^[ \t]*from[ \t]+(\.*[\w.]*)[ \t]+import[ \t]*(?:\(([^)]*)\)|([^\n(]*))/gm)) {
@@ -197,11 +205,11 @@ const GO = {
   syntax: { line: ['//'], block: [['/*', '*/']], quotes: '"`', charQuote: true, raw: '`' },
   kw: kw(`break case chan const continue default defer else fallthrough for func go goto if import interface map package range return select struct switch type var nil true false iota string int int8 int16 int32 int64 uint uint8 uint16 uint32 uint64 uintptr byte rune float32 float64 complex64 complex128 bool error any make new len cap append copy delete panic recover close print println`),
   defs: [
-    [R`^func[ \t]+(?:\([^)]*\)[ \t]*)?(${N})`, 'function'],
+    [R`^func[ \t]+(${N})`, 'function'],
     [R`^[ \t]*type[ \t]+(${N})`, 'type'],
     [R`^(?:var|const)[ \t]+(${N})`, 'variable'],
   ],
-  extra: goGroups, imports: goImports, resolve: 'go',
+  extra: t => goGroups(t).concat(goMethods(t)), imports: goImports, resolve: 'go',
 };
 
 const RS = {
@@ -210,6 +218,7 @@ const RS = {
   kw: kw(`as async await break const continue crate dyn else enum extern false fn for if impl in let loop match mod move mut pub ref return self Self static struct super trait true type unsafe use where while Some None Ok Err Box Vec String Option Result i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 usize isize f32 f64 bool str char println format vec assert assert_eq`),
   defs: [
     [R`\bfn[ \t]+(${N})`, 'function'],
+    [R`^[ \t]*(?:unsafe[ \t]+)?impl\b(?:[ \t]*<[^>{]*>)?[ \t]+(?:[\w:]+(?:<[^>{]*>)?[ \t]+for[ \t]+)?(?:\w+::)*(${N})`, 'impl'],
     [R`\b(?:struct|enum|trait|union)[ \t]+(${N})`, 'type'],
     [R`^[ \t]*(?:pub(?:\([^)]*\))?[ \t]+)?type[ \t]+(${N})`, 'type'],
     [R`\b(?:const|static)[ \t]+(?:mut[ \t]+)?(${N})[ \t]*:`, 'variable'],

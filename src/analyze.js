@@ -134,7 +134,7 @@ function extractDefs(masked, L, starts, lines) {
     }
     return pdepth[line] > 0;
   };
-  const push = (name, idx, kind, extra) => {
+  const push = (name, idx, kind, extra, owner) => {
     if (L.clean) name = L.clean(name);
     if (!name || L.kw.has(name)) return;
     const line = lineAt(starts, idx);
@@ -145,7 +145,7 @@ function extractDefs(masked, L, starts, lines) {
       if (!extra && ((ln.length < 2000 && /,\s*$/.test(ln)) || (L.group === 'py' && nested(line)))) return;
     }
     seen.add(k);
-    found.push({ name, kind, line, idx, end: line });
+    found.push({ name, kind, line, idx, end: line, owner });
   };
   for (const [re, kind, ok] of L.defs) {
     for (const m of masked.matchAll(re)) {
@@ -153,7 +153,7 @@ function extractDefs(masked, L, starts, lines) {
       if (!ok || ok(masked, i)) push(m[1], i, kind);
     }
   }
-  if (L.extra) for (const d of L.extra(masked)) push(d.name, d.idx, d.kind, true);
+  if (L.extra) for (const d of L.extra(masked)) push(d.name, d.idx, d.kind, true, d.owner);
   found.sort((a, b) => a.idx - b.idx);
   const skip = SKIP_SAME[L.group];
   for (const d of found) d.end = blockEnd(lines, d.line, skip);
@@ -564,10 +564,19 @@ export function analyze(files, rootName, progress = () => {}) {
     const keys = new Map();
     let g = names.get(L.group);
     if (!g) names.set(L.group, (g = new Map()));
+    const types = new Map();
     for (const d of defs) {
+      if (d.kind === 'impl') { d.drop = true; continue; }
       if (d.drop) continue;
-      let p = d.up;
-      while (p && p.drop) p = p.up;
+      let p = d.up, ownerName = d.owner;
+      while (p && p.drop) {
+        if (!ownerName && p.kind === 'impl') ownerName = p.name;
+        p = p.up;
+      }
+      if (ownerName && !(p && isClassy(p.kind))) {
+        const t = types.get(ownerName);
+        if (t) p = t;
+      }
       if (d.kind === 'variable' && L.flatVars && !p && indentOf(lines[d.line]) > 0) { d.drop = true; continue; }
       if (d.kind === 'method' && !(p && isClassy(p.kind))) d.kind = 'function';
       else if (d.kind === 'function' && p && isClassy(p.kind)) d.kind = 'method';
@@ -580,6 +589,7 @@ export function analyze(files, rootName, progress = () => {}) {
       d.node = add({ kind: d.kind, key, name: d.name, path: f.path, parent, file: info.id, line: d.line, end: d.end, group: L.group });
       edges.push({ s: parent, t: d.node, type: 'contain' });
       if (d.locals) localsOf.set(d.node, d.locals);
+      if (isClassy(d.kind) && !types.has(d.name)) types.set(d.name, d);
       owner.fill(d.node, d.line, d.end + 1);
       defPos.add(d.idx);
       const a = g.get(d.name);
