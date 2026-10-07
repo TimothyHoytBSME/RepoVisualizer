@@ -22,9 +22,9 @@ Share a view with a link like `?repo=pallets/flask&node=f:src/flask/app.py&depth
 - **Code map**: functions, classes, methods, variables, files and libraries, linked by what uses what.
 - **File map**: folders, files and libraries, with file-to-file dependencies.
 - **Folder map**: folders and libraries only, with every dependency rolled up to folder level: an architecture overview.
+- **Keyword map**: the distinctive words used across the code, linked to the files that use them.
 
 The root folder's details show the language mix and the most used files and symbols (by how many other non-test files use them).
-- **Keyword map**: the distinctive words used across the code, linked to the files that use them.
 
 The funnel button shows or hides tests, variables, libraries and uncertain links, sets the direction and the node limit, switches node colors between kind and folder (to see module boundaries), saves the map as an image, and holds the color legend. When the limit trims a big neighborhood, labels show "+N" where nodes were hidden; click the +N (or press E on a highlighted node) to show them in place. Press ? for all controls.
 
@@ -56,8 +56,8 @@ The funnel button shows or hides tests, variables, libraries and uncertain links
 
 Everything runs in the browser; there is no server.
 
-1. **Load**: GitHub repositories are listed with one GitHub API call and downloaded from raw.githubusercontent.com. Downloads are verified and saved on the device, so reopening a repository only fetches changed files and also works offline. Zips and folders are read locally.
-2. **Analyze** (in a background worker): language rules find definitions (functions, classes, methods, variables, types), imports and references for JavaScript/TypeScript (including Vue, Svelte and Astro components), Python, Go, Rust, C/C++/Objective-C, Java/Kotlin/Scala/Groovy, C#, Swift, Dart, Ruby, PHP, Lua, shell, SQL and more. References are resolved through imports (including re-exports, workspace packages and path aliases), packages, file scope, declared and inferred types (including collection element types and method call chains), class inheritance and overrides in subclasses; links that are only a name match are marked as uncertain (≈), and production code is never guessed to use test code.
+1. **Load**: GitHub repositories are listed with one GitHub API call and downloaded from raw.githubusercontent.com. Very large repositories are trimmed to their 6,000 most central code files. Downloads are verified and saved on the device, so reopening a repository only fetches changed files and also works offline. Zips and folders are read locally.
+2. **Analyze** (in a background worker): language rules find definitions (functions, classes, methods, variables, types), imports and references for JavaScript/TypeScript (including Vue, Svelte and Astro components), Python, Go, Rust, C/C++/Objective-C, Java/Kotlin/Scala/Groovy, C#, Swift, Dart, Ruby, PHP, Elixir, Lua, shell, SQL and more. References are resolved through imports (including re-exports, workspace packages and path aliases), packages, file scope, declared and inferred types (including collection element types and method call chains), class inheritance and overrides in subclasses; links that are only a name match are marked as uncertain (≈), and production code is never guessed to use test code.
 3. **Lay out** (in a second worker): a force-directed layout arranges the selected node's neighborhood in rings by distance.
 4. **Draw**: nodes and edges are drawn on the GPU with WebGL2 (or a 2D canvas where WebGL2 isn't available), labels with a canvas overlay.
 
