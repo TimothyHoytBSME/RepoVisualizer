@@ -187,6 +187,7 @@ function setMap(type, gid = -1, push = false) {
   if (i < 0) i = defaultNode(app.g, app.view);
   app.cam.x = app.cam.y = 0;
   select(i, true, push);
+  app.pendingFit = 'in';
 }
 
 function refresh() {
