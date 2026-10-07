@@ -75,6 +75,7 @@ $('#color-by').addEventListener('change', e => { app.colorBy = e.target.value; s
 function folderLegend() {
   const el = $('#folder-legend'), gs = app.style?.groups;
   el.hidden = app.colorBy !== 'folder' || !gs || !gs.length;
+  $('#legend').classList.toggle('by-folder', app.colorBy === 'folder');
   if (!el.hidden) el.innerHTML = gs.map((k, j) => `<span style="--c:${GROUP_COLORS[j]}">${k.replace(/[&<>]/g, c => `&#${c.charCodeAt(0)};`)}</span>`).join('') + '<span class="other">other</span>';
 }
 $('#theme').addEventListener('change', e => { store.set('rv:theme', e.target.value); applyTheme(e.target.value); });
