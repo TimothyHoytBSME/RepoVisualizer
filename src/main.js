@@ -125,6 +125,7 @@ async function load(getSource, nodeKey) {
   try {
     const src = await getSource(live, signal);
     if (seq !== loadSeq) return;
+    if (!src.files.length) throw new Error('No readable files were found there.');
     live({ phase: 'Analyzing' });
     const g = await analyzeAsync(src.files, src.name, live, signal);
     if (seq !== loadSeq) return;
