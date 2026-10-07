@@ -150,7 +150,7 @@ async function load(getSource, nodeKey) {
     if (to !== undefined && gid !== undefined) app.setPath(to);
     showHint();
     const notes = [];
-    if (m.skipped) notes.push(`${fmt(m.skipped)} files skipped (too large)`);
+    if (m.skipped) notes.push(`${fmt(m.skipped)} files left out to keep it fast${m.kind === 'github' ? '; open a folder link (…/tree/main/folder) to see one part in full' : ''}`);
     if (m.failed) notes.push(`${fmt(m.failed)} couldn't be read`);
     if (m.truncated) notes.push('GitHub cut the file list short');
     if (m.note) notes.push(m.note);
