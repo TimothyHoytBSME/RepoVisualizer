@@ -304,10 +304,52 @@ function syncFilters() {
 }
 
 function togglePanel(force) {
+  panelEl.classList.remove('full');
+  panelEl.style.height = '';
   panelEl.classList.toggle('collapsed', force);
   if (narrow()) app.follow = true;
   app.dirty = true;
 }
+
+(function sheetDrag() {
+  let start = null;
+  panelEl.addEventListener('pointerdown', e => {
+    if (!narrow() || !e.target.closest('.ph') || e.target.closest('a, button')) return;
+    start = { y: e.clientY, h: panelEl.getBoundingClientRect().height, t: performance.now(), id: e.pointerId, moved: false };
+    panelEl.setPointerCapture(e.pointerId);
+  });
+  panelEl.addEventListener('pointermove', e => {
+    if (!start || e.pointerId !== start.id) return;
+    const dy = e.clientY - start.y;
+    if (!start.moved && Math.abs(dy) < 8) return;
+    if (!start.moved) { start.moved = true; panelEl.classList.add('dragging'); }
+    const max = panelEl.parentElement.getBoundingClientRect().height;
+    panelEl.style.height = `${Math.max(60, Math.min(max, start.h - dy))}px`;
+  });
+  const end = e => {
+    if (!start || e.pointerId !== start.id) return;
+    const s = start;
+    start = null;
+    if (!s.moved) {
+      if (e.type === 'pointerup') togglePanel();
+      return;
+    }
+    panelEl.classList.remove('dragging');
+    const h = panelEl.getBoundingClientRect().height, max = panelEl.parentElement.getBoundingClientRect().height;
+    const v = (e.clientY - s.y) / Math.max(1, performance.now() - s.t);
+    const stops = [['collapsed', 68], ['half', max * 0.58], ['full', max * 0.94]];
+    let pick = stops.reduce((a, b) => (Math.abs(b[1] - h) < Math.abs(a[1] - h) ? b : a));
+    if (v > 0.6) pick = h > max * 0.7 ? stops[1] : stops[0];
+    else if (v < -0.6) pick = h < max * 0.4 ? stops[1] : stops[2];
+    panelEl.style.height = '';
+    panelEl.classList.toggle('collapsed', pick[0] === 'collapsed');
+    panelEl.classList.toggle('full', pick[0] === 'full');
+    app.follow = true;
+    app.dirty = true;
+  };
+  panelEl.addEventListener('pointerup', end);
+  panelEl.addEventListener('pointercancel', end);
+})();
 
 const api = {
   pan(dx, dy) {

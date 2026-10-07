@@ -128,6 +128,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .kws { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
 .kws .kw { font-size: 12px; padding: 3px 9px; border-radius: 999px; background: var(--raise); color: var(--k-keyword); text-decoration: none; }
 .kws .kw:hover { background: var(--line); }
+.weak { color: var(--muted); font-size: 12px; margin-left: 4px; cursor: help; }
 .rel li.more { color: var(--muted); padding: 6px 8px; font-size: 12px; }
 .rel.in { padding: 6px 14px; display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
 .rel.in a { display: inline-flex; gap: 6px; align-items: center; color: var(--fg); text-decoration: none; min-width: 0; flex: 1; }
@@ -161,6 +162,9 @@ body.dropping #stage { outline: 2px dashed var(--accent); outline-offset: -8px; 
   #panel-btn { display: none !important; }
   #panel { position: absolute; left: 0; right: 0; bottom: 0; width: auto; height: 58%; border-left: 0; border-top: 1px solid var(--line); border-radius: 16px 16px 0 0; box-shadow: 0 -10px 30px rgba(0,0,0,.25); z-index: 6; padding-bottom: env(safe-area-inset-bottom); transition: height .18s ease; }
   #panel.collapsed { display: flex; height: calc(68px + env(safe-area-inset-bottom)); }
+  #panel.full { height: 94%; }
+  #panel.dragging { transition: none; }
+  .ph { touch-action: none; }
   #panel.collapsed .pbody { visibility: hidden; }
   .ph { cursor: pointer; padding-top: 6px; }
   .grip { display: block; width: 36px; height: 4px; border-radius: 2px; background: var(--line); margin: 0 auto 8px; }

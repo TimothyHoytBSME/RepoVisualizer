@@ -83,7 +83,6 @@ export class Panel {
       if (nav) { e.stopPropagation(); if (nav.dataset.nav === 'back') history.back(); else history.forward(); return; }
       const t = e.target.closest('[data-n]');
       if (t) { e.preventDefault(); app.selectGlobal(+t.dataset.n); return; }
-      if (e.target.closest('.ph') && !e.target.closest('a')) app.togglePanel();
     });
   }
 
@@ -110,11 +109,12 @@ export class Panel {
     return `<li><a href="#" data-n="${id}">${this.chip(n.kind)}<span class="nm">${esc(n.name)}</span>${note}<span class="sub">${esc(sub)}</span></a></li>`;
   }
 
-  list(title, ids, open = true) {
+  list(title, ids, open = true, weak) {
     if (!ids.length) return '';
     const shown = ids.slice(0, 150);
     const more = ids.length - shown.length;
-    return `<details class="rel"${open ? ' open' : ''}><summary>${title} <span class="cnt">${ids.length}</span></summary><ul>${shown.map(i => this.item(i)).join('')}${more > 0 ? `<li class="more">+${more} more</li>` : ''}</ul></details>`;
+    const note = i => (weak && weak.has(i) ? '<span class="weak" title="Name match only; the analyzer couldn\'t confirm this link">≈</span>' : '');
+    return `<details class="rel"${open ? ' open' : ''}><summary>${title} <span class="cnt">${ids.length}</span></summary><ul>${shown.map(i => this.item(i, note(i))).join('')}${more > 0 ? `<li class="more">+${more} more</li>` : ''}</ul></details>`;
   }
 
   mentions(word, fileIds) {
@@ -141,10 +141,20 @@ export class Panel {
     const out = edgesOf(g, id, 'out'), inc = edgesOf(g, id, 'in');
     const uses = [], usedBy = [], children = [];
     const kws = [];
-    for (const e of out) (e.type === 'contain' ? children : g.nodes[e.t].kind === 'keyword' ? kws : uses).push(e.t);
-    for (const e of inc) if (e.type !== 'contain') usedBy.push(e.s);
+    const weak = new Set();
+    for (const e of out) {
+      (e.type === 'contain' ? children : g.nodes[e.t].kind === 'keyword' ? kws : uses).push(e.t);
+      if (e.type === 'ref') weak.add(e.t);
+    }
+    for (const e of inc) {
+      if (e.type === 'contain') continue;
+      usedBy.push(e.s);
+      if (e.type === 'ref') weak.add(e.s);
+    }
+    const strong = (a, b) => (weak.has(a) ? 1 : 0) - (weak.has(b) ? 1 : 0);
     const byName = (a, b) => g.nodes[a].name.localeCompare(g.nodes[b].name);
-    uses.sort(byName); usedBy.sort(byName);
+    uses.sort((a, b) => strong(a, b) || byName(a, b));
+    usedBy.sort((a, b) => strong(a, b) || byName(a, b));
     if (n.kind === 'dir') children.sort((a, b) => (g.nodes[a].kind === 'dir' ? 0 : 1) - (g.nodes[b].kind === 'dir' ? 0 : 1) || byName(a, b));
     else children.sort((a, b) => g.nodes[a].line - g.nodes[b].line);
 
@@ -174,8 +184,8 @@ export class Panel {
     if (n.kind === 'keyword') html += this.mentions(n.name, usedBy);
     html += this.list(n.kind === 'dir' ? 'Contents' : 'Defines', children, n.kind !== 'file' || children.length < 40);
     if (n.kind !== 'keyword') {
-      html += this.list(n.kind === 'lib' ? 'Used by' : 'Uses', n.kind === 'lib' ? usedBy : uses);
-      if (n.kind !== 'lib') html += this.list('Used by', usedBy);
+      html += this.list(n.kind === 'lib' ? 'Used by' : 'Uses', n.kind === 'lib' ? usedBy : uses, true, weak);
+      if (n.kind !== 'lib') html += this.list('Used by', usedBy, true, weak);
     }
     html += '</div>';
     this.el.innerHTML = html;
