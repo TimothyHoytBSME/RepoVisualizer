@@ -7,6 +7,7 @@ Explore a code repository as an interactive map of its files, functions, classes
 - Load any public GitHub repository (`owner/repo` or a link), or open a `.zip` / folder from your device. Local files never leave your device.
 - Select a node to see its code in context; hover or long-press to peek.
 - The depth slider controls how many steps away from the selected node are shown.
+- Find how two things connect: the route button in the details panel (or G) shows the shortest path from the selected node to any other.
 - Arrows mean "uses / depends on"; plain lines mean "related" (a name match the analyzer couldn't pin down) or "contains".
 - Works with mouse, touch, keyboard and gamepad. Runs entirely in the browser, with nothing to install.
 
@@ -47,7 +48,7 @@ Everything runs in the browser; there is no server.
 1. **Load**: GitHub repositories are listed with one GitHub API call and downloaded from raw.githubusercontent.com. Downloads are verified and saved on the device, so reopening a repository only fetches changed files and also works offline. Zips and folders are read locally.
 2. **Analyze** (in a background worker): language rules find definitions (functions, classes, methods, variables, types), imports and references for JavaScript/TypeScript (including Vue, Svelte and Astro components), Python, Go, Rust, C/C++/Objective-C, Java/Kotlin/Scala/Groovy, C#, Swift, Dart, Ruby, PHP, Lua, shell, SQL and more. References are resolved through imports, packages and file scope; links that are only a name match are marked as uncertain (≈).
 3. **Lay out** (in a second worker): a force-directed layout arranges the selected node's neighborhood in rings by distance.
-4. **Draw**: nodes and edges are drawn on the GPU with WebGL2, labels with a canvas overlay.
+4. **Draw**: nodes and edges are drawn on the GPU with WebGL2 (or a 2D canvas where WebGL2 isn't available), labels with a canvas overlay.
 
 ## Development
 
