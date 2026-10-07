@@ -1486,6 +1486,10 @@ export function analyze(files, rootName, progress = () => {}) {
           type = 'ref';
         }
       }
+      if ((L.group === 'rs' || L.group === 'c') && masked.charCodeAt(at + name.length) === 58 && masked.charCodeAt(at + name.length + 1) === 58) {
+        targets = targets.filter(c => !isFn(nodes[c].kind));
+        if (!targets.length) continue;
+      }
       if (targets.length > MAXC) continue;
       for (const t of targets) {
         if (t === src || nodes[t].parent === src || nodes[src].parent === t) continue;
