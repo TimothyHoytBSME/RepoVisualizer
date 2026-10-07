@@ -231,6 +231,7 @@ const GO = {
     [R`^(?:var|const)[ \t]+(${N})`, 'variable'],
   ],
   extra: t => goGroups(t).concat(goMethods(t)), imports: goImports, resolve: 'go',
+  anon: [/\bfunc[ \t]*(?=\()/g],
 };
 
 const RS = {

@@ -171,7 +171,14 @@ function extractDefs(masked, L, starts, lines) {
 
 const OPEN = '([{<', CLOSE = ')]}>';
 
-function params(t, from, L) {
+const MODS = new Set('final const out ref in params this readonly volatile struct unsigned signed static register mut inout var val let'.split(' '));
+const lastSeg = s => { const m = s.match(/[A-Za-z_]\w*/g); return m ? m[m.length - 1] : null; };
+const VAR_TYPES = [
+  /\b(?:const|let|var|val|auto)[ \t]+([A-Za-z_$][\w$]*)[ \t]*(?::[ \t]*([A-Za-z_][\w.]*))?[ \t]*(?:=[ \t]*(?:new[ \t]+([A-Za-z_][\w.]*)|([A-Z]\w*)[ \t]*[({]))?/g,
+  /\b([A-Za-z_]\w*)[ \t]*:=[ \t]*&?(?:[a-z]\w*\.)?([A-Z]\w*)[ \t]*\{/g,
+];
+
+function params(t, from, L, types) {
   const i = t.indexOf('(', from);
   if (i < 0 || i - from > 120 || /[{};]/.test(t.slice(from, i))) return [];
   let j = i + 1, depth = 1;
@@ -200,8 +207,18 @@ function params(t, from, L) {
     const pre = colon >= 0 ? head.slice(0, colon) : head;
     const ids = (pre.match(L.idAll) || []).filter(w => !L.kw.has(w));
     if (!ids.length) continue;
-    if (/^\s*[{[]/.test(pre)) out.push(...ids);
-    else out.push(colon >= 0 || L.paramLast ? ids[ids.length - 1] : ids[0]);
+    if (/^\s*[{[]/.test(pre)) { out.push(...ids); continue; }
+    const name = colon >= 0 || L.paramLast ? ids[ids.length - 1] : ids[0];
+    out.push(name);
+    if (!types) continue;
+    let ty = null;
+    if (colon >= 0) ty = lastSeg(head.slice(colon + 1).replace(/<[^]*$/, '').replace(/\b(?:mut|const|readonly|inout|dyn|impl)\b/g, ''));
+    else {
+      const all = (pre.replace(/<[^]*?>/g, ' ').match(L.idAll) || []).filter(w => !MODS.has(w));
+      if (L.paramLast) ty = all.length > 1 ? all[all.length - 2] : null;
+      else if (L.group === 'go') ty = all.length > 1 ? all[all.length - 1] : null;
+    }
+    if (ty && ty !== name) types.set(name, ty);
   }
   return out;
 }
@@ -542,7 +559,7 @@ export function analyze(files, rootName, progress = () => {}) {
 
   const names = new Map();
   const localsOf = new Map();
-  const ownerOf = new Map(), selfOf = new Map(), memberish = new Set();
+  const ownerOf = new Map(), selfOf = new Map(), memberish = new Set(), typesOf = new Map();
   const pkgOf = new Map();
   const csNs = new Set();
   let done = 0;
@@ -583,18 +600,29 @@ export function analyze(files, rootName, progress = () => {}) {
         while (p && !isFn(p.kind)) p = p.up;
         if (p) (p.locals ??= new Set()).add(d.name);
       } else if (isFn(d.kind)) {
-        for (const x of params(masked, d.idx + d.name.length, L)) (d.locals ??= new Set()).add(x);
+        d.types = new Map();
+        for (const x of params(masked, d.idx + d.name.length, L, d.types)) (d.locals ??= new Set()).add(x);
       }
     }
+    const fnAt = new Int32Array(lines.length).fill(-1);
+    defs.forEach((d, i) => { if (isFn(d.kind) && !d.drop) fnAt.fill(i, d.line, d.end + 1); });
     if (L.localDecl) {
-      const fnAt = new Int32Array(lines.length).fill(-1);
-      defs.forEach((d, i) => { if (isFn(d.kind) && !d.drop) fnAt.fill(i, d.line, d.end + 1); });
       for (const m of masked.matchAll(L.localDecl)) {
         const di = fnAt[lineAt(starts, m.index + m[0].length - m[2].length)];
         if (di < 0) continue;
         const ty = /(\w+)\W*$/.exec(m[1]);
         if (ty && NOT_TYPE.has(ty[1])) continue;
         (defs[di].locals ??= new Set()).add(m[2]);
+        const tn = lastSeg(m[1].replace(/<[^]*$/, ''));
+        if (tn && !MODS.has(tn) && tn !== 'auto') (defs[di].types ??= new Map()).set(m[2], tn);
+      }
+    }
+    for (const re of VAR_TYPES) {
+      for (const m of masked.matchAll(re)) {
+        const ty = m[2] || m[3] || m[4];
+        if (!ty) continue;
+        const di = fnAt[lineAt(starts, m.index)];
+        if (di >= 0) (defs[di].types ??= new Map()).set(m[1], lastSeg(ty));
       }
     }
     const owner = new Int32Array(lines.length).fill(info.id);
@@ -630,6 +658,7 @@ export function analyze(files, rootName, progress = () => {}) {
       d.node = add({ kind: d.kind, key, name: d.name, path: f.path, parent, file: info.id, line: d.line, end: d.end, group: L.group });
       edges.push({ s: parent, t: d.node, type: 'contain' });
       if (d.locals) localsOf.set(d.node, d.locals);
+      if (d.types && d.types.size) typesOf.set(d.node, d.types);
       if (ownerName) ownerOf.set(d.node, ownerName);
       if (L.group === 'js' && isFn(d.kind) && PROP_FN.test(lines[d.line].slice(Math.max(0, d.idx - starts[d.line] - 120), d.idx - starts[d.line]))) memberish.add(d.node);
       if (d.self) selfOf.set(d.node, d.self);
@@ -647,12 +676,12 @@ export function analyze(files, rootName, progress = () => {}) {
       const scopes = [];
       for (const re of L.anon) {
         for (const m of masked.matchAll(re)) {
-          let ns;
-          if (m[1] === undefined) ns = params(masked, m.index, L);
+          let ns, tm = null;
+          if (m[1] === undefined) ns = params(masked, m.index, L, (tm = new Map()));
           else ns = (m[1].replace(/:[^,]*/g, '').match(L.idAll) || []).filter(w => !L.kw.has(w));
           if (!ns.length) continue;
           const a = lineAt(starts, m.index);
-          scopes.push({ a, b: blockEnd(lines, a, skipOf(L)), names: new Set(ns) });
+          scopes.push({ a, b: blockEnd(lines, a, skipOf(L)), names: new Set(ns), types: tm && tm.size ? tm : null });
         }
       }
       if (scopes.length) info.scopes = scopes;
@@ -725,6 +754,9 @@ export function analyze(files, rootName, progress = () => {}) {
     }
   }
 
+  const typeNames = new Set(ownerOf.values());
+  for (const n of nodes) if (isClassy(n.kind)) typeNames.add(n.name);
+
   done = 0;
   for (const info of infos) {
     if (++done % 50 === 0) progress({ phase: 'Linking', done, total: infos.length });
@@ -775,7 +807,17 @@ export function analyze(files, rootName, progress = () => {}) {
       if (member && recv) {
         const pool = local.get(name) || cands;
         let selfT = null;
-        for (let o = src; o !== fid && o >= 0; o = nodes[o].parent) {
+        if (!SELF.has(recv) && info.scopes) {
+          let best = null;
+          for (const sc of info.scopes) if (sc.types && sc.a <= ln && ln <= sc.b && sc.types.has(recv) && (!best || sc.a >= best.a)) best = sc;
+          if (best) selfT = best.types.get(recv);
+        }
+        if (!SELF.has(recv) && !selfT) for (let o = src; o !== fid && o >= 0; o = nodes[o].parent) {
+          const tm = typesOf.get(o), ty = tm && tm.get(recv);
+          if (ty) { selfT = ty; break; }
+          if (selfOf.get(o) === recv) break;
+        }
+        if (!selfT) for (let o = src; o !== fid && o >= 0; o = nodes[o].parent) {
           if (SELF.has(recv)) { if (isClassy(nodes[o].kind)) break; if (ownerOf.has(o)) { selfT = ownerOf.get(o); break; } continue; }
           const sv = selfOf.get(o);
           if (sv) { if (sv === recv) selfT = ownerOf.get(o); break; }
@@ -784,6 +826,7 @@ export function analyze(files, rootName, progress = () => {}) {
           const all = local.get(name) && g.get(name) ? [...new Set(cands.concat(local.get(name)))] : cands;
           const own = all.filter(c => ownerOf.get(c) === selfT || (nodes[c].parent >= 0 && nodes[nodes[c].parent].name === selfT && isClassy(nodes[nodes[c].parent].kind)));
           if (own.length) targets = own;
+          else if (!typeNames.has(selfT)) continue;
         } else if (SELF.has(recv)) {
           let cls = src;
           while (cls !== fid && cls >= 0 && !isClassy(nodes[cls].kind)) cls = nodes[cls].parent;
