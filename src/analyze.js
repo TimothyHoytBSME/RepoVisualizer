@@ -61,6 +61,8 @@ const C_HEADER = /\.(?:h|hh|hpp|hxx|h\+\+|cuh|inc|inl)$/i;
 const STR_TYPE = { jvm: 'String', swift: 'String', dart: 'String', cs: 'string', js: 'String', py: 'str', rs: 'str' };
 const PATHSEG = new Set(['rs', 'c', 'rb', 'php']);
 const DECLS = new Set(['c', 'jvm', 'cs']);
+const KEY_COLON = new Set(['js', 'rb', 'swift', 'dart', 'cs', 'php', 'ex']);
+const KEY_EQ = { py: /(?:^|[(,])[ \t]*$/, lua: /[{,][ \t]*$/ };
 const TRAILING = new Set(['swift', 'jvm']);
 const GLOBAL_VARS = new Set(['swift', 'go', 'c', 'jvm', 'cs']);
 const EX_PATH = /^(?:[^/]+\/){0,2}(?:examples?|samples?|demos?|docs?|benchmarks?|bench)\//i;
@@ -159,9 +161,9 @@ function extractDefs(masked, L, starts, lines) {
     const line = lineAt(starts, idx);
     const k = line + ':' + name;
     if (seen.has(k)) return;
-    if (kind === 'variable') {
+    if (kind === 'variable' || kind === 'field') {
       const ln = lines[line];
-      if (!extra && ((ln.length < 2000 && /,\s*$/.test(ln)) || (L.group === 'py' && nested(line)))) return;
+      if (!extra && ((ln.length < 2000 && /,\s*$/.test(ln)) || ((L.group === 'py' || (L.group === 'js' && kind === 'field')) && nested(line)))) return;
     }
     seen.add(k);
     if (!owner && L.extRecv && kind === 'function') {
@@ -1304,6 +1306,24 @@ export function analyze(files, rootName, progress = () => {}) {
       }
       return T ? fieldIn(T, w) : null;
     };
+    const keyTargets = (at, name) => {
+      let d = 0, q = at - 1;
+      for (const lim = Math.max(0, at - 3000); ; q--) {
+        if (q < lim) return null;
+        const c = masked.charCodeAt(q);
+        if (c === 41 || c === 93 || c === 125) d++;
+        else if (c === 40 || c === 91 || c === 123) { if (!d) break; d--; }
+      }
+      if (masked.charCodeAt(q) !== 40) return null;
+      let b = q;
+      while (b > 0 && (isW(masked.charCodeAt(b - 1)) || masked.charCodeAt(b - 1) === 46)) b--;
+      const segs = masked.slice(b, q).split('.').filter(Boolean), hit = new Set();
+      for (const T of new Set([segs[segs.length - 1], segs[0]])) if (T && classByName.has(T)) {
+        for (const c of classes(T, fid)) for (const h of memberIn(c, name) || []) hit.add(h);
+        if (hit.size) break;
+      }
+      return hit.size ? [...hit] : null;
+    };
     let ln = 0, declEnd = -1;
     for (const m of masked.matchAll(L.id)) {
       curAt = m.index;
@@ -1319,7 +1339,7 @@ export function analyze(files, rootName, progress = () => {}) {
       if (L.sigil && prev === 36) continue;
       while (ln + 1 < starts.length && starts[ln + 1] <= at) ln++;
       const src = owner[ln];
-      let member = false, recv = '', recvCall = '', recvIdx = '', chainT = null;
+      let member = false, recv = '', recvCall = '', recvIdx = '', chainT = null, keyHit = null;
       const p2 = at > 1 ? masked.charCodeAt(at - 2) : 0;
       if ((prev === 46 && p2 !== 46) || (prev === 62 && p2 === 45) || (prev === 58 && p2 === 58)) {
         member = true;
@@ -1356,6 +1376,14 @@ export function analyze(files, rootName, progress = () => {}) {
           if ((b1 === 46 && b2 !== 46) || (b1 === 62 && b2 === 45) || (b1 === 58 && b2 === 58)) chainT = exprType(j, 0, src);
         }
       }
+      if (!member && (KEY_COLON.has(L.group) || KEY_EQ[L.group])) {
+        const nx = masked.slice(at + name.length, at + name.length + 3), ps = masked.slice(Math.max(starts[ln], at - 60), at), whole = at - starts[ln] <= 60;
+        if (KEY_COLON.has(L.group) ? (L.group === 'js' ? /^\??:(?!:)/ : /^:(?!:)/).test(nx) && (/[,({][ \t]*$/.test(ps) || (whole && /^[ \t]*(?:(?:readonly|public|private|protected|static|declare|override)[ \t]+)*$/.test(ps)))
+          : /^[ \t]*=(?![=>])/.test(nx) && KEY_EQ[L.group].test(whole ? ps : ps.replace(/^[^(,{]*$/, 'x'))) {
+          keyHit = keyTargets(at, name);
+          if (!keyHit) continue;
+        }
+      }
       if (L.bareVars && !member && name.charCodeAt(0) >= 95) {
         const nx = masked.slice(at + name.length, at + name.length + 12);
         const call = /^[ \t]*[(/]/.test(nx) || (/^[ \t]+[\w:@\[{%&~]/.test(nx) && !/^[ \t]+(?:when|do|in|and|or|not|else|end|after|catch|rescue)\b/.test(nx));
@@ -1386,7 +1414,8 @@ export function analyze(files, rootName, progress = () => {}) {
       }
       let targets = null;
       let type = 'dep';
-      if (info.inits && info.inits.has(at)) {
+      if (keyHit) targets = keyHit;
+      else if (info.inits && info.inits.has(at)) {
         const ty = info.inits.get(at), hit = new Set();
         for (const c of classes(ty, fid)) for (const h of memberIn(c, name) || []) hit.add(h);
         if (!hit.size) continue;
