@@ -155,6 +155,10 @@ function extractDefs(masked, L, starts, lines) {
       if (!extra && ((ln.length < 2000 && /,\s*$/.test(ln)) || (L.group === 'py' && nested(line)))) return;
     }
     seen.add(k);
+    if (!owner && L.extRecv && kind === 'function') {
+      const r = L.extRecv.exec(masked.slice(Math.max(starts[line], idx - 160), idx));
+      if (r) owner = r[1];
+    }
     found.push({ name, kind, line, idx, end: line, owner, self });
   };
   for (const [re, kind, ok, keep] of L.defs) {
@@ -1072,7 +1076,12 @@ export function analyze(files, rootName, progress = () => {}) {
           const all = local.get(name) && g.get(name) ? cands.concat(local.get(name)) : cands;
           const own = [...new Set(all)].filter(c => nodes[c].parent >= 0 && (nodes[nodes[c].parent].name === recv || nodes[nodes[c].parent].name.endsWith('.' + recv)) && isClassy(nodes[nodes[c].parent].kind));
           if (own.length) targets = own;
-          else if (COMMON.has(name)) continue;
+          else if (classByName.has(recv)) {
+            const hit = new Set();
+            for (const c of classByName.get(recv).slice(0, 4)) for (const h of memberIn(c, [...new Set(all)]) || []) hit.add(h);
+            if (!hit.size) continue;
+            targets = [...hit];
+          } else if (COMMON.has(name)) continue;
         } else if (COMMON.has(name)) continue;
       } else if (member && recvCall) {
         const rt = typeNames.has(recvCall) ? recvCall : retOf.get(recvCall);
@@ -1088,6 +1097,14 @@ export function analyze(files, rootName, progress = () => {}) {
         if (cls !== fid && cls >= 0 && basesOf.has(cls)) {
           const hit = memberIn(cls, local.get(name) && g.get(name) ? [...new Set(cands.concat(local.get(name)))] : cands);
           if (hit) targets = hit;
+        } else if (cls === fid || cls < 0) {
+          let ow = null;
+          for (let o = src; o !== fid && o >= 0 && !ow; o = nodes[o].parent) ow = ownerOf.get(o);
+          if (ow && classByName.has(ow)) {
+            const all = local.get(name) && g.get(name) ? [...new Set(cands.concat(local.get(name)))] : cands, hit = new Set();
+            for (const c of classByName.get(ow).slice(0, 4)) for (const h of memberIn(c, all) || []) hit.add(h);
+            if (hit.size) targets = [...hit];
+          }
         }
       }
       if (!targets) {

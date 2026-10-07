@@ -300,6 +300,7 @@ const JVM = {
   paramLast: true, group: 'jvm', pkgDir: true, explicit: true, shadowExt: true, exts: 'java kt kts scala sc groovy gradle',
   syntax: { ...C_SYN, triple: true, template: '"', dollarId: true },
   kw: JVM_KW,
+  extRecv: /\bfun[ \t]+(?:<(?:[^<>\n]|<[^<>\n]*>)*>[ \t]*)?(?:[\w]+\.)*([A-Z]\w*)(?:<(?:[^<>\n]|<[^<>\n]*>)*>)?\??\.$/,
   priv: /\bprivate\b/,
   pkg: /^[ \t]*package[ \t]+([\w.]+)/m,
   strip: /^[ \t]*(?:package|import)\b[^\n]*/gm,
