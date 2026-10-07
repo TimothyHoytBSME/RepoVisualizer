@@ -915,6 +915,10 @@ export function analyze(files, rootName, progress = () => {}) {
           scopes.push({ a, b: blockEnd(lines, a, skipOf(L)), names: new Set(ns), types: tm && tm.size ? tm : null });
         }
       }
+      if (L.group === 'swift') for (const m of masked.matchAll(/\bcatch\b[ \t]*(?:let[ \t]+(\w+)[ \t]+as[ \t]*!?[ \t]*(\w+)[ \t]*)?\{/g)) {
+        const a = lineAt(starts, m.index), nm = m[1] || 'error';
+        scopes.push({ a, b: blockEnd(lines, a, skipOf(L)), names: new Set([nm]), types: new Map([[nm, m[2] || 'Error']]) });
+      }
       if (L.group === 'jvm') for (const m of masked.matchAll(CB_IT)) {
         const a = lineAt(starts, m.index);
         scopes.push({ a, b: blockEnd(lines, a, skipOf(L)), names: new Set(['it']), types: new Map([['it', '@' + m[1]]]) });
