@@ -1,7 +1,7 @@
 import { parseRepo, loadGitHub, loadLocal, dropEntries, scanEntries, saveLocal, loadSaved, recent } from './source.js';
 import { indexGraph, buildView, neighborhood, defaultNode, isTest, shortestPath, withPath, edgeBetween } from './graph.js';
 import { LayoutHost } from './layout-host.js';
-import { Renderer, readPalette, nodeStyle } from './render.js';
+import { Renderer, FlatRenderer, readPalette, nodeStyle } from './render.js';
 import { attachControls, makeGamepad } from './controls.js';
 import { Panel } from './panel.js';
 
@@ -31,9 +31,14 @@ const panel = new Panel(panelEl, $('#peek'), app);
 
 let renderer = null;
 try {
+  if (new URLSearchParams(location.search).get('gl') === '0') throw new Error('flat');
   renderer = new Renderer($('#gl'), $('#labels'), () => { app.dirty = true; });
-} catch (e) {
-  showStatus(e.message || 'Graphics are not available in this browser.');
+} catch {
+  try {
+    renderer = new FlatRenderer($('#gl'), $('#labels'));
+  } catch (e) {
+    showStatus(e.message || 'Graphics are not available in this browser.');
+  }
 }
 
 function fit() {
@@ -836,4 +841,4 @@ if (r) {
   else if (last && last.saved) load(async () => (await loadSaved(last.saved)).src, store.get('rv:node'));
   else openSource();
 }
-window.__rv = { app, loadFiles: files => load(async () => ({ name: 'test', files, meta: { kind: 'local', label: 'test' } })) };
+window.__rv = { app, flat: !!renderer?.flat, loadFiles: files => load(async () => ({ name: 'test', files, meta: { kind: 'local', label: 'test' } })) };

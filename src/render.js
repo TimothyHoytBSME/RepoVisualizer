@@ -158,10 +158,12 @@ export function nodeStyle(g, view) {
 }
 
 export class Renderer {
-  constructor(canvas, labels, onRestore) {
-    const gl = canvas.getContext('webgl2', { antialias: true, alpha: false, powerPreference: 'high-performance' });
-    if (!gl) throw new Error('This browser does not support WebGL2.');
+  constructor(canvas, labels, onRestore, g2) {
+    const gl = g2 ? null : canvas.getContext('webgl2', { antialias: true, alpha: false, powerPreference: 'high-performance' });
+    if (!gl && !g2) throw new Error('This browser does not support WebGL2.');
     this.gl = gl;
+    this.g2 = g2;
+    this.flat = !!g2;
     this.canvas = canvas;
     this.labels = labels;
     this.ctx = labels.getContext('2d');
@@ -170,8 +172,8 @@ export class Renderer {
     this.dpr = 1;
     this.lost = false;
     this.grid = new Uint8Array(0);
-    canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); this.lost = true; });
-    canvas.addEventListener('webglcontextrestored', () => { this.init(); this.lost = false; this.packKey = null; onRestore?.(); });
+    if (gl) canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); this.lost = true; });
+    if (gl) canvas.addEventListener('webglcontextrestored', () => { this.init(); this.lost = false; this.packKey = null; onRestore?.(); });
     this.init();
   }
 
@@ -243,18 +245,12 @@ export class Renderer {
     const key = [s.nb, s.sel, s.hl, s.hover, s.pal, s.ver];
     const same = this.packKey && key.every((v, i) => v === this.packKey[i]);
     this.packKey = key;
-    const { gl } = this;
     const { view, nb, lay, cam, pal, style, sel, hl, hover } = s;
     const { x, y } = lay;
     const { kind, rad } = style;
     const nodes = nb.nodes, depth = nb.depth;
-    const bw = gl.drawingBufferWidth, bh = gl.drawingBufferHeight;
+    const [bw, bh] = this.begin(pal);
     const dpr = this.dpr * (bw / this.canvas.width);
-    gl.viewport(0, 0, bw, bh);
-    gl.clearColor(pal.bg[0], pal.bg[1], pal.bg[2], 1);
-    gl.clear(gl.COLOR_BUFFER_BIT);
-    gl.enable(gl.BLEND);
-    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
 
     const fade = d => Math.max(0.35, 1 - 0.13 * Math.max(0, d - 1));
     const E = nb.edges;
@@ -296,6 +292,17 @@ export class Renderer {
     this.counts = { edge: E.length, arrow: ai, node: nodes.length };
     this.flush(cam, pal, dpr, bw, bh, { edge: ed, arrow: ad, node: nd });
     this.drawLabels(s);
+  }
+
+  begin(pal) {
+    const gl = this.gl;
+    const bw = gl.drawingBufferWidth, bh = gl.drawingBufferHeight;
+    gl.viewport(0, 0, bw, bh);
+    gl.clearColor(pal.bg[0], pal.bg[1], pal.bg[2], 1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    return [bw, bh];
   }
 
   flush(cam, pal, dpr, bw, bh, data) {
@@ -377,5 +384,89 @@ export class Renderer {
       if (i !== sel && i !== hl && i !== hover && !(nb.pathN && nb.pathN.has(i))) label(i, false);
     }
     ctx.globalAlpha = 1;
+  }
+}
+
+const css = (c, a) => `rgba(${(c[0] * 255) | 0},${(c[1] * 255) | 0},${(c[2] * 255) | 0},${a})`;
+
+export class FlatRenderer extends Renderer {
+  constructor(canvas, labels) {
+    const c = canvas.cloneNode();
+    canvas.replaceWith(c);
+    const ctx = c.getContext('2d', { alpha: false });
+    if (!ctx) throw new Error('Graphics are not available in this browser.');
+    super(c, labels, null, ctx);
+  }
+
+  init() {
+    this.nodeData = new Float32Array(0);
+    this.edgeData = new Float32Array(0);
+    this.arrowData = new Float32Array(0);
+  }
+
+  begin(pal) {
+    const c = this.g2, w = this.canvas.width, h = this.canvas.height;
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.globalAlpha = 1;
+    c.fillStyle = css(pal.bg, 1);
+    c.fillRect(0, 0, w, h);
+    return [w, h];
+  }
+
+  flush(cam, pal, dpr, bw, bh) {
+    const c = this.g2, n = this.counts || {}, S = cam.scale * dpr;
+    const X = v => (v - cam.x) * S + bw / 2, Y = v => (v - cam.y) * S + bh / 2;
+    const ed = this.edgeData, ad = this.arrowData, nd = this.nodeData;
+    c.lineCap = 'round';
+    for (let i = 0; i < (n.edge || 0); i++) {
+      const o = i * 12;
+      const ax = X(ed[o]), ay = Y(ed[o + 1]), bx = X(ed[o + 2]), by = Y(ed[o + 3]);
+      const dx = bx - ax, dy = by - ay, L = Math.hypot(dx, dy);
+      const ra = Math.max(ed[o + 8] * S, 2.5 * dpr) + dpr, rb = Math.max(ed[o + 9] * S, 2.5 * dpr) + dpr + ed[o + 10] * 6 * dpr;
+      if (L < ra + rb + 1) continue;
+      const ux = dx / L, uy = dy / L;
+      c.strokeStyle = css(ed.subarray(o + 4, o + 7), ed[o + 7]);
+      c.lineWidth = ed[o + 11] * dpr;
+      c.beginPath();
+      c.moveTo(ax + ux * ra, ay + uy * ra);
+      c.lineTo(bx - ux * rb, by - uy * rb);
+      c.stroke();
+    }
+    for (let i = 0; i < (n.arrow || 0); i++) {
+      const o = i * 12;
+      const ax = X(ad[o]), ay = Y(ad[o + 1]), bx = X(ad[o + 2]), by = Y(ad[o + 3]);
+      const dx = bx - ax, dy = by - ay, L = Math.hypot(dx, dy);
+      const ra = Math.max(ad[o + 8] * S, 2.5 * dpr), rb = Math.max(ad[o + 9] * S, 2.5 * dpr) + dpr;
+      if (L < ra + rb + 8 * dpr) continue;
+      const ux = dx / L, uy = dy / L, s = (ad[o + 11] > 1.2 ? 1.25 : 1) * dpr;
+      const tx = bx - ux * rb, ty = by - uy * rb, kx = tx - ux * 8 * s, ky = ty - uy * 8 * s;
+      c.fillStyle = css(ad.subarray(o + 4, o + 7), ad[o + 7]);
+      c.beginPath();
+      c.moveTo(tx, ty);
+      c.lineTo(kx - uy * 3.6 * s, ky + ux * 3.6 * s);
+      c.lineTo(kx + uy * 3.6 * s, ky - ux * 3.6 * s);
+      c.fill();
+    }
+    const shape = (x, y, r, sh) => {
+      c.beginPath();
+      if (sh === 2) { const q = r * 1.28; c.moveTo(x, y - q); c.lineTo(x + q, y); c.lineTo(x, y + q); c.lineTo(x - q, y); c.closePath(); }
+      else if (sh === 1) { const q = r * 0.9; if (c.roundRect) c.roundRect(x - q, y - q, 2 * q, 2 * q, q * 0.55); else c.rect(x - q, y - q, 2 * q, 2 * q); }
+      else c.arc(x, y, r, 0, Math.PI * 2);
+    };
+    for (let j = 0; j < (n.node || 0); j++) {
+      const o = j * 8;
+      const x = X(nd[o]), y = Y(nd[o + 1]), r = Math.max(nd[o + 2] * S, 2.5 * dpr);
+      if (x < -40 || y < -40 || x > bw + 40 || y > bh + 40) continue;
+      const sh = Math.floor(nd[o + 7] / 4), ring = nd[o + 7] - sh * 4;
+      const col = css(nd.subarray(o + 3, o + 6), nd[o + 6]);
+      if (sh === 3) { shape(x, y, r * 0.75, 0); c.strokeStyle = col; c.lineWidth = r * 0.5; c.stroke(); }
+      else { shape(x, y, r, sh); c.fillStyle = col; c.fill(); }
+      if (ring > 0) {
+        shape(x, y, r + 3 * dpr, sh === 3 ? 0 : sh);
+        c.strokeStyle = css(ring > 1.5 ? pal.accent : pal.fg, 0.95);
+        c.lineWidth = 1.2 * dpr;
+        c.stroke();
+      }
+    }
   }
 }

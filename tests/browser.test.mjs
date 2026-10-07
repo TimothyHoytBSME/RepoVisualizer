@@ -30,7 +30,7 @@ const check = (name, ok, info) => {
 
 const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
 
-async function open(viewport, mobile, init) {
+async function open(viewport, mobile, init, q = '') {
   const ctx = await browser.newContext({ viewport, isMobile: mobile, hasTouch: mobile, deviceScaleFactor: 2 });
   const page = await ctx.newPage();
   const errors = [];
@@ -44,7 +44,7 @@ async function open(viewport, mobile, init) {
     r.fulfill({ status: 200, contentType: TYPES[path.extname(f)] || 'application/octet-stream', body: fs.readFileSync(f) });
   });
   await page.route(/^https:\/\/(api\.github\.com|raw\.githubusercontent\.com)\//, r => r.abort());
-  await page.goto('http://app.local/');
+  await page.goto('http://app.local/' + q);
   await page.waitForFunction(() => window.__rv);
   return { ctx, page, errors };
 }
@@ -181,6 +181,16 @@ const state = page => page.evaluate(() => {
   await page.waitForFunction(() => window.__rv && window.__rv.app.nb, null, { timeout: 30000 });
   check('upload restored after reload', (await page.evaluate(() => window.__rv.app.meta.label)) === 'proj');
   check('no page errors (phone)', errors.length === 0, errors);
+  await ctx.close();
+}
+
+{
+  const { ctx, page, errors } = await open({ width: 900, height: 700 }, false, null, '?gl=0');
+  await page.evaluate(f => window.__rv.loadFiles(f), files);
+  await settled(page);
+  const r = await page.evaluate(() => ({ flat: window.__rv.flat, nodes: window.__rv.app.nb.nodes.length }));
+  check('canvas 2D fallback renders', r.flat === true && r.nodes > 1, r);
+  check('no page errors (fallback)', !errors.length, errors);
   await ctx.close();
 }
 
