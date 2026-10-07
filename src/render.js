@@ -374,7 +374,14 @@ export class Renderer {
       let w = this.widths.get(key);
       if (w === undefined) { ctx.font = font; w = ctx.measureText(name).width; this.widths.set(key, w); }
       const lx = sx + r + 4, ly = sy;
-      const c0 = Math.max(0, Math.floor(lx / CELL)), c1 = Math.min(cols - 1, Math.floor((lx + w) / CELL));
+      const hid = nb.hidden ? nb.hidden.get(i) : 0, suf = hid ? ` +${hid}` : '';
+      let w2 = 0;
+      if (hid) {
+        const k2 = suf + '|' + px;
+        w2 = this.widths.get(k2);
+        if (w2 === undefined) { ctx.font = `500 ${px}px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`; w2 = ctx.measureText(suf).width; this.widths.set(k2, w2); }
+      }
+      const c0 = Math.max(0, Math.floor(lx / CELL)), c1 = Math.min(cols - 1, Math.floor((lx + w + w2) / CELL));
       const r0 = Math.max(0, Math.floor((ly - px / 2 - 1) / CELL)), r1 = Math.min(rows - 1, Math.floor((ly + px / 2 + 1) / CELL));
       if (!sp) {
         for (let rr = r0; rr <= r1; rr++) for (let cc = c0; cc <= c1; cc++) if (grid[rr * cols + cc]) return;
@@ -385,6 +392,12 @@ export class Renderer {
       ctx.fillStyle = sp || nb.depth[i] <= 1 ? pal.css.fg : pal.css.muted;
       ctx.strokeText(name, lx, ly);
       ctx.fillText(name, lx, ly);
+      if (hid) {
+        ctx.font = `500 ${px}px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
+        ctx.fillStyle = pal.css.accent;
+        ctx.strokeText(suf, lx + w, ly);
+        ctx.fillText(suf, lx + w, ly);
+      }
       count++;
     };
     if (sel >= 0) label(sel, true);

@@ -131,8 +131,10 @@ export function neighborhood(v, sel, depth, limit = Infinity, dir = 'both') {
     level = cands;
   }
   const nodes = order.filter(u => keep[u]);
+  const hidden = new Map();
+  for (const u of order) if (!keep[u]) { const p = from[u]; if (p >= 0 && keep[p]) hidden.set(p, (hidden.get(p) || 0) + 1); }
   for (const u of order) if (!keep[u]) d[u] = -1;
-  return { nodes: Int32Array.from(nodes), depth: d, from, edges: Int32Array.from(inducedEdges(v, nodes, d)), total };
+  return { nodes: Int32Array.from(nodes), depth: d, from, edges: Int32Array.from(inducedEdges(v, nodes, d)), total, hidden };
 }
 
 export function shortestPath(v, a, b) {
