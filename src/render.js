@@ -1,4 +1,4 @@
-import { DEP, REF, CONTAIN } from './graph.js';
+import { DEP, REF } from './graph.js';
 
 export const KINDS = ['dir', 'file', 'lib', 'class', 'type', 'module', 'function', 'method', 'variable', 'keyword'];
 const BASE_R = { dir: 5.2, file: 4.6, lib: 4, class: 4.2, type: 3.6, module: 4, function: 3.3, method: 3, variable: 2.7, keyword: 4 };
