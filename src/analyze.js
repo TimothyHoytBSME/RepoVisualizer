@@ -528,9 +528,10 @@ export function analyze(files, rootName, progress = () => {}) {
   for (const info of infos) {
     if (++done % 50 === 0) progress({ phase: 'Reading code', done, total: infos.length });
     const { f, L } = info;
-    const masked = L.syntax ? mask(f.text, L) : null;
+    const text = L.prep ? L.prep(f.path, f.text) : f.text;
+    const masked = L.syntax ? mask(text, L) : null;
     info.masked = masked;
-    info.specs = L.imports ? L.imports(f.text, masked) : [];
+    info.specs = L.imports ? L.imports(text, masked) : [];
     if (L.group === 'cs') for (const m of masked.matchAll(/\bnamespace[ \t]+(\w+)/g)) csNs.add(m[1]);
     if (!L.defs || !masked) continue;
 

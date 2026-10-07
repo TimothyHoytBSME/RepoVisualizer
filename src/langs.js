@@ -127,6 +127,32 @@ function htmlImports(raw) {
   return grab(o, /\bimport\s*(?:[\w{}\s*,]+from\s*)?["'](\.[^"']+)["']/g, raw);
 }
 
+function sfc(path, text) {
+  if (!/\.(vue|svelte|astro)$/i.test(path)) return text;
+  const n = text.length, keep = new Uint8Array(n);
+  const mark = (a, b) => { if (b > a) keep.fill(1, a, b); };
+  for (const m of text.matchAll(/(<script\b[^>]*>)([\s\S]*?)<\/script>/gi)) mark(m.index + m[1].length, m.index + m[1].length + m[2].length);
+  const fm = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text);
+  if (fm && /\.astro$/i.test(path)) mark(4, 4 + fm[1].length);
+  const styles = [];
+  for (const m of text.matchAll(/<style\b[\s\S]*?<\/style>/gi)) styles.push([m.index, m.index + m[0].length]);
+  const inStyle = i => styles.some(([a, b]) => i >= a && i < b);
+  for (const m of text.matchAll(/\{\{([\s\S]*?)\}\}/g)) if (!keep[m.index] && !inStyle(m.index)) mark(m.index + 2, m.index + 2 + m[1].length);
+  for (const m of text.matchAll(/\s(?::|@|#|v-[\w-]+|on:|bind:)[\w.:-]*=(["'])([^"']*)\1/g)) {
+    if (keep[m.index] || inStyle(m.index)) continue;
+    const s = m.index + m[0].length - m[2].length - 1;
+    mark(s, s + m[2].length);
+  }
+  if (/\.(svelte|astro)$/i.test(path)) for (const m of text.matchAll(/\{([^{}]*)\}/g)) if (!keep[m.index] && !inStyle(m.index)) mark(m.index + 1, m.index + 1 + m[1].length);
+  for (const m of text.matchAll(/<\/?([A-Z][\w.]*)/g)) if (!keep[m.index]) mark(m.index + m[0].length - m[1].length, m.index + m[0].length);
+  const out = new Uint16Array(n);
+  for (let i = 0; i < n; i++) {
+    const c = text.charCodeAt(i);
+    out[i] = keep[i] || c === 10 || c === 13 ? c : 32;
+  }
+  return DEC.decode(out);
+}
+
 const C_SYN = { line: ['//'], block: [['/*', '*/']], quotes: '"', charQuote: true };
 
 const BASE_KW = kw(`if else for while do switch case break continue return function class def fn func let var const new this self true false null nil none None True False import from export package public private protected static void int string bool in of and or not is end then`);
@@ -149,6 +175,7 @@ const JS = {
     [R`^[ \t]*(?:(?:static|public|private|protected|readonly)\s+)*(#?${W})\s*(?::[^=;\n]+)?=\s*(?:async\s*)?(?:\([^()]*\)|${W})\s*=>`, 'method'],
   ],
   clean: s => s.replace(/^#/, ''),
+  prep: sfc,
   imports: (raw, m) => grab([], /(?:\bfrom|\bimport|\brequire\s*\(|\bimport\s*\()\s*(['"`])([^'"`\n]+)\1/g, raw, m, 2),
   resolve: 'js',
 };
