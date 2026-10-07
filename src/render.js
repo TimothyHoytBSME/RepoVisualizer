@@ -389,7 +389,7 @@ export class Renderer {
         else if (at === 3) { lx = sx - tw / 2; ly = sy + r + px / 2 + 3; }
         c0 = Math.max(0, Math.floor(lx / CELL)); c1 = Math.min(cols - 1, Math.floor((lx + tw) / CELL));
         r0 = Math.max(0, Math.floor((ly - px / 2 - 1) / CELL)); r1 = Math.min(rows - 1, Math.floor((ly + px / 2 + 1) / CELL));
-        ok = true;
+        ok = sp || (lx >= 2 && lx + tw <= W - 2);
         if (!sp) for (let rr = r0; rr <= r1 && ok; rr++) for (let cc = c0; cc <= c1; cc++) if (grid[rr * cols + cc]) { ok = false; break; }
       }
       if (!ok) return;
