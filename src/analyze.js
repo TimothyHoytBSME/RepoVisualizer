@@ -58,6 +58,7 @@ const CAP_TYPES = new Set(['jvm', 'cs', 'swift', 'dart', 'py', 'rs', 'rb', 'php'
 const IMPLICIT_THIS = new Set(['jvm', 'cs', 'swift', 'dart', 'c', 'rb']);
 const AMBIENT = /\.d\.[mc]?ts$/;
 const C_HEADER = /\.(?:h|hh|hpp|hxx|h\+\+|cuh|inc|inl)$/i;
+const PATHSEG = new Set(['rs', 'c', 'rb', 'php']);
 const DECLS = new Set(['c', 'jvm', 'cs']);
 const TRAILING = new Set(['swift', 'jvm']);
 const GLOBAL_VARS = new Set(['swift', 'go', 'c', 'jvm', 'cs']);
@@ -1486,7 +1487,7 @@ export function analyze(files, rootName, progress = () => {}) {
           type = 'ref';
         }
       }
-      if ((L.group === 'rs' || L.group === 'c') && masked.charCodeAt(at + name.length) === 58 && masked.charCodeAt(at + name.length + 1) === 58) {
+      if (PATHSEG.has(L.group) && masked.charCodeAt(at + name.length) === 58 && masked.charCodeAt(at + name.length + 1) === 58) {
         targets = targets.filter(c => !isFn(nodes[c].kind));
         if (!targets.length) continue;
       }
