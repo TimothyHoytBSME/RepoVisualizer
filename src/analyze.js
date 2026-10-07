@@ -804,6 +804,7 @@ export function analyze(files, rootName, progress = () => {}) {
     const types = new Map();
     for (const d of defs) {
       if (d.kind === 'impl' || d.kind === 'ns') { d.drop = true; continue; }
+      if (L.group === 'c' && d.kind === 'type' && lines[d.line][0] === '}' && defs.some(c => c.kind === 'class' && c.name === d.name && c.line < d.line && c.end >= d.line - 1)) { d.drop = true; continue; }
       if (d.kind === 'extension') { d.kind = 'class'; d.ext = true; }
       else if (d.kind === 'prop') { d.kind = 'function'; d.ext = true; }
       else if (d.kind === 'field') { if (!(d.up && d.up.kind === 'class' && !d.up.drop)) { d.drop = true; continue; } d.kind = 'variable'; }

@@ -83,6 +83,22 @@ function cfuncs(t, gnu) {
   return out;
 }
 
+function ctypedefs(t) {
+  const out = [];
+  for (const m of t.matchAll(/\btypedef[ \t]+(?:struct|union|enum)[ \t]*(?:[A-Z_][A-Z0-9_]*[ \t]*)?\{/g)) {
+    let d = 0, j = m.index + m[0].length - 1;
+    for (const lim = Math.min(t.length, j + 60000); j < lim; j++) {
+      const c = t.charCodeAt(j);
+      if (c === 123) d++;
+      else if (c === 125 && --d === 0) break;
+    }
+    if (d) continue;
+    const n = /^[ \t]*(?:[A-Z_][A-Z0-9_]*(?:\([^()\n]*\))?[ \t]*)*([A-Za-z_]\w*)[ \t]*[;,]/.exec(t.slice(j + 1, j + 200));
+    if (n) out.push({ name: n[1], idx: m.index, kind: 'class' });
+  }
+  return out;
+}
+
 function goGroups(t) {
   const out = [];
   for (const m of t.matchAll(/^(var|const|type)[ \t]*\(\r?\n([\s\S]*?)^\)/gmd)) {
@@ -306,7 +322,7 @@ const C = {
     [R`^[ \t]*[-+][ \t]*\([^)]*\)[ \t]*(${N})`, 'method'],
     [R`^[ \t]+(?!(?:return|using|typedef|friend|delete|goto|case|throw|co_return|co_yield|else|do|new|namespace|template|static_assert|operator|enum|struct|class|union)\b)(?:[A-Za-z_][\w:]*(?:<[^;\n]*>)?[ \t]*(?:\*|&|\bconst\b)*[ \t]+)+[*&]*(${N})\b(?!\()[ \t]*(?:\[[^\]\n]*\][ \t]*)*(?:[A-Z_][A-Z_0-9]*\([^)\n]*\)[ \t]*)?(?:=[^;\n]*|\{[^;\n]*\})?;`, 'field'],
   ],
-  extra: t => cfuncs(t, true), localDecl: LOCAL_DECL,
+  extra: t => [...cfuncs(t, true), ...ctypedefs(t)], localDecl: LOCAL_DECL,
   imports: (raw, m) => grab([], /^[ \t]*#[ \t]*include[ \t]*([<"])([^>"\n]+)[>"]/gm, raw, m, 2, x => (x[1] === '<' ? '<' : '') + x[2]),
   resolve: 'c',
 };
