@@ -266,7 +266,7 @@ const JS = {
     [R`\b(?:interface|enum)\s+(${W})`, 'type'],
     [R`\b(?:namespace|module)\s+(${W})\s*\{`, 'module'],
     [R`\btype\s+(${W})\s*(?:<[^>\n]*>)?\s*=`, 'type'],
-    [R`\b(?:const|let|var)\s+(${W})\s*(?::[^=;\n]+)?=\s*(?:\(\s*)?(?:async\s*)?(?:function\b|(?:\([^()]*\)|${W})\s*(?::[^=;\n]+)?=>)`, 'function'],
+    [R`\b(?:const|let|var)\s+(${W})\s*(?::[^=;\n]+)?=\s*(?:\(\s*)?(?:async\s*)?(?:function\b|(?:<[^<>=\n]*(?:<[^<>\n]*>[^<>=\n]*)*>\s*)?(?:\([^()]*\)|${W})\s*(?::[^=;\n]+)?=>)`, 'function'],
     [R`\b(?:const|let|var)\s+(${W})(?![\w$]|\s*=\s*(?:require\s*\(|await\s+import\s*\())`, 'variable', (t, i) => !/\bfor\s*\(\s*(?:const|let|var)\s+$/.test(t.slice(Math.max(0, i - 40), i))],
     [R`^[ \t]*(?:(?:static|async|get|set|public|private|protected|readonly|override|abstract|declare)[ \t]+)*(?:\*[ \t]*)?(#?${W})\s*(?:<[^>\n]*>)?\((?:[^()]|\([^()]*\))*\)\s*(?::[^{;\n]+)?\{`, 'method'],
     [R`^[ \t]*(?:(?:static|public|private|protected|readonly)\s+)*(#?${W})\s*(?::[^=;\n]+)?=\s*(?:async\s*)?(?:\([^()]*\)|${W})\s*=>`, 'method'],
