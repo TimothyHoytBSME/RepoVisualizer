@@ -15,6 +15,7 @@ const fmt = n => n.toLocaleString();
 const narrow = () => matchMedia('(max-width: 760px)').matches;
 const MAPS = ['code', 'files', 'words'];
 
+let pendingTo = null;
 const stage = $('#stage'), panelEl = $('#panel'), dlg = $('#src-dialog');
 const MAX_DEPTH = +$('#depth').max;
 const app = {
@@ -133,6 +134,9 @@ async function load(getSource, nodeKey) {
     const gid = nodeKey ? g.byKey.get(nodeKey) : undefined;
     setMap(app.mapType, gid ?? -1);
     app.pendingFit = gid === undefined;
+    const to = pendingTo != null ? g.byKey.get(pendingTo) : undefined;
+    pendingTo = null;
+    if (to !== undefined && gid !== undefined) app.setPath(to);
     showHint();
     const notes = [];
     if (m.skipped) notes.push(`${fmt(m.skipped)} files skipped (too large)`);
@@ -279,6 +283,7 @@ function syncURL(push = false) {
     q.set('node', key);
     store.set('rv:node', key);
   }
+  if (app.path != null && app.view) q.set('to', app.g.nodes[app.view.ids[app.path]].key);
   q.set('map', app.mapType);
   q.set('depth', app.depth);
   const url = `${location.pathname}?${q}`;
@@ -693,6 +698,7 @@ app.setPath = gid => {
   refresh();
   panel.show(app.view.ids[app.sel]);
   app.pendingFit = true;
+  syncURL(false);
   $('#live').textContent = `Path to ${to.name}: ${p.length - 1} steps.`;
 };
 app.clearPath = () => {
@@ -700,6 +706,7 @@ app.clearPath = () => {
   app.path = null;
   refresh();
   panel.show(app.view.ids[app.sel]);
+  syncURL(false);
 };
 app.edgeBetween = (u, w) => edgeBetween(app.view, u, w);
 search.addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => { searchTimer = 0; runSearch(); }, 70); });
@@ -836,6 +843,7 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.se
 const q = new URLSearchParams(location.search);
 if (MAPS.includes(q.get('map'))) app.mapType = q.get('map');
 if (q.get('depth')) setDepth(+q.get('depth'));
+pendingTo = q.get('to');
 const r = q.get('repo') && parseRepo(q.get('repo'));
 if (r) {
   r.ref = q.get('ref') || r.ref;

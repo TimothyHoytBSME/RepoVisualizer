@@ -118,12 +118,12 @@ const state = page => page.evaluate(() => {
   await page.waitForTimeout(400);
   const pth = await page.evaluate(() => {
     const a = window.__rv.app, p = a.pathNodes;
-    return p && { len: p.length, first: a.g.nodes[a.view.ids[p[0]]].key, last: a.g.nodes[a.view.ids[p[p.length - 1]]].name, shown: p.every(i => a.nb.depth[i] >= 0), steps: document.querySelectorAll('#panel .rel.path li.step').length, ph: document.querySelector('#search').placeholder };
+    return p && { len: p.length, first: a.g.nodes[a.view.ids[p[0]]].key, last: a.g.nodes[a.view.ids[p[p.length - 1]]].name, shown: p.every(i => a.nb.depth[i] >= 0), steps: document.querySelectorAll('#panel .rel.path li.step').length, ph: document.querySelector('#search').placeholder, url: new URLSearchParams(location.search).get('to') };
   });
-  check('path to a searched node', pth && pth.len > 1 && pth.first.includes('neighborhood') && pth.last === 'readPalette' && pth.shown && pth.steps === pth.len - 1 && pth.ph === 'Search', pth);
+  check('path to a searched node', pth && pth.len > 1 && pth.first.includes('neighborhood') && pth.last === 'readPalette' && pth.shown && pth.steps === pth.len - 1 && pth.ph === 'Search' && /readPalette$/.test(pth.url || ''), pth);
   await page.click('#panel [data-path-clear]');
   await page.waitForTimeout(200);
-  check('path clears', await page.evaluate(() => window.__rv.app.pathNodes === null && !document.querySelector('#panel .rel.path')));
+  check('path clears', await page.evaluate(() => window.__rv.app.pathNodes === null && !document.querySelector('#panel .rel.path') && !location.search.includes('to=')));
 
   await page.evaluate(() => window.__rv.app.selectGlobal(window.__rv.app.g.byKey.get('f:src/graph.js')));
   await page.waitForTimeout(300);
