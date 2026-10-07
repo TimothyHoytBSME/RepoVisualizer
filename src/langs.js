@@ -455,6 +455,7 @@ const LUA = {
   kw: kw(`and break do else elseif end false for function goto if in local nil not or repeat return then true until while self require`),
   defs: [
     [R`^[ \t]*(?:local[ \t]+)?function[ \t]+([\w.:]+)`, 'function'],
+    [R`^[ \t]*local[ \t]+(${N})[ \t]*=[ \t]*function\b`, 'function'],
     [R`^local[ \t]+(${N})[ \t]*=`, 'variable'],
     [R`^([\w.]+)[ \t]*=[ \t]*function\b`, 'function'],
   ],
