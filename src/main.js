@@ -405,7 +405,7 @@ function togglePanel(force) {
   app.dirty = true;
 }
 
-NARROW.addEventListener?.('change', () => { if (narrow()) togglePanel(true); else panelEl.style.height = ''; app.follow = true; app.dirty = true; });
+NARROW.addEventListener?.('change', () => { if (narrow()) togglePanel(true); else { panelEl.style.height = ''; panelEl.classList.remove('collapsed', 'full'); } app.follow = true; app.dirty = true; });
 if (window.ResizeObserver) new ResizeObserver(() => { if (narrow() && app.follow) app.dirty = true; }).observe(panelEl);
 
 (function sheetDrag() {
