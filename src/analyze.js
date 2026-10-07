@@ -683,7 +683,9 @@ export function analyze(files, rootName, progress = () => {}) {
       if (isClassy(d.kind) && !d.ext && !types.has(d.name)) types.set(d.name, d);
       owner.fill(d.node, d.line, d.end + 1);
       defPos.add(d.idx);
-      if (!d.ext && !(L.priv && L.priv.test(lines[d.line].slice(0, d.idx - starts[d.line])))) {
+      let inFn = false;
+      for (let q = p; q && !inFn; q = q.up) if (isFn(q.kind) && !q.drop) inFn = true;
+      if (!d.ext && !inFn && !(L.priv && L.priv.test(lines[d.line].slice(0, d.idx - starts[d.line])))) {
         const a = g.get(d.name);
         if (a) a.push(d.node); else g.set(d.name, [d.node]);
       }
