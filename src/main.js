@@ -201,7 +201,7 @@ function refresh() {
   renderer?.setLabelOrder(app.nb, app.style.rad);
   for (const k of ['hl', 'hover', 'touchPeek']) if (app[k] >= 0 && app.nb.depth[app[k]] < 0) app[k] = -1;
   const { nodes, edges, total } = app.nb;
-  const part = (shown, all, word) => (all > shown ? `${fmt(shown)} of ${fmt(all)} ${word}` : `${fmt(shown)} ${word}`);
+  const part = (shown, all, word) => (all > shown ? `${fmt(shown)} of ${fmt(all)} ${word}` : `${fmt(shown)} ${shown === 1 ? word.slice(0, -1) : word}`);
   $('#counts').innerHTML = `${app.dir === 'both' ? '' : `<span class="dirtag">${app.dir === 'out' ? 'uses' : 'used by'}</span><span class="sep"> · </span>`}<span>${part(nodes.length, total.nodes, 'nodes')}</span><span class="sep"> · </span><span>${part(edges.length, total.edges, 'edges')}</span>`;
   $('#counts').title = total.nodes > nodes.length ? `Showing the ${fmt(nodes.length)} most connected of ${fmt(total.nodes)} nodes in range. Change the limit in the filter menu.` : '';
   app.dirty = true;
