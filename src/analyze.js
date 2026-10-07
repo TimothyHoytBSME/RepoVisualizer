@@ -57,7 +57,8 @@ const PROP_FN = /(?:\.[\w$]+\s*=|[\w$]+\s*:)\s*(?:async\s+)?function\s*\*?\s*$|\
 const CAP_TYPES = new Set(['jvm', 'cs', 'swift', 'dart', 'py', 'rs', 'rb', 'php']);
 const IMPLICIT_THIS = new Set(['jvm', 'cs', 'swift', 'dart', 'c', 'rb']);
 const AMBIENT = /\.d\.[mc]?ts$/;
-const EX_PATH = /(^|\/)(examples?|samples?|demos?|docs?|benchmarks?|bench)\//i;
+const EX_PATH = /^(?:[^/]+\/){0,2}(?:examples?|samples?|demos?|docs?|benchmarks?|bench)\//i;
+const EX_ROOT = /^(?:[^/]+\/){0,2}(?:examples?|samples?|demos?)\/[^/]+\//i;
 const isFn = k => k === 'function' || k === 'method';
 const SELF = new Set(['this', 'self', 'Self', 'static', 'me']);
 const COMMON = new Set(`each map filter reduce forEach some every indexOf lastIndexOf findIndex includes concat splice flatMap get set put add remove delete has contains size length count keys values entries items push pop shift unshift append insert extend clear close open read write flush call apply bind toString equals hashCode compareTo next hasNext iterator then catch finally emit on off once parse format join split replace trim match test exec find first last sort reverse slice copy clone merge reset cancel value name type id data message error list log debug info warn trace dispose description key path url status result index text constructor prototype String Error Get Set Write Read Close Len Open Value Type Status ToString Equals GetHashCode Add Remove Count Contains Clear Dispose Any Select Where First FirstOrDefault ToList ToArray Single Max Min Sum OrderBy Include unwrap expect as_bytes as_str as_ref as_mut is_none is_some is_ok is_err is_empty iter iter_mut into_iter to_string to_owned unwrap_or map_err ok err lines bytes chars len borrow kind start end to_s to_str to_a to_h to_i to_sym inspect respond_to? include? empty? nil? is_a? kind_of? dup freeze tap merge! fetch __toString __get __set __call`.split(/\s+/));
@@ -1116,7 +1117,7 @@ export function analyze(files, rootName, progress = () => {}) {
     const { L, masked, starts, owner, defPos, local, id: fid } = info;
     const g = names.get(L.group);
     const fdir = nodes[fid].parent;
-    const nf = L.group === 'c' || L.group === 'py' ? notField : () => true, srcTest = TEST_PATH.test(nodes[fid].path), srcEx = EX_PATH.test(nodes[fid].path);
+    const nf = L.group === 'c' || L.group === 'py' ? notField : () => true, srcTest = TEST_PATH.test(nodes[fid].path), srcEx = EX_PATH.test(nodes[fid].path), exRoot = srcEx ? EX_ROOT.exec(nodes[fid].path)?.[0] : null;
     const out = new Map(), impCache = new Map();
     const idc = new Map();
     const countWords = !TEST_PATH.test(info.f.path);
@@ -1398,6 +1399,7 @@ export function analyze(files, rootName, progress = () => {}) {
               : masked.charCodeAt(at + name.length) === 33 ? cands : cands.filter(c => AMBIENT.test(nodes[c].path));
             if (!srcTest) targets = targets.filter(c => !TEST_PATH.test(nodes[c].path));
             if (!srcEx) targets = targets.filter(c => !EX_PATH.test(nodes[c].path));
+            else if (exRoot) targets = targets.filter(c => { const r = EX_ROOT.exec(nodes[c].path); return !r || r[0] === exRoot; });
             if (!targets.length) continue;
             const t0 = targets.length === 1 && !member ? nodes[targets[0]].path : null, ad = t0 && AMBIENT.test(t0) ? t0.slice(0, t0.lastIndexOf('/') + 1) : null;
             if (!(ad != null && nodes[fid].path.startsWith(ad)) && (cands.length > 1 || L.explicit || member)) type = 'ref';
