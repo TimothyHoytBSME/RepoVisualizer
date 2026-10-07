@@ -1,6 +1,20 @@
-const RING = 120;
 const STRENGTH = -60;
-const THETA2 = 0.81;
+const SPACE = 26;
+const MIN_ALPHA = 0.004;
+
+export function place(L, nb, sel, hx = 0, hy = 0) {
+  const { x, y, placed } = L;
+  if (!placed[sel]) { x[sel] = hx; y[sel] = hy; placed[sel] = 1; }
+  for (const u of nb.nodes) {
+    if (placed[u]) continue;
+    const p = nb.from ? nb.from[u] : -1;
+    const a = Math.random() * Math.PI * 2, r = 25 + Math.random() * 35;
+    x[u] = (p >= 0 ? x[p] : x[sel]) + Math.cos(a) * r;
+    y[u] = (p >= 0 ? y[p] : y[sel]) + Math.sin(a) * r;
+    if (L.vx) L.vx[u] = L.vy[u] = 0;
+    placed[u] = 1;
+  }
+}
 
 export class Layout {
   constructor(view) {
@@ -19,28 +33,19 @@ export class Layout {
   }
 
   set(nb, sel, hx = 0, hy = 0) {
-    const { x, y, vx, vy, placed, vdeg, view } = this;
+    const { vdeg, view } = this;
     this.nb = nb;
     this.sel = sel;
-    if (!placed[sel]) { x[sel] = hx; y[sel] = hy; placed[sel] = 1; }
-    for (const u of nb.nodes) {
-      if (placed[u]) continue;
-      const p = nb.from[u];
-      const a = Math.random() * Math.PI * 2, r = 25 + Math.random() * 35;
-      x[u] = x[p] + Math.cos(a) * r;
-      y[u] = y[p] + Math.sin(a) * r;
-      vx[u] = vy[u] = 0;
-      placed[u] = 1;
-    }
-    const E = nb.edges, m = E.length;
+    place(this, nb, sel, hx, hy);
+    const E = nb.edges, ne = E.length;
     for (const u of nb.nodes) vdeg[u] = 0;
-    for (let i = 0; i < m; i++) { vdeg[view.eA[E[i]]]++; vdeg[view.eB[E[i]]]++; }
-    this.la = new Int32Array(m);
-    this.lb = new Int32Array(m);
-    this.ls = new Float32Array(m);
-    this.lbias = new Float32Array(m);
-    this.ld = new Float32Array(m);
-    for (let i = 0; i < m; i++) {
+    for (let i = 0; i < ne; i++) { vdeg[view.eA[E[i]]]++; vdeg[view.eB[E[i]]]++; }
+    this.la = new Int32Array(ne);
+    this.lb = new Int32Array(ne);
+    this.ls = new Float32Array(ne);
+    this.lbias = new Float32Array(ne);
+    this.ld = new Float32Array(ne);
+    for (let i = 0; i < ne; i++) {
       const a = view.eA[E[i]], b = view.eB[E[i]];
       const da = vdeg[a], db = vdeg[b];
       this.la[i] = a; this.lb[i] = b;
@@ -48,20 +53,37 @@ export class Layout {
       this.lbias[i] = da / (da + db);
       this.ld[i] = 36 + 4 * Math.sqrt(Math.min(da, db));
     }
+    let maxD = 0;
+    for (const u of nb.nodes) if (nb.depth[u] > maxD) maxD = nb.depth[u];
+    const cnt = new Int32Array(maxD + 1);
+    for (const u of nb.nodes) cnt[nb.depth[u]]++;
+    this.rIn = new Float32Array(maxD + 1);
+    this.rOut = new Float32Array(maxD + 1);
+    let prev = 0;
+    for (let d = 1; d <= maxD; d++) {
+      const inner = prev + (d === 1 ? 30 : 24);
+      const outer = Math.max(inner + 70, Math.sqrt(inner * inner + (cnt[d] * SPACE * SPACE) / Math.PI));
+      this.rIn[d] = inner;
+      this.rOut[d] = outer;
+      prev = outer;
+    }
+    const m = nb.nodes.length;
+    this.theta2 = m > 3000 ? 1.44 : 0.81;
+    this.decay = m > 8000 ? 0.045 : m > 2000 ? 0.03 : 0.0228;
     this.alpha = Math.max(this.alpha, 0.9);
   }
 
   run(budget) {
-    if (this.alpha < 0.004 || !this.nb) return false;
+    if (this.alpha < MIN_ALPHA || !this.nb) return false;
     const t0 = performance.now();
-    do this.tick(); while (this.alpha >= 0.004 && performance.now() - t0 < budget);
+    do this.tick(); while (this.alpha >= MIN_ALPHA && performance.now() - t0 < budget);
     return true;
   }
 
-  heat(a = 0.5) { this.alpha = Math.max(this.alpha, a); }
+  get done() { return this.alpha < MIN_ALPHA; }
 
   tick() {
-    const { x, y, vx, vy, la, lb, ls, lbias, ld, sel } = this;
+    const { x, y, vx, vy, la, lb, ls, lbias, ld, sel, rIn, rOut } = this;
     const { nodes, depth } = this.nb;
     const alpha = this.alpha;
     for (let i = 0; i < la.length; i++) {
@@ -81,8 +103,12 @@ export class Layout {
       if (i === sel) continue;
       const dx = x[i] - sx, dy = y[i] - sy;
       const d = Math.sqrt(dx * dx + dy * dy) || 1e-3;
-      const f = ((depth[i] * RING - d) / d) * alpha * 0.08;
-      vx[i] += dx * f; vy[i] += dy * f;
+      const dd = depth[i], lo = rIn[dd], hi = rOut[dd];
+      const target = d < lo ? lo : d > hi ? hi : d;
+      if (target !== d) {
+        const f = ((target - d) / d) * alpha * 0.2;
+        vx[i] += dx * f; vy[i] += dy * f;
+      }
     }
     for (let k = 0; k < nodes.length; k++) {
       const i = nodes[k];
@@ -90,11 +116,11 @@ export class Layout {
       vx[i] *= 0.6; vy[i] *= 0.6;
       x[i] += vx[i]; y[i] += vy[i];
     }
-    this.alpha += -this.alpha * 0.02;
+    this.alpha -= this.alpha * this.decay;
   }
 
   charge(alpha) {
-    const { x, y, vx, vy, bnext } = this;
+    const { x, y, vx, vy, bnext, theta2 } = this;
     const nodes = this.nb.nodes, m = nodes.length;
     if (m < 2) return;
     const need = m * 4 + 64;
@@ -105,7 +131,7 @@ export class Layout {
       this.q0x = new Float64Array(c); this.q0y = new Float64Array(c); this.qs = new Float64Array(c);
       this.qc = new Int32Array(c * 4); this.qb = new Int32Array(c);
     }
-    const { qx, qy, qm, q0x, q0y, qs, qc, qb } = this;
+    const { qx, qy, qm, q0x, q0y, qs, qc, qb, cap } = this;
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     for (let k = 0; k < m; k++) {
       const i = nodes[k];
@@ -118,10 +144,6 @@ export class Layout {
       const h = qs[nd] / 2;
       return (px >= q0x[nd] + h ? 1 : 0) + (py >= q0y[nd] + h ? 2 : 0);
     };
-    const grow = () => {
-      if (count + 4 <= this.cap) return true;
-      return false;
-    };
     for (let k = 0; k < m; k++) {
       const i = nodes[k];
       bnext[i] = -1;
@@ -130,7 +152,7 @@ export class Layout {
         const b = qb[nd];
         if (b === -1) { qb[nd] = i; break; }
         if (b >= 0) {
-          if ((x[b] === x[i] && y[b] === y[i]) || depth > 40 || !grow()) { bnext[i] = qb[nd]; qb[nd] = i; break; }
+          if ((x[b] === x[i] && y[b] === y[i]) || depth > 40 || count + 4 > cap) { bnext[i] = b; qb[nd] = i; break; }
           const c0 = count;
           count += 4;
           const h = qs[nd] / 2;
@@ -181,7 +203,7 @@ export class Layout {
         if (b === -2) {
           const dx = qx[nd] - xi, dy = qy[nd] - yi;
           const d2 = dx * dx + dy * dy;
-          if (qs[nd] * qs[nd] < THETA2 * d2) {
+          if (qs[nd] * qs[nd] < theta2 * d2) {
             const w = (s * mass) / Math.max(d2, 1);
             fx += dx * w; fy += dy * w;
           } else if (sp < st.length - 4) {

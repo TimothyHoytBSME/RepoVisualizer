@@ -1,8 +1,12 @@
-import { analyze } from '../src/analyze.js';
+import { analyze, EDGE_NAMES } from '../src/analyze.js';
 
 let failed = 0;
 const syms = g => g.nodes.filter(n => !['dir','file','lib'].includes(n.kind)).map(n => `${n.kind}:${n.name}@${n.line}-${n.end}`);
-const deps = g => g.edges.filter(e => e.type !== 'contain').map(e => `${g.nodes[e.s].name}-${e.type}->${g.nodes[e.t].name}`);
+const deps = g => {
+  const { s, t, type } = g.edges, out = [];
+  for (let k = 0; k < s.length; k++) if (EDGE_NAMES[type[k]] !== 'contain') out.push(`${g.nodes[s[k]].name}-${EDGE_NAMES[type[k]]}->${g.nodes[t[k]].name}`);
+  return out;
+};
 const T = (name, files, check) => { const t = performance.now(); const g = analyze(files, 'r'); const ms = performance.now() - t; let ok; try { ok = check(g); } catch (e) { ok = 'ERR ' + e.message; } if (ok !== true) failed++;
   console.log(ok === true ? 'PASS' : 'FAIL', name, ms > 500 ? `(${ms.toFixed(0)}ms!)` : '', ok === true ? '' : JSON.stringify({ syms: syms(g), deps: deps(g) }).slice(0, 600)); };
 const args = Array.from({ length: 18 }, (_, i) => `      a${i}: foo(${i}),`).join('\n');
@@ -26,5 +30,6 @@ T('long line perf', [{ path: 'a.c', text: 'int x; '.repeat(1) + 'f(a); '.repeat(
 T('elixir heredoc', [{ path: 'a.ex', text: 'defmodule A do\n  @moduledoc """\n  This module provides helpers. Each function returns the input string.\n  """\n  def run(x), do: x\nend\n' }], g => !syms(g).some(s => /provides|returns|string/.test(s)) && syms(g).some(s => /(function|method):run/.test(s)));
 T('js for-of not var', [{ path: 'a.js', text: 'for (const item of list) {}\nconst real = 1\n' }], g => !syms(g).some(s => s.includes('item')) && syms(g).some(s => s.includes('real')));
 
+T('jsx closing tags keep refs', [{ path: 'a.jsx', text: 'function Badge() {}\nfunction Row({ a }) {\n  return <tr><td>{a}</td><td><Badge /></td></tr>\n}\nfunction Cell({ x }) {\n  return <Foo x={x}/><Badge/>\n}\n' }], g => deps(g).includes('Row-dep->Badge') && deps(g).includes('Cell-dep->Badge'));
 if (failed) { console.log(`${failed} failed`); process.exit(1); }
 console.log('all passed');

@@ -1,6 +1,6 @@
-import { parseRepo, loadGitHub, loadLocal, filesFromDrop } from './source.js';
+import { parseRepo, loadGitHub, loadLocal, dropEntries, scanEntries, saveLocal, loadSaved, recent } from './source.js';
 import { indexGraph, buildView, neighborhood, defaultNode } from './graph.js';
-import { Layout } from './layout.js';
+import { LayoutHost } from './layout-host.js';
 import { Renderer, readPalette, nodeStyle } from './render.js';
 import { attachControls, makeGamepad } from './controls.js';
 import { Panel } from './panel.js';
@@ -22,13 +22,13 @@ const app = {
   sel: -1, hl: -1, hover: -1, touchPeek: -1,
   depth: clamp(+store.get('rv:depth') || 2, 1, MAX_DEPTH),
   cam: { x: 0, y: 0, scale: narrow() ? 0.85 : 1 },
-  follow: false, goto: null, dirty: true, pal: readPalette(),
+  follow: false, goto: null, dirty: true, pal: readPalette(), ver: 0,
 };
 const panel = new Panel(panelEl, $('#peek'), app);
 
 let renderer = null;
 try {
-  renderer = new Renderer($('#gl'), $('#labels'));
+  renderer = new Renderer($('#gl'), $('#labels'), () => { app.dirty = true; });
 } catch (e) {
   showStatus(e.message || 'Graphics are not available in this browser.');
 }
@@ -38,9 +38,15 @@ function fit() {
   const r = stage.getBoundingClientRect();
   renderer.resize(r.width, r.height, Math.min(window.devicePixelRatio || 1, 3));
   app.dirty = true;
+  if (app.nb) paint();
 }
 new ResizeObserver(fit).observe(stage);
 fit();
+(function watchDpr() {
+  const mq = matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`);
+  const on = () => { mq.removeEventListener('change', on); fit(); watchDpr(); };
+  mq.addEventListener('change', on);
+})();
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { app.pal = readPalette(); app.dirty = true; });
 
 function showStatus(text, frac) {
@@ -53,11 +59,12 @@ function showStatus(text, frac) {
 const hideStatus = () => { $('#status').hidden = true; };
 const progress = p => showStatus(p.total ? `${p.phase} ${fmt(p.done)} / ${fmt(p.total)}` : `${p.phase}…`, p.total ? p.done / p.total : null);
 
-function analyzeAsync(files, name, onProgress) {
+function analyzeAsync(files, name, onProgress, signal) {
   const local = () => import('./analyze.js').then(m => m.analyze(files, name, onProgress));
   return new Promise((resolve, reject) => {
     let w;
     try { w = new Worker(new URL('./worker.js', import.meta.url), { type: 'module' }); } catch { local().then(resolve, reject); return; }
+    signal?.addEventListener('abort', () => { w.terminate(); reject(new DOMException('Aborted', 'AbortError')); }, { once: true });
     w.onmessage = e => {
       const d = e.data;
       if (d.progress) { onProgress(d.progress); return; }
@@ -80,7 +87,7 @@ async function load(getSource, nodeKey) {
     const src = await getSource(live, signal);
     if (seq !== loadSeq) return;
     live({ phase: 'Analyzing' });
-    const g = await analyzeAsync(src.files, src.name, live);
+    const g = await analyzeAsync(src.files, src.name, live, signal);
     if (seq !== loadSeq) return;
     indexGraph(g);
     Object.assign(app, { g, files: new Map(src.files.map(f => [f.path, f.text])), meta: src.meta, hl: -1, hover: -1, touchPeek: -1 });
@@ -88,11 +95,19 @@ async function load(getSource, nodeKey) {
     document.title = `${src.meta.label} · RepoVisualizer`;
     hideStatus();
     if (dlg.open) dlg.close();
-    if (src.meta.kind === 'github') store.set('rv:last', JSON.stringify({ owner: src.meta.owner, repo: src.meta.repo, ref: src.meta.ref === 'HEAD' ? '' : src.meta.ref, sub: src.meta.sub }));
+    const m = src.meta;
+    if (m.kind === 'github') store.set('rv:last', JSON.stringify({ owner: m.owner, repo: m.repo, ref: m.ref === 'HEAD' ? '' : m.ref, sub: m.sub }));
+    else if (m.saved) store.set('rv:last', JSON.stringify({ saved: m.saved }));
+    else saveLocal(src).then(key => { if (key && seq === loadSeq) { m.saved = key; store.set('rv:last', JSON.stringify({ saved: key })); } });
+    if (!nodeKey && m.focus) nodeKey = 'f:' + m.focus;
     const gid = nodeKey ? g.byKey.get(nodeKey) : undefined;
     setMap(app.mapType, gid ?? -1);
-    const note = src.meta.skipped ? ` · ${fmt(src.meta.skipped)} files skipped (repo too large)` : '';
-    toast(`${fmt(g.stats.files)} files · ${fmt(g.stats.symbols)} symbols · ${fmt(g.stats.libs)} libraries${note}`);
+    const notes = [];
+    if (m.skipped) notes.push(`${fmt(m.skipped)} files skipped (too large)`);
+    if (m.failed) notes.push(`${fmt(m.failed)} couldn't be read`);
+    if (m.truncated) notes.push('GitHub cut the file list short');
+    if (m.offline) notes.push('offline copy');
+    toast([`${fmt(g.stats.files)} files · ${fmt(g.stats.symbols)} symbols · ${fmt(g.stats.libs)} libraries`, ...notes].join(' · '));
   } catch (e) {
     if (seq !== loadSeq || e.name === 'AbortError') return;
     hideStatus();
@@ -101,7 +116,11 @@ async function load(getSource, nodeKey) {
 }
 
 const loadRepo = (spec, nodeKey) => load((p, signal) => loadGitHub(spec, p, signal), nodeKey);
-const loadFiles = list => load(p => loadLocal(list, p));
+const loadFiles = list => load((p, signal) => loadLocal(list, p, signal));
+const openSaved = key => load(async (p, signal) => {
+  const r = await loadSaved(key);
+  return r.spec ? loadGitHub(r.spec, p, signal) : r.src;
+});
 
 function mapInto(gid) {
   const v = app.view, n = app.g.nodes[gid];
@@ -116,7 +135,8 @@ function setMap(type, gid = -1) {
   store.set('rv:map', type);
   app.view = buildView(app.g, type);
   app.style = nodeStyle(app.g, app.view);
-  app.lay = new Layout(app.view);
+  app.lay?.dispose();
+  app.lay = new LayoutHost(app.view);
   app.sel = app.hl = app.hover = app.touchPeek = -1;
   let i = gid >= 0 ? mapInto(gid) : -1;
   if (i < 0) i = defaultNode(app.g, app.view);
@@ -317,7 +337,7 @@ function frame(t) {
   requestAnimationFrame(frame);
   if (gamepadOn && app.nb) pollPad(t);
   if (!app.nb || !renderer) return;
-  if (app.lay.run(9)) app.dirty = true;
+  if (app.lay.run(9)) { app.dirty = true; app.ver++; }
   const { cam, lay } = app;
   const ti = app.follow ? app.sel : app.goto ? app.goto.i : -1;
   if (ti >= 0) {
@@ -331,9 +351,12 @@ function frame(t) {
       app.dirty = true;
     }
   }
-  if (!app.dirty) return;
+  if (app.dirty) paint();
+}
+
+function paint() {
   app.dirty = false;
-  renderer.draw({ g: app.g, view: app.view, nb: app.nb, lay, cam, pal: app.pal, style: app.style, sel: app.sel, hl: app.hl, hover: app.hover });
+  renderer.draw({ g: app.g, view: app.view, nb: app.nb, lay: app.lay, cam: app.cam, pal: app.pal, style: app.style, sel: app.sel, hl: app.hl, hover: app.hover, ver: app.ver });
   updatePeek();
 }
 requestAnimationFrame(frame);
@@ -402,6 +425,20 @@ function openSource(err = '') {
   $('#src-close').hidden = !app.g;
   if (!dlg.open) dlg.showModal();
   if (!matchMedia('(pointer: coarse)').matches) $('#repo-input').focus();
+  recent().then(list => {
+    const box = $('#recent');
+    box.replaceChildren();
+    if (!list.length) { box.hidden = true; return; }
+    box.append('Recent');
+    for (const r of list.slice(0, 6)) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = r.label + (r.kind === 'local' ? ' · device' : '');
+      b.addEventListener('click', () => { dlg.close(); openSaved(r.key); });
+      box.append(b);
+    }
+    box.hidden = false;
+  });
 }
 dlg.addEventListener('cancel', e => { if (!app.g) e.preventDefault(); });
 $('#src-btn').addEventListener('click', () => openSource());
@@ -430,11 +467,16 @@ for (const id of ['#zip-input', '#dir-input']) {
 }
 window.addEventListener('dragover', e => { e.preventDefault(); document.body.classList.add('dropping'); });
 window.addEventListener('dragleave', e => { if (!e.relatedTarget) document.body.classList.remove('dropping'); });
-window.addEventListener('drop', async e => {
+window.addEventListener('drop', e => {
   e.preventDefault();
   document.body.classList.remove('dropping');
-  const list = await filesFromDrop(e.dataTransfer);
-  if (list.length) { if (dlg.open) dlg.close(); loadFiles(list); }
+  const entries = dropEntries(e.dataTransfer);
+  const files = [...(e.dataTransfer.files || [])];
+  if (!entries && !files.length) return;
+  if (dlg.open) dlg.close();
+  if (!entries) { loadFiles(files); return; }
+  if (entries.length === 1 && entries[0].isFile && /\.zip$/i.test(entries[0].name)) { loadFiles(files); return; }
+  load(async (p, signal) => loadLocal(await scanEntries(entries, p, signal), p, signal));
 });
 
 let toastTimer = 0;
@@ -461,6 +503,7 @@ if (r) {
   let last = null;
   try { last = JSON.parse(store.get('rv:last')); } catch {}
   if (last && last.owner) loadRepo(last, store.get('rv:node'));
+  else if (last && last.saved) load(async () => (await loadSaved(last.saved)).src, store.get('rv:node'));
   else openSource();
 }
 window.__rv = { app, loadFiles: files => load(async () => ({ name: 'test', files, meta: { kind: 'local', label: 'test' } })) };

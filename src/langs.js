@@ -408,7 +408,7 @@ export function wanted(path, size = 0) {
   return size <= (TEXT_GROUPS.has(L.group) ? 250e3 : 800e3);
 }
 
-const RE_PREV = new Set('(,=:[!&|?{};+-*%<>~^'.split(''));
+const RE_PREV = new Set('(,=:[!&|?{};+-*%>~^'.split(''));
 const RE_KW = /(?:^|[^\w$])(?:return|typeof|case|do|else|in|of|new|delete|void|throw|yield|await)$/;
 
 function regexEnd(text, out, i) {
@@ -419,6 +419,7 @@ function regexEnd(text, out, i) {
     if (!RE_PREV.has(pc) && !(/[\w$]/.test(pc) && RE_KW.test(text.slice(Math.max(0, p - 12), p + 1)))) return -1;
   }
   const n = text.length;
+  if (out[i + 1] === 62) return -1;
   let j = i + 1, inClass = false;
   while (j < n) {
     const c = out[j];
@@ -484,12 +485,13 @@ export function mask(text, L, cls) {
         if (CHAR.test(text)) { blank(i, CHAR.lastIndex, 2); i = CHAR.lastIndex; } else i++;
         continue;
       }
+      const ml = multi.includes(ch) && !(i > 0 && /[\w'\\$?\/]/.test(text[i - 1]));
       let j = i + 1, start = i;
       while (j < n) {
         const c = out[j];
         if (c === 92 && !raw.includes(ch)) { j += 2; continue; }
         if (c === code) { j++; break; }
-        if (c === 10 && ch !== '`' && !multi.includes(ch)) break;
+        if (c === 10 && ch !== '`' && !ml) break;
         if (S.template && code === 96 && c === 36 && out[j + 1] === 123) {
           blank(start, j, 2);
           j += 2;

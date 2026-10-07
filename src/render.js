@@ -147,32 +147,40 @@ export function nodeStyle(g, view) {
 }
 
 export class Renderer {
-  constructor(canvas, labels) {
+  constructor(canvas, labels, onRestore) {
     const gl = canvas.getContext('webgl2', { antialias: true, alpha: false, powerPreference: 'high-performance' });
     if (!gl) throw new Error('This browser does not support WebGL2.');
     this.gl = gl;
     this.canvas = canvas;
     this.labels = labels;
     this.ctx = labels.getContext('2d');
+    this.widths = new Map();
+    this.W = this.H = 1;
+    this.dpr = 1;
+    this.lost = false;
+    this.grid = new Uint8Array(0);
+    canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); this.lost = true; });
+    canvas.addEventListener('webglcontextrestored', () => { this.init(); this.lost = false; this.packKey = null; onRestore?.(); });
+    this.init();
+  }
+
+  init() {
+    const gl = this.gl;
     this.node = compile(gl, NODE_VS, NODE_FS);
     this.edge = compile(gl, EDGE_VS, EDGE_FS);
     this.arrow = compile(gl, ARROW_VS, ARROW_FS);
     const quad = new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]);
     const strip = new Float32Array([0, -1, 1, -1, 0, 1, 1, 1]);
     const tri = new Float32Array([1, 0, 0, 1, 0, -1]);
-    this.nodeBuf = gl.createBuffer();
-    this.edgeBuf = gl.createBuffer();
-    this.arrowBuf = gl.createBuffer();
-    this.nodeVao = this.vao(quad, this.nodeBuf, [[1, 2, 0], [2, 1, 8], [3, 4, 12], [4, 1, 28]], 32);
+    this.bufs = {};
+    for (const k of ['node', 'edge', 'arrow']) this.bufs[k] = { b: gl.createBuffer(), cap: 0 };
+    this.nodeVao = this.vao(quad, this.bufs.node.b, [[1, 2, 0], [2, 1, 8], [3, 4, 12], [4, 1, 28]], 32);
     const eattrs = [[1, 4, 0], [2, 4, 16], [3, 4, 32]];
-    this.edgeVao = this.vao(strip, this.edgeBuf, eattrs, 48);
-    this.arrowVao = this.vao(tri, this.arrowBuf, eattrs, 48);
+    this.edgeVao = this.vao(strip, this.bufs.edge.b, eattrs, 48);
+    this.arrowVao = this.vao(tri, this.bufs.arrow.b, eattrs, 48);
     this.nodeData = new Float32Array(0);
     this.edgeData = new Float32Array(0);
     this.arrowData = new Float32Array(0);
-    this.widths = new Map();
-    this.W = this.H = 1;
-    this.dpr = 1;
   }
 
   vao(corners, inst, attrs, stride) {
@@ -194,6 +202,16 @@ export class Renderer {
     return v;
   }
 
+  upload(key, data) {
+    const gl = this.gl, B = this.bufs[key];
+    gl.bindBuffer(gl.ARRAY_BUFFER, B.b);
+    if (data.byteLength > B.cap) {
+      B.cap = Math.max(data.byteLength, Math.ceil(B.cap * 1.5), 4096);
+      gl.bufferData(gl.ARRAY_BUFFER, B.cap, gl.DYNAMIC_DRAW);
+    }
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, data);
+  }
+
   resize(w, h, dpr) {
     this.W = w; this.H = h; this.dpr = dpr;
     for (const c of [this.canvas, this.labels]) {
@@ -210,13 +228,18 @@ export class Renderer {
   }
 
   draw(s) {
+    if (this.lost) return;
+    const key = [s.nb, s.sel, s.hl, s.hover, s.pal, s.ver];
+    const same = this.packKey && key.every((v, i) => v === this.packKey[i]);
+    this.packKey = key;
     const { gl } = this;
     const { view, nb, lay, cam, pal, style, sel, hl, hover } = s;
     const { x, y } = lay;
     const { kind, rad } = style;
     const nodes = nb.nodes, depth = nb.depth;
-    const dpr = this.dpr;
-    gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+    const bw = gl.drawingBufferWidth, bh = gl.drawingBufferHeight;
+    const dpr = this.dpr * (bw / this.canvas.width);
+    gl.viewport(0, 0, bw, bh);
     gl.clearColor(pal.bg[0], pal.bg[1], pal.bg[2], 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
     gl.enable(gl.BLEND);
@@ -224,6 +247,11 @@ export class Renderer {
 
     const fade = d => Math.max(0.35, 1 - 0.13 * Math.max(0, d - 1));
     const E = nb.edges;
+    if (same) {
+      this.flush(cam, pal, dpr, bw, bh, null);
+      this.drawLabels(s);
+      return;
+    }
     if (this.edgeData.length < E.length * 12) this.edgeData = new Float32Array(E.length * 12 + 1200);
     let arrows = 0;
     for (let i = 0; i < E.length; i++) if (view.eT[E[i]] === DEP) arrows++;
@@ -233,7 +261,7 @@ export class Renderer {
     for (let i = 0; i < E.length; i++) {
       const e = E[i], a = view.eA[e], b = view.eB[e], t = view.eT[e];
       const hot = a === sel || b === sel || a === hl || b === hl || a === hover || b === hover;
-      const c = t === REF ? pal.muted : t === CONTAIN ? pal.muted : pal.fg;
+      const c = t === DEP ? pal.fg : pal.muted;
       let al = (t === DEP ? 0.34 : t === REF ? 0.3 : 0.2) * fade(Math.max(depth[a], depth[b]));
       if (hot) al = Math.min(0.95, al * 2.6 + 0.15);
       const o = i * 12;
@@ -253,79 +281,86 @@ export class Renderer {
       nd[o + 7] = i === sel ? 1 : i === hl || i === hover ? 2 : 0;
     }
 
-    const prog = (P, data, count, vao, buf, mode, verts) => {
-      if (!count) return;
+    this.counts = { edge: E.length, arrow: ai, node: nodes.length };
+    this.flush(cam, pal, dpr, bw, bh, { edge: ed, arrow: ad, node: nd });
+    this.drawLabels(s);
+  }
+
+  flush(cam, pal, dpr, bw, bh, data) {
+    const gl = this.gl;
+    const passes = [
+      [this.edge, 'edge', 12, this.edgeVao, gl.TRIANGLE_STRIP, 4],
+      [this.arrow, 'arrow', 12, this.arrowVao, gl.TRIANGLES, 3],
+      [this.node, 'node', 8, this.nodeVao, gl.TRIANGLE_STRIP, 4],
+    ];
+    for (const [P, key, stride, vao, mode, verts] of passes) {
+      const count = this.counts?.[key] || 0;
+      if (!count) continue;
       gl.useProgram(P.p);
       gl.uniform2f(P.u.uCenter, cam.x, cam.y);
       gl.uniform1f(P.u.uScale, cam.scale * dpr);
-      gl.uniform2f(P.u.uHalf, this.canvas.width / 2, this.canvas.height / 2);
+      gl.uniform2f(P.u.uHalf, bw / 2, bh / 2);
       gl.uniform1f(P.u.uDpr, dpr);
       if (P.u.uSelCol) gl.uniform4f(P.u.uSelCol, pal.fg[0], pal.fg[1], pal.fg[2], 0.95);
       if (P.u.uHlCol) gl.uniform4f(P.u.uHlCol, pal.accent[0], pal.accent[1], pal.accent[2], 0.95);
-      gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-      gl.bufferData(gl.ARRAY_BUFFER, data.subarray(0, count * (data === nd ? 8 : 12)), gl.STREAM_DRAW);
+      if (data) this.upload(key, data[key].subarray(0, count * stride));
       gl.bindVertexArray(vao);
       gl.drawArraysInstanced(mode, 0, verts, count);
-    };
-    prog(this.edge, ed, E.length, this.edgeVao, this.edgeBuf, gl.TRIANGLE_STRIP, 4);
-    prog(this.arrow, ad, ai, this.arrowVao, this.arrowBuf, gl.TRIANGLES, 3);
-    prog(this.node, nd, nodes.length, this.nodeVao, this.nodeBuf, gl.TRIANGLE_STRIP, 4);
+    }
     gl.bindVertexArray(null);
-    this.drawLabels(s);
   }
 
   drawLabels(s) {
     const { ctx, W, H, dpr } = this;
     const { g, view, nb, lay, cam, pal, style, sel, hl, hover } = s;
+    if (this.graph !== g) { this.graph = g; this.widths.clear(); }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, W, H);
     if (!this.labelOrder) return;
     const CELL = 10, cols = Math.ceil(W / CELL) + 1, rows = Math.ceil(H / CELL) + 1;
-    const grid = new Uint8Array(cols * rows);
-    const font = (b, px) => `${b ? 600 : 500} ${px}px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
+    if (this.grid.length < cols * rows) this.grid = new Uint8Array(cols * rows);
+    const grid = this.grid;
+    grid.fill(0, 0, cols * rows);
     ctx.textBaseline = 'middle';
     ctx.lineJoin = 'round';
     ctx.strokeStyle = pal.css.bg;
     ctx.lineWidth = 3;
-    const special = [sel, hl, hover].filter(i => i >= 0);
-    const order = special.concat(this.labelOrder);
-    const done = new Set();
     let count = 0;
-    for (const i of order) {
-      if (count > 220) break;
-      if (done.has(i) || nb.depth[i] < 0) continue;
-      done.add(i);
-      const isSp = special.includes(i);
+    const label = (i, sp) => {
+      if (nb.depth[i] < 0) return;
       const r = Math.max(style.rad[i] * cam.scale, 2.5);
-      if (!isSp && r < 3.2 && nb.depth[i] > 1) continue;
+      if (!sp && r < 3.2 && nb.depth[i] > 1) return;
       const sx = (lay.x[i] - cam.x) * cam.scale + W / 2;
       const sy = (lay.y[i] - cam.y) * cam.scale + H / 2;
-      if (sx < -200 || sx > W + 20 || sy < -20 || sy > H + 20) continue;
-      const name = g.nodes[view.ids[i]].name;
+      if (sx < -200 || sx > W + 20 || sy < -20 || sy > H + 20) return;
+      const gid = view.ids[i];
+      const name = g.nodes[gid].name;
       const px = i === sel ? 13 : nb.depth[i] <= 1 ? 12 : 11;
-      const f = font(isSp, px);
-      const key = i + ':' + px + (isSp ? 'b' : '');
+      const font = `${sp ? 600 : 500} ${px}px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
+      const key = gid * 64 + px * 2 + (sp ? 1 : 0);
       let w = this.widths.get(key);
-      if (w === undefined) { ctx.font = f; w = ctx.measureText(name).width; this.widths.set(key, w); }
+      if (w === undefined) { ctx.font = font; w = ctx.measureText(name).width; this.widths.set(key, w); }
       const lx = sx + r + 4, ly = sy;
-      const c0 = Math.floor(lx / CELL), c1 = Math.floor((lx + w) / CELL);
-      const r0 = Math.floor((ly - px / 2 - 1) / CELL), r1 = Math.floor((ly + px / 2 + 1) / CELL);
-      let free = true;
-      if (!isSp) {
-        outer: for (let rr = Math.max(0, r0); rr <= Math.min(rows - 1, r1); rr++) {
-          for (let cc = Math.max(0, c0); cc <= Math.min(cols - 1, c1); cc++) if (grid[rr * cols + cc]) { free = false; break outer; }
-        }
+      const c0 = Math.max(0, Math.floor(lx / CELL)), c1 = Math.min(cols - 1, Math.floor((lx + w) / CELL));
+      const r0 = Math.max(0, Math.floor((ly - px / 2 - 1) / CELL)), r1 = Math.min(rows - 1, Math.floor((ly + px / 2 + 1) / CELL));
+      if (!sp) {
+        for (let rr = r0; rr <= r1; rr++) for (let cc = c0; cc <= c1; cc++) if (grid[rr * cols + cc]) return;
       }
-      if (!free) continue;
-      for (let rr = Math.max(0, r0); rr <= Math.min(rows - 1, r1); rr++) {
-        for (let cc = Math.max(0, c0); cc <= Math.min(cols - 1, c1); cc++) grid[rr * cols + cc] = 1;
-      }
-      ctx.font = f;
-      ctx.globalAlpha = isSp ? 1 : Math.max(0.45, 1 - 0.15 * Math.max(0, nb.depth[i] - 1));
-      ctx.fillStyle = isSp || nb.depth[i] <= 1 ? pal.css.fg : pal.css.muted;
+      for (let rr = r0; rr <= r1; rr++) grid.fill(1, rr * cols + c0, rr * cols + c1 + 1);
+      ctx.font = font;
+      ctx.globalAlpha = sp ? 1 : Math.max(0.45, 1 - 0.15 * Math.max(0, nb.depth[i] - 1));
+      ctx.fillStyle = sp || nb.depth[i] <= 1 ? pal.css.fg : pal.css.muted;
       ctx.strokeText(name, lx, ly);
       ctx.fillText(name, lx, ly);
       count++;
+    };
+    if (sel >= 0) label(sel, true);
+    if (hl >= 0 && hl !== sel) label(hl, true);
+    if (hover >= 0 && hover !== sel && hover !== hl) label(hover, true);
+    const order = this.labelOrder;
+    for (let k = 0; k < order.length && count <= 220; k++) {
+      const i = order[k];
+      if (i !== sel && i !== hl && i !== hover) label(i, false);
     }
     ctx.globalAlpha = 1;
   }

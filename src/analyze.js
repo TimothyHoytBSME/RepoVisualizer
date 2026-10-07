@@ -1,6 +1,8 @@
 import { langOf, mask } from './langs.js';
 
 const MAXC = 6;
+const EDGE_CODE = { ref: 1, contain: 2, dep: 3 };
+export const EDGE_NAMES = ['', 'ref', 'contain', 'dep'];
 const isFn = k => k === 'function' || k === 'method';
 const isClassy = k => k === 'class' || k === 'type';
 
@@ -90,7 +92,7 @@ function extractDefs(masked, L, starts, lines) {
     if (seen.has(k)) return;
     if (kind === 'variable') {
       const ln = lines[line];
-      if (!extra && ((ln.length < 2000 && /,\s*$/.test(ln)) || nested(line))) return;
+      if (!extra && ((ln.length < 2000 && /,\s*$/.test(ln)) || (L.group === 'py' && nested(line)))) return;
     }
     seen.add(k);
     found.push({ name, kind, line, idx, end: line });
@@ -617,5 +619,10 @@ export function analyze(files, rootName, progress = () => {}) {
 
   let symbols = 0;
   for (const n of nodes) if (n.kind !== 'dir' && n.kind !== 'file' && n.kind !== 'lib') symbols++;
-  return { nodes, edges, stats: { files: fileIds.size, symbols, libs: libs.size } };
+  const E = edges.length, es = new Int32Array(E), et = new Int32Array(E), ty = new Uint8Array(E);
+  for (let i = 0; i < E; i++) {
+    const e = edges[i];
+    es[i] = e.s; et[i] = e.t; ty[i] = EDGE_CODE[e.type];
+  }
+  return { nodes, edges: { s: es, t: et, type: ty }, stats: { files: fileIds.size, symbols, libs: libs.size } };
 }
