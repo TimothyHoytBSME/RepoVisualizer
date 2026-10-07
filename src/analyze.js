@@ -748,7 +748,10 @@ export function analyze(files, rootName, progress = () => {}) {
           scopes.push({ a, b: blockEnd(lines, a, skipOf(L)), names: new Set(ns), types: tm && tm.size ? tm : null });
         }
       }
-      if (scopes.length) info.scopes = scopes;
+      if (scopes.length) {
+        info.scopes = scopes;
+        info.scopeNames = new Set(scopes.flatMap(sc => [...sc.names, ...(sc.types ? sc.types.keys() : [])]));
+      }
     }
     Object.assign(info, { starts, owner, defPos, local });
     if (info.pkg != null) pkgOf.set(info.id, info.pkg);
@@ -870,7 +873,7 @@ export function analyze(files, rootName, progress = () => {}) {
       }
       if (!member) {
         let shadow = false;
-        if (info.scopes) for (const sc of info.scopes) if (sc.a <= ln && ln <= sc.b && sc.names.has(name)) { shadow = true; break; }
+        if (info.scopes && info.scopeNames.has(name)) for (const sc of info.scopes) if (sc.a <= ln && ln <= sc.b && sc.names.has(name)) { shadow = true; break; }
         for (let o = src; o !== fid && o >= 0; o = nodes[o].parent) {
           const ls = localsOf.get(o);
           if (ls && ls.has(name)) { shadow = true; break; }
@@ -882,7 +885,7 @@ export function analyze(files, rootName, progress = () => {}) {
       if (member && recv) {
         const pool = local.get(name) || cands;
         let selfT = null;
-        if (!SELF.has(recv) && info.scopes) {
+        if (!SELF.has(recv) && info.scopes && info.scopeNames.has(recv)) {
           let best = null;
           for (const sc of info.scopes) if (sc.types && sc.a <= ln && ln <= sc.b && sc.types.has(recv) && (!best || sc.a >= best.a)) best = sc;
           if (best) selfT = best.types.get(recv);
