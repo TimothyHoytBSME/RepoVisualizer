@@ -1073,6 +1073,11 @@ export function analyze(files, rootName, progress = () => {}) {
     const idc = new Map();
     const countWords = !TEST_PATH.test(info.f.path);
     if (countWords) info.idc = idc;
+    const elemOf = it => {
+      if (it && it.startsWith('()')) { const c = it.slice(it[2] === '.' ? 3 : 2); it = typeNames.has(c) ? null : retOf.get(c) || null; }
+      const k = it ? it.indexOf('[]') : -1;
+      return k >= 0 && it.length > k + 2 ? it.slice(k + 2) : null;
+    };
     const varType = (v, src, ln, depth, raw) => {
       let t = null;
       if (info.scopes && info.scopeNames.has(v)) {
@@ -1115,12 +1120,7 @@ export function analyze(files, rootName, progress = () => {}) {
         for (let o = src; o !== fid && o >= 0 && !shadowed; o = nodes[o].parent) shadowed = !!(localsOf.get(o)?.has(v) || typesOf.get(o)?.has(v));
         if (!shadowed) t = info.types.get(v);
       }
-      if (t && t[0] === '@') {
-        let it = depth < 3 && t.slice(1) !== v ? varType(t.slice(1), src, ln, depth + 1, true) : null;
-        if (it && it.startsWith('()')) { const c = it.slice(it[2] === '.' ? 3 : 2); it = typeNames.has(c) ? null : retOf.get(c) || null; }
-        const k = it ? it.indexOf('[]') : -1;
-        t = k >= 0 && it.length > k + 2 ? it.slice(k + 2) : null;
-      }
+      if (t && t[0] === '@') t = depth < 3 && t.slice(1) !== v ? elemOf(varType(t.slice(1), src, ln, depth + 1, true)) : null;
       if (!raw) t = headOf(t);
       return t;
     };
@@ -1138,7 +1138,7 @@ export function analyze(files, rootName, progress = () => {}) {
       if (L.sigil && prev === 36) continue;
       while (ln + 1 < starts.length && starts[ln + 1] <= at) ln++;
       const src = owner[ln];
-      let member = false, recv = '', recvCall = '';
+      let member = false, recv = '', recvCall = '', recvIdx = '';
       const p2 = at > 1 ? masked.charCodeAt(at - 2) : 0;
       if ((prev === 46 && p2 !== 46) || (prev === 62 && p2 === 45) || (prev === 58 && p2 === 58)) {
         member = true;
@@ -1158,6 +1158,16 @@ export function analyze(files, rootName, progress = () => {}) {
           let e2 = q2;
           while (e2 > 0 && isW(masked.charCodeAt(e2 - 1))) e2--;
           if (d === 0 && e2 < q2) recvCall = masked.slice(e2, q2);
+        } else if (!recv && masked.charCodeAt(j - 1) === 93) {
+          let d = 0, q2 = j - 1;
+          for (const lim = Math.max(0, j - 200); q2 >= lim; q2--) {
+            const c = masked.charCodeAt(q2);
+            if (c === 93) d++;
+            else if (c === 91 && --d === 0) break;
+          }
+          let e2 = q2;
+          while (e2 > 0 && isW(masked.charCodeAt(e2 - 1))) e2--;
+          if (d === 0 && e2 < q2) recvIdx = masked.slice(e2, q2);
         }
       }
       if (!member) {
@@ -1178,8 +1188,8 @@ export function analyze(files, rootName, progress = () => {}) {
         targets = [...hit];
       }
       if (member && recv && info.ext && info.ext.has(recv) && !local.has(recv)) continue;
-      if (member && recv) {
-        let selfT = SELF.has(recv) ? null : varType(recv, src, ln, 0);
+      if (member && (recv || recvIdx)) {
+        let selfT = recvIdx ? headOf(elemOf(varType(recvIdx, src, ln, 0, true))) : SELF.has(recv) ? null : varType(recv, src, ln, 0);
         if (!selfT) for (let o = src; o !== fid && o >= 0; o = nodes[o].parent) {
           if (SELF.has(recv)) { if (isClassy(nodes[o].kind)) break; if (ownerOf.has(o)) { selfT = ownerOf.get(o); break; } continue; }
           const sv = selfOf.get(o);
