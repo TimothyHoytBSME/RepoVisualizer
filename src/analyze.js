@@ -171,6 +171,8 @@ function extractDefs(masked, L, starts, lines) {
 
 const OPEN = '([{<', CLOSE = ')]}>';
 
+const FIELD_MODS = new Set('public private protected internal static final readonly override abstract virtual new required lateinit open transient volatile const sealed partial'.split(' '));
+const CTOR = /^(?:constructor|__init__|init|initialize)$/;
 const MODS = new Set('final const out ref in params this readonly volatile struct unsigned signed static register mut inout var val let'.split(' '));
 const lastSeg = s => { const m = s.match(/[A-Za-z_]\w*/g); return m ? m[m.length - 1] : null; };
 const VAR_TYPES = [
@@ -559,7 +561,7 @@ export function analyze(files, rootName, progress = () => {}) {
 
   const names = new Map();
   const localsOf = new Map();
-  const ownerOf = new Map(), selfOf = new Map(), memberish = new Set(), typesOf = new Map();
+  const ownerOf = new Map(), selfOf = new Map(), memberish = new Set(), typesOf = new Map(), fieldTypes = new Map();
   const pkgOf = new Map();
   const csNs = new Set();
   let done = 0;
@@ -659,6 +661,22 @@ export function analyze(files, rootName, progress = () => {}) {
       edges.push({ s: parent, t: d.node, type: 'contain' });
       if (d.locals) localsOf.set(d.node, d.locals);
       if (d.types && d.types.size) typesOf.set(d.node, d.types);
+      if (p && isClassy(p.kind)) {
+        let ft = fieldTypes.get(p.node);
+        if (d.kind === 'variable') {
+          const ln = lines[d.line], col = d.idx - starts[d.line];
+          const after = /^[ \t]*[?!]?[ \t]*:[ \t]*([A-Za-z_][\w.]*)/.exec(ln.slice(col + d.name.length));
+          let ty = after ? lastSeg(after[1]) : null;
+          if (!ty && L.paramLast) {
+            const ids = (ln.slice(0, col).replace(/<[^<>]*(?:<[^<>]*>[^<>]*)*>/g, ' ').match(L.idAll) || []).filter(w => !MODS.has(w) && !FIELD_MODS.has(w));
+            ty = ids.length ? ids[ids.length - 1] : null;
+          }
+          if (ty) { if (!ft) fieldTypes.set(p.node, (ft = new Map())); ft.set(d.name, ty); }
+        } else if (d.types && (CTOR.test(d.name) || d.name === p.name)) {
+          if (!ft) fieldTypes.set(p.node, (ft = new Map()));
+          for (const [k, v] of d.types) if (!ft.has(k)) ft.set(k, v);
+        }
+      }
       if (ownerName) ownerOf.set(d.node, ownerName);
       if (L.group === 'js' && isFn(d.kind) && PROP_FN.test(lines[d.line].slice(Math.max(0, d.idx - starts[d.line] - 120), d.idx - starts[d.line]))) memberish.add(d.node);
       if (d.self) selfOf.set(d.node, d.self);
@@ -816,6 +834,8 @@ export function analyze(files, rootName, progress = () => {}) {
           const tm = typesOf.get(o), ty = tm && tm.get(recv);
           if (ty) { selfT = ty; break; }
           if (selfOf.get(o) === recv) break;
+          const ft = fieldTypes.get(o), fy = ft && ft.get(recv);
+          if (fy) { selfT = fy; break; }
         }
         if (!selfT) for (let o = src; o !== fid && o >= 0; o = nodes[o].parent) {
           if (SELF.has(recv)) { if (isClassy(nodes[o].kind)) break; if (ownerOf.has(o)) { selfT = ownerOf.get(o); break; } continue; }
