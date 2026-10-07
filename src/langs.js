@@ -168,7 +168,7 @@ const BASE_KW = kw(`if else for while do switch case break continue return funct
 const JS = {
   group: 'js', explicit: true, flatVars: true,
   exts: 'js mjs cjs jsx ts tsx mts cts vue svelte astro',
-  syntax: { line: ['//'], block: [['/*', '*/']], quotes: '\'"`', template: true, regex: true },
+  syntax: { line: ['//'], block: [['/*', '*/']], quotes: '\'"`', template: '`', regex: true },
   id: /[A-Za-z_$][\w$]*/g,
   kw: kw(`break case catch class const continue debugger default delete do else export extends finally for function if import in instanceof let new return super switch this throw try typeof var void while with yield async await static of null true false undefined interface type enum implements package private protected public readonly abstract declare namespace module as from any number string boolean never unknown object symbol bigint keyof infer is satisfies override constructor require exports console window document Math JSON Object Array String Number Boolean Promise Error Map Set Date RegExp Symbol`),
   defs: [
@@ -189,7 +189,7 @@ const JS = {
 };
 
 const PY = {
-  group: 'py', explicit: true, flatVars: true, exts: 'py pyi pyw',
+  group: 'py', explicit: true, flatVars: true, shadowExt: true, exts: 'py pyi pyw',
   syntax: { line: ['#'], quotes: '\'"', triple: true },
   kw: kw(`False None True and as assert async await break class continue def del elif else except finally for from global if import in is lambda nonlocal not or pass raise return try while with yield self cls print len range str int float list dict set tuple bool object super isinstance type match case`),
   defs: [
@@ -246,17 +246,22 @@ const C = {
   resolve: 'c',
 };
 
-const JVM_KW = kw(`abstract assert boolean break byte case catch char class const continue default do double else enum extends final finally float for goto if implements import instanceof int interface long native new package private protected public return short static strictfp super switch synchronized this throw throws transient try void volatile while true false null var val fun object when is in out override open internal data sealed companion lateinit init let def it String Int Long Boolean Unit Any List Map Set Integer Object`);
+const JVM_KW = kw(`abstract assert boolean break byte case catch char class const continue default do double else enum extends final finally float for goto if implements import instanceof int interface long native new package private protected public return short static strictfp super switch synchronized this throw throws transient try void volatile while true false null var val fun object when is in out override open internal data sealed companion lateinit init let def it constructor typealias actual expect String Int Long Boolean Unit Any List Map Set Integer Object`);
 
 const JVM = {
-  paramLast: true, group: 'jvm', pkgDir: true, exts: 'java kt kts scala sc groovy gradle',
-  syntax: { ...C_SYN, triple: true },
+  paramLast: true, group: 'jvm', pkgDir: true, explicit: true, shadowExt: true, exts: 'java kt kts scala sc groovy gradle',
+  syntax: { ...C_SYN, triple: true, template: '"', dollarId: true },
   kw: JVM_KW,
+  priv: /\bprivate\b/,
+  pkg: /^[ \t]*package[ \t]+([\w.]+)/m,
+  strip: /^[ \t]*(?:package|import)\b[^\n]*/gm,
+  head: /^(?:(?:private|public|protected|internal|actual|expect|@[\w.]+(?:\([^)]*\))?)\s+)*constructor\b/,
   defs: [
-    [R`\b(?:class|interface|enum|record|object|trait)[ \t]+(${N})`, 'class'],
+    [R`\b(?:enum[ \t]+class|annotation[ \t]+class|class|interface|enum|record|object|trait)[ \t]+(${N})`, 'class'],
+    [R`\btypealias[ \t]+(${N})`, 'type'],
     [R`@interface[ \t]+(${N})`, 'type'],
-    [R`\b(?:fun|def)[ \t]+(?:<[^>\n]*>[ \t]*)?(?:[\w.]+\.)?(${N})`, 'function'],
-    [R`^[ \t]*(?:(?:private|public|protected|internal|override|lateinit|const|open|static|final|inline)[ \t]+)*(?:val|var)[ \t]+(${N})`, 'variable'],
+    [R`\b(?:fun|def)[ \t]+(?:(?:<(?:[^<>\n]|<[^<>\n]*>)*>)[ \t]*)?(?:[\w.]+(?:<(?:[^<>\n]|<[^<>\n]*>)*>)?\??\.)?(${N})`, 'function'],
+    [R`^[ \t]*(?:(?:@[\w.:]+(?:\([^)\n]*\))?|private|public|protected|internal|override|lateinit|const|open|static|final|inline|actual|expect|abstract|external|lazy|implicit)[ \t]+)*(?:val|var)[ \t]+(?:(?:<(?:[^<>\n]|<[^<>\n]*>)*>)[ \t]*)?(?:[\w.]+(?:<(?:[^<>\n]|<[^<>\n]*>)*>)?\??\.)?(${N})`, 'variable', null, true],
     [R`^[ \t]*(?:(?:public|private|protected|static|final|volatile|transient)[ \t]+)+(?!class\b|interface\b|enum\b|record\b|abstract\b|void\b)[\w<>\[\],.? ]+?[ \t]+(${N})[ \t]*(?:=|;)`, 'variable'],
   ],
   extra: cfuncs,
@@ -265,7 +270,7 @@ const JVM = {
 };
 
 const CS = {
-  paramLast: true, group: 'cs', pkgDir: true, exts: 'cs',
+  paramLast: true, group: 'cs', pkgDir: true, exts: 'cs', priv: /\bprivate\b/, strip: /^[ \t]*(?:using|namespace)\b[^\n{]*/gm,
   syntax: C_SYN,
   kw: kw(`abstract as base bool break byte case catch char checked class const continue decimal default delegate do double else enum event explicit extern false finally fixed float for foreach goto if implicit in int interface internal is lock long namespace new null object operator out override params private protected public readonly ref return sbyte sealed short sizeof stackalloc static string struct switch this throw true try typeof uint ulong unchecked unsafe ushort using virtual void volatile while var get set init value async await record required yield nameof dynamic List Task`),
   defs: [
@@ -279,7 +284,7 @@ const CS = {
 };
 
 const SWIFT = {
-  group: 'swift', pkgDir: true, exts: 'swift',
+  group: 'swift', pkgDir: true, exts: 'swift', priv: /\b(?:private|fileprivate)\b/, strip: /^[ \t]*(?:@\w+[ \t]+)*import\b[^\n]*/gm,
   syntax: { line: ['//'], block: [['/*', '*/']], quotes: '"', triple: true },
   kw: kw(`associatedtype class deinit enum extension fileprivate func import init inout internal let open operator private protocol public rethrows static struct subscript typealias var break case continue default defer do else fallthrough for guard if in repeat return switch where while as false is nil self Self super throw throws true try async await some any String Int Double Bool Array Dictionary`),
   defs: [
@@ -528,7 +533,14 @@ export function mask(text, L, cls) {
         if (c === 92 && !raw.includes(ch)) { j += 2; continue; }
         if (c === code) { j++; break; }
         if (c === 10 && ch !== '`' && !ml) break;
-        if (S.template && code === 96 && c === 36 && out[j + 1] === 123) {
+        if (S.dollarId && c === 36 && S.template.includes(ch) && /[A-Za-z_]/.test(text[j + 1] || '')) {
+          blank(start, j + 1, 2);
+          j++;
+          while (j < n && /\w/.test(text[j])) j++;
+          start = j;
+          continue;
+        }
+        if (S.template && S.template.includes(ch) && c === 36 && out[j + 1] === 123) {
           blank(start, j, 2);
           j += 2;
           let d = 1;

@@ -94,7 +94,7 @@ const SKIP_SAME = {
   rb: /^(?:rescue|ensure|elsif|when|else)\b/,
 };
 
-function blockEnd(lines, d, skip) {
+function blockEnd(lines, d, skip, cont) {
   const I = indentOf(lines[d]);
   let end = d, first = true;
   for (let k = d + 1; k < lines.length; k++) {
@@ -104,6 +104,7 @@ function blockEnd(lines, d, skip) {
     if (ind > I) { end = k; first = false; continue; }
     if (ind === I) {
       const c = t[0];
+      if (cont && first && cont.test(t)) { end = k; cont = null; continue; }
       if (skip && skip.test(t)) continue;
       if (c === '{' && first) { end = k; first = false; continue; }
       if (c === '}' || c === ')' || c === ']') {
@@ -147,16 +148,16 @@ function extractDefs(masked, L, starts, lines) {
     seen.add(k);
     found.push({ name, kind, line, idx, end: line, owner });
   };
-  for (const [re, kind, ok] of L.defs) {
+  for (const [re, kind, ok, keep] of L.defs) {
     for (const m of masked.matchAll(re)) {
       const i = m.indices[1][0];
-      if (!ok || ok(masked, i)) push(m[1], i, kind);
+      if (!ok || ok(masked, i)) push(m[1], i, kind, keep);
     }
   }
   if (L.extra) for (const d of L.extra(masked)) push(d.name, d.idx, d.kind, true, d.owner);
   found.sort((a, b) => a.idx - b.idx);
   const skip = SKIP_SAME[L.group];
-  for (const d of found) d.end = blockEnd(lines, d.line, skip);
+  for (const d of found) d.end = blockEnd(lines, d.line, skip, d.kind === 'class' ? L.head : null);
   return found;
 }
 
@@ -402,12 +403,13 @@ function makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, goMods, names }) {
         const cands = names.get(info.L.group)?.get(segs[segs.length - 1]);
         if (cands) {
           const set = new Set(ds);
-          const hits = [...new Set(cands.map(c => nodes[c].file).filter(f => set.has(nodes[nodes[f].parent].path)))];
+          const hits = [...new Set(cands.filter(c => nodes[c].parent === nodes[c].file).map(c => nodes[c].file).filter(f => set.has(nodes[nodes[f].parent].path)))];
           if (hits.length) return hits;
         }
         return null;
       }
-      return segs.slice(0, Math.min(2, segs.length)).join('.');
+      const pk = wild || segs.length < 2 ? segs : segs.slice(0, -1);
+      return pk.slice(0, 2).join('.');
     },
     cs(spec) {
       const first = spec.split('.')[0];
@@ -523,15 +525,21 @@ export function analyze(files, rootName, progress = () => {}) {
 
   const names = new Map();
   const localsOf = new Map();
+  const pkgOf = new Map();
   const csNs = new Set();
   let done = 0;
   for (const info of infos) {
     if (++done % 50 === 0) progress({ phase: 'Reading code', done, total: infos.length });
     const { f, L } = info;
     const text = L.prep ? L.prep(f.path, f.text) : f.text;
-    const masked = L.syntax ? mask(text, L) : null;
-    info.masked = masked;
+    let masked = L.syntax ? mask(text, L) : null;
     info.specs = L.imports ? L.imports(text, masked) : [];
+    if (L.pkg && masked) {
+      const pm = L.pkg.exec(masked);
+      if (pm) info.pkg = pm[1];
+    }
+    if (L.strip && masked) masked = masked.replace(L.strip, x => ' '.repeat(x.length));
+    info.masked = masked;
     if (L.group === 'cs') for (const m of masked.matchAll(/\bnamespace[ \t]+(\w+)/g)) csNs.add(m[1]);
     if (!L.defs || !masked) continue;
 
@@ -592,12 +600,15 @@ export function analyze(files, rootName, progress = () => {}) {
       if (isClassy(d.kind) && !types.has(d.name)) types.set(d.name, d);
       owner.fill(d.node, d.line, d.end + 1);
       defPos.add(d.idx);
-      const a = g.get(d.name);
-      if (a) a.push(d.node); else g.set(d.name, [d.node]);
+      if (!(L.priv && L.priv.test(lines[d.line].slice(0, d.idx - starts[d.line])))) {
+        const a = g.get(d.name);
+        if (a) a.push(d.node); else g.set(d.name, [d.node]);
+      }
       const b = local.get(d.name);
       if (b) b.push(d.node); else local.set(d.name, [d.node]);
     }
     Object.assign(info, { starts, owner, defPos, local });
+    if (info.pkg != null) pkgOf.set(info.id, info.pkg);
   }
 
   const resolve = makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, goMods, names });
@@ -611,6 +622,7 @@ export function analyze(files, rootName, progress = () => {}) {
       try { r = resolve(info.L.resolve, spec.trim(), info); } catch { r = null; }
       if (r == null || r === '') continue;
       if (typeof r === 'string') {
+        if (info.L.shadowExt && !spec.endsWith('*')) (info.ext ??= new Set()).add(spec.trim().split(/[.:/]/).pop());
         let id = libs.get(r);
         if (id === undefined) {
           id = add({ kind: 'lib', key: 'l:' + r, name: r, path: '', parent: -1, file: -1, line: 0, end: 0, group: info.L.group });
@@ -644,8 +656,9 @@ export function analyze(files, rootName, progress = () => {}) {
       const name = m[0];
       if (name.length < 2) continue;
       if (countWords && !L.kw.has(name)) idc.set(name, (idc.get(name) || 0) + 1);
-      const cands = g.get(name);
+      const cands = g.get(name) || local.get(name);
       if (!cands) continue;
+      if (info.ext && info.ext.has(name) && !local.has(name)) continue;
       const at = m.index;
       if (defPos.has(at)) continue;
       while (ln + 1 < starts.length && starts[ln + 1] <= at) ln++;
@@ -661,7 +674,11 @@ export function analyze(files, rootName, progress = () => {}) {
       if (!targets) {
         if (cands.length > 200) continue;
         targets = cands.filter(c => info.imported.has(nodes[c].file));
-        if (!targets.length && L.pkgDir) targets = cands.filter(c => nodes[nodes[c].file].parent === fdir);
+        if (!targets.length && L.pkgDir) {
+          targets = info.pkg != null
+            ? cands.filter(c => pkgOf.get(nodes[c].file) === info.pkg && (masked.charCodeAt(at - 1) === 46 || nodes[c].parent === nodes[c].file))
+            : cands.filter(c => nodes[nodes[c].file].parent === fdir);
+        }
         if (!targets.length) {
           if (cands.length > MAXC) continue;
           targets = cands;
