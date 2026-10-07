@@ -38,6 +38,7 @@ The funnel button shows or hides tests, variables and libraries, and holds the c
 | Switch map | menu | M | Y |
 | Search | search box | / | — |
 | Open repository | repo name in the top bar | O | Start |
+| Path to another node | route button in the details panel | G | — |
 
 ## How it works
 

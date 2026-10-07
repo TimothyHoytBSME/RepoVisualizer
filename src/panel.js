@@ -79,6 +79,8 @@ export class Panel {
     this.cur = -1;
     el.addEventListener('click', e => {
       if (e.target.closest('[data-share]')) { e.stopPropagation(); app.share(); return; }
+      if (e.target.closest('[data-path]')) { e.stopPropagation(); app.startPath(); return; }
+      if (e.target.closest('[data-path-clear]')) { e.stopPropagation(); app.clearPath(); return; }
       const nav = e.target.closest('[data-nav]');
       if (nav) { e.stopPropagation(); if (nav.dataset.nav === 'back') history.back(); else history.forward(); return; }
       const t = e.target.closest('[data-n]');
@@ -105,6 +107,21 @@ export class Panel {
     if (line < n.line || line > n.end) return;
     hit(n);
     for (const c of edgesOf(g, n.id, 'out')) this.walk(c, line, hit);
+  }
+
+  pathHTML(id) {
+    const { app } = this, p = app.pathNodes;
+    if (!p || app.view.ids[p[0]] !== id) return '';
+    const { view, g } = app;
+    const rel = (u, w) => {
+      const e = app.edgeBetween(u, w);
+      if (e < 0) return '';
+      const fwd = view.eA[e] === u, t = view.eT[e];
+      return t === 3 ? (fwd ? '↓ uses' : '↑ used by') : t === 2 ? (fwd ? '↓ contains' : '↑ inside') : '≈ related';
+    };
+    let items = '';
+    for (let i = 1; i < p.length; i++) items += `<li class="step">${rel(p[i - 1], p[i])}</li>${this.item(view.ids[p[i]])}`;
+    return `<div class="rel path"><div class="phd">Path to <b>${esc(g.nodes[view.ids[p[p.length - 1]]].name)}</b><span class="cnt">${p.length - 1} step${p.length > 2 ? 's' : ''}</span><button type="button" data-path-clear aria-label="Clear path" title="Clear path">×</button></div><ul>${items}</ul></div>`;
   }
 
   nav(back, fwd) {
@@ -181,8 +198,9 @@ export class Panel {
 
     const url = this.link(n);
     const loc = n.kind === 'keyword' ? `found in ${usedBy.length} files` : n.kind === 'lib' ? 'external library' : n.kind === 'dir' ? n.path || '/' : n.kind === 'file' ? n.path : `${n.path}:${n.line + 1}`;
-    let html = `<div class="ph"><div class="grip"></div><div class="pt">${this.chip(n.kind)}<span class="pname">${esc(n.name)}</span><span class="pnav">${this.app.meta?.kind === 'github' ? '<button type="button" data-share aria-label="Share link" title="Share a link to this node"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V4M8 8l4-4 4 4M5 13v6h14v-6"/></svg></button>' : ''}<button type="button" data-nav="back" aria-label="Back" title="Back (Backspace)"${this.canBack ? '' : ' disabled'}>‹</button><button type="button" data-nav="fwd" aria-label="Forward" title="Forward"${this.canFwd ? '' : ' disabled'}>›</button></span></div>
+    let html = `<div class="ph"><div class="grip"></div><div class="pt">${this.chip(n.kind)}<span class="pname">${esc(n.name)}</span><span class="pnav"><button type="button" data-path aria-label="Find a path to another node" title="Path to… (G)"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="6" r="2.5"/><path d="M8.5 18H15a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h6.5"/></svg></button>${this.app.meta?.kind === 'github' ? '<button type="button" data-share aria-label="Share link" title="Share a link to this node"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V4M8 8l4-4 4 4M5 13v6h14v-6"/></svg></button>' : ''}<button type="button" data-nav="back" aria-label="Back" title="Back (Backspace)"${this.canBack ? '' : ' disabled'}>‹</button><button type="button" data-nav="fwd" aria-label="Forward" title="Forward"${this.canFwd ? '' : ' disabled'}>›</button></span></div>
       <div class="ppath">${url ? `<a href="${url}" target="_blank" rel="noopener">${esc(loc)} ↗</a>` : esc(loc)}</div></div><div class="pbody">`;
+    html += this.pathHTML(id);
 
     if (n.path && n.kind !== 'dir' && files.has(n.path)) {
       const text = files.get(n.path);

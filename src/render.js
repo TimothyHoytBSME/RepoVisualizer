@@ -271,14 +271,15 @@ export class Renderer {
     let ai = 0;
     for (let i = 0; i < E.length; i++) {
       const e = E[i], a = view.eA[e], b = view.eB[e], t = view.eT[e];
-      const hot = a === sel || b === sel || a === hl || b === hl || a === hover || b === hover;
-      const c = t === DEP ? pal.fg : pal.muted;
+      const onPath = nb.pathE ? nb.pathE.has(e) : false;
+      const hot = onPath || a === sel || b === sel || a === hl || b === hl || a === hover || b === hover;
+      const c = onPath ? pal.accent : t === DEP ? pal.fg : pal.muted;
       let al = (t === DEP ? 0.34 : t === REF ? 0.3 : 0.2) * fade(Math.max(depth[a], depth[b]));
-      if (hot) al = Math.min(0.95, al * 2.6 + 0.15);
+      if (hot) al = onPath ? 0.95 : Math.min(0.95, al * 2.6 + 0.15);
       const o = i * 12;
       ed[o] = x[a]; ed[o + 1] = y[a]; ed[o + 2] = x[b]; ed[o + 3] = y[b];
       ed[o + 4] = c[0]; ed[o + 5] = c[1]; ed[o + 6] = c[2]; ed[o + 7] = al;
-      ed[o + 8] = rad[a]; ed[o + 9] = rad[b]; ed[o + 10] = t === DEP ? 1 : 0; ed[o + 11] = hot ? 1.8 : 1.1;
+      ed[o + 8] = rad[a]; ed[o + 9] = rad[b]; ed[o + 10] = t === DEP ? 1 : 0; ed[o + 11] = onPath ? 2.6 : hot ? 1.8 : 1.1;
       if (t === DEP) { ad.set(ed.subarray(o, o + 12), ai * 12); ai++; }
     }
     if (this.nodeData.length < nodes.length * 8) this.nodeData = new Float32Array(nodes.length * 8 + 800);
@@ -289,7 +290,7 @@ export class Renderer {
       const o = j * 8;
       nd[o] = x[i]; nd[o + 1] = y[i]; nd[o + 2] = rad[i];
       nd[o + 3] = c[0]; nd[o + 4] = c[1]; nd[o + 5] = c[2]; nd[o + 6] = fade(depth[i]);
-      nd[o + 7] = (i === sel ? 1 : i === hl || i === hover ? 2 : 0) + style.shape[i] * 4;
+      nd[o + 7] = (i === sel ? 1 : i === hl || i === hover || (nb.pathN && nb.pathN.has(i)) ? 2 : 0) + style.shape[i] * 4;
     }
 
     this.counts = { edge: E.length, arrow: ai, node: nodes.length };
@@ -368,11 +369,12 @@ export class Renderer {
     if (sel >= 0) label(sel, true);
     if (hl >= 0 && hl !== sel) label(hl, true);
     if (hover >= 0 && hover !== sel && hover !== hl) label(hover, true);
+    if (nb.pathN) for (const i of nb.pathN) if (i !== sel && i !== hl && i !== hover) label(i, true);
     const order = this.labelOrder;
     const cap = Math.max(60, Math.min(220, (W * H) / 4000));
     for (let k = 0; k < order.length && count <= cap; k++) {
       const i = order[k];
-      if (i !== sel && i !== hl && i !== hover) label(i, false);
+      if (i !== sel && i !== hl && i !== hover && !(nb.pathN && nb.pathN.has(i))) label(i, false);
     }
     ctx.globalAlpha = 1;
   }

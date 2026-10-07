@@ -1,5 +1,5 @@
 import { parseRepo, loadGitHub, loadLocal, dropEntries, scanEntries, saveLocal, loadSaved, recent } from './source.js';
-import { indexGraph, buildView, neighborhood, defaultNode, isTest } from './graph.js';
+import { indexGraph, buildView, neighborhood, defaultNode, isTest, shortestPath, withPath, edgeBetween } from './graph.js';
 import { LayoutHost } from './layout-host.js';
 import { Renderer, readPalette, nodeStyle } from './render.js';
 import { attachControls, makeGamepad } from './controls.js';
@@ -170,6 +170,7 @@ function setMap(type, gid = -1, push = false) {
   app.lay = new LayoutHost(app.view);
   app.lay.onFresh = kick;
   app.sel = app.hl = app.hover = app.touchPeek = -1;
+  app.path = null;
   let i = gid >= 0 ? mapInto(gid) : -1;
   if (i < 0) i = defaultNode(app.g, app.view);
   app.cam.x = app.cam.y = 0;
@@ -179,6 +180,11 @@ function setMap(type, gid = -1, push = false) {
 function refresh() {
   const { cam } = app;
   app.nb = neighborhood(app.view, app.sel, app.depth, app.limit || Infinity);
+  app.pathNodes = null;
+  if (app.path != null) {
+    const p = shortestPath(app.view, app.sel, app.path);
+    if (p && p.length > 1) { app.nb = withPath(app.view, app.nb, p); app.pathNodes = p; } else app.path = null;
+  }
   app.lay.set(app.nb, app.sel, cam.x, cam.y);
   renderer?.setLabelOrder(app.nb, app.style.rad);
   for (const k of ['hl', 'hover', 'touchPeek']) if (app[k] >= 0 && app.nb.depth[app[k]] < 0) app[k] = -1;
@@ -192,6 +198,7 @@ function refresh() {
 function select(i, instant, push = !instant) {
   if (i < 0 || !app.view) return;
   if (push) app.pendingFit = 'in';
+  if (app.path != null && !(app.pathNodes && app.pathNodes.includes(i))) app.path = null;
   app.sel = i;
   app.hl = -1;
   refresh();
@@ -492,7 +499,9 @@ const api = {
   },
   depth: d => setDepth(app.depth + d),
   focusSearch() { $('#search').focus(); },
+  path() { app.startPath(); },
   escape() {
+    app.clearPath();
     app.hl = app.touchPeek = -1;
     closeResults();
     if (narrow()) togglePanel(true);
@@ -647,9 +656,46 @@ function runSearch() {
 function choose(id) {
   search.value = '';
   closeResults();
+  const path = pathMode;
   search.blur();
-  app.selectGlobal(id);
+  endPathMode();
+  if (path) app.setPath(id); else app.selectGlobal(id);
 }
+let pathMode = false;
+function endPathMode() {
+  if (!pathMode) return;
+  pathMode = false;
+  search.placeholder = 'Search';
+  search.classList.remove('pathing');
+}
+app.startPath = () => {
+  if (!app.g || app.sel < 0) return;
+  pathMode = true;
+  search.placeholder = `Path from ${app.g.nodes[app.view.ids[app.sel]].name} to…`;
+  search.classList.add('pathing');
+  search.value = '';
+  closeResults();
+  search.focus();
+};
+app.setPath = gid => {
+  const t = mapInto(gid), from = app.g.nodes[app.view.ids[app.sel]], to = app.g.nodes[gid];
+  if (t < 0) { toast(`${to.name} isn't shown in this map (check the filters)`); return; }
+  if (t === app.sel) { toast(`That's the selected node`); return; }
+  const p = shortestPath(app.view, app.sel, t);
+  if (!p) { toast(`No connection between ${from.name} and ${to.name} in this map`); return; }
+  app.path = t;
+  refresh();
+  panel.show(app.view.ids[app.sel]);
+  app.pendingFit = true;
+  $('#live').textContent = `Path to ${to.name}: ${p.length - 1} steps.`;
+};
+app.clearPath = () => {
+  if (app.path == null) return;
+  app.path = null;
+  refresh();
+  panel.show(app.view.ids[app.sel]);
+};
+app.edgeBetween = (u, w) => edgeBetween(app.view, u, w);
 search.addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => { searchTimer = 0; runSearch(); }, 70); });
 search.addEventListener('keydown', e => {
   if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
@@ -661,14 +707,14 @@ search.addEventListener('keydown', e => {
     e.preventDefault();
     if (searchTimer || !hits.length) { clearTimeout(searchTimer); searchTimer = 0; runSearch(); }
     if (hits.length) choose(hits[hitIdx]);
-  } else if (e.key === 'Escape') { closeResults(); search.blur(); }
+  } else if (e.key === 'Escape') { closeResults(); search.blur(); endPathMode(); }
 });
 let pressingResults = false;
 search.addEventListener('blur', e => {
   if (e.relatedTarget && results.contains(e.relatedTarget)) return;
   const close = () => {
     if (pressingResults) { setTimeout(close, 200); return; }
-    if (document.activeElement !== search) closeResults();
+    if (document.activeElement !== search) { closeResults(); endPathMode(); }
   };
   setTimeout(close, 250);
 });

@@ -132,6 +132,48 @@ export function neighborhood(v, sel, depth, limit = Infinity) {
   return { nodes: Int32Array.from(nodes), depth: d, from, edges: Int32Array.from(inducedEdges(v, nodes, d)), total };
 }
 
+export function shortestPath(v, a, b) {
+  if (a === b) return [a];
+  const from = new Int32Array(v.n).fill(-1);
+  from[a] = a;
+  const q = [a];
+  for (let h = 0; h < q.length; h++) {
+    const u = q[h];
+    for (let k = v.start[u]; k < v.start[u + 1]; k++) {
+      const e = v.adj[k], w = v.eA[e] === u ? v.eB[e] : v.eA[e];
+      if (from[w] >= 0) continue;
+      from[w] = u;
+      if (w === b) {
+        const p = [b];
+        for (let x = b; x !== a; x = from[x]) p.push(from[x]);
+        return p.reverse();
+      }
+      q.push(w);
+    }
+  }
+  return null;
+}
+
+export function edgeBetween(v, u, w) {
+  for (let k = v.start[u]; k < v.start[u + 1]; k++) {
+    const e = v.adj[k];
+    if ((v.eA[e] === u && v.eB[e] === w) || (v.eA[e] === w && v.eB[e] === u)) return e;
+  }
+  return -1;
+}
+
+export function withPath(v, nb, path) {
+  const d = nb.depth, from = nb.from, extra = [];
+  for (let i = 1; i < path.length; i++) {
+    const u = path[i];
+    if (d[u] < 0) { d[u] = i; from[u] = path[i - 1]; extra.push(u); }
+  }
+  const nodes = extra.length ? Int32Array.from([...nb.nodes, ...extra]) : nb.nodes;
+  const pathE = new Set();
+  for (let i = 1; i < path.length; i++) pathE.add(edgeBetween(v, path[i - 1], path[i]));
+  return { ...nb, nodes, edges: extra.length ? Int32Array.from(inducedEdges(v, nodes, d)) : nb.edges, pathE, pathN: new Set(path) };
+}
+
 export function defaultNode(g, v) {
   if (v.type === 'files') return v.local[0] >= 0 ? v.local[0] : 0;
   if (v.type === 'words') {
