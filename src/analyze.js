@@ -57,6 +57,7 @@ const PROP_FN = /(?:\.[\w$]+\s*=|[\w$]+\s*:)\s*(?:async\s+)?function\s*\*?\s*$|\
 const CAP_TYPES = new Set(['jvm', 'cs', 'swift', 'dart', 'py', 'rs', 'rb', 'php']);
 const IMPLICIT_THIS = new Set(['jvm', 'cs', 'swift', 'dart', 'c', 'rb']);
 const AMBIENT = /\.d\.[mc]?ts$/;
+const C_HEADER = /\.(?:h|hh|hpp|hxx|h\+\+|cuh|inc|inl)$/i;
 const DECLS = new Set(['c', 'jvm', 'cs']);
 const TRAILING = new Set(['swift', 'jvm']);
 const GLOBAL_VARS = new Set(['swift', 'go', 'c', 'jvm', 'cs']);
@@ -721,7 +722,7 @@ export function analyze(files, rootName, progress = () => {}) {
 
   const names = new Map();
   const localsOf = new Map();
-  const aliasOf = new Map(), retNode = new Map(), closureOf = new Map(), ownerOf = new Map(), selfOf = new Map(), memberish = new Set(), typesOf = new Map(), fieldTypes = new Map(), retOf = new Map(), basesOf = new Map();
+  const privC = new Set(), aliasOf = new Map(), retNode = new Map(), closureOf = new Map(), ownerOf = new Map(), selfOf = new Map(), memberish = new Set(), typesOf = new Map(), fieldTypes = new Map(), retOf = new Map(), basesOf = new Map();
   const pkgOf = new Map();
   const csNs = new Set();
   let done = 0;
@@ -901,7 +902,10 @@ export function analyze(files, rootName, progress = () => {}) {
       defPos.add(d.idx);
       let inFn = false;
       for (let q = p; q && !inFn; q = q.up) if (isFn(q.kind) && !q.drop) inFn = true;
-      if (!d.ext && !inFn && !(L.priv && L.priv.test(lines[d.line].slice(0, d.idx - starts[d.line])))) {
+      const pre = lines[d.line].slice(0, d.idx - starts[d.line]);
+      const cPriv = L.group === 'c' && isFn(d.kind) && !(p && isClassy(p.kind)) && !C_HEADER.test(f.path) && /\bstatic\b/.test(pre.trim() ? pre : lines[d.line - 1] || '');
+      if (cPriv) privC.add(d.node);
+      if (!d.ext && !inFn && !(L.priv && L.priv.test(pre))) {
         const a = g.get(d.name);
         if (a) a.push(d.node); else g.set(d.name, [d.node]);
       }
@@ -1342,6 +1346,7 @@ export function analyze(files, rootName, progress = () => {}) {
         if (!call && !/(?:\|>|&)[ \t]*$/.test(masked.slice(Math.max(0, at - 4), at))) continue;
       }
       if (DECLS.has(L.group) && !member) {
+        if (L.group === 'c' && /\([ \t]*\*[ \t]*$/.test(masked.slice(Math.max(0, at - 6), at)) && /^[ \t]*\)[ \t]*\(/.test(masked.slice(at + name.length, at + name.length + 6))) continue;
         if (L.group === 'c' && /(?:goto[ \t]+|^[ \t]*#[ \t]*)$/.test(masked.slice(Math.max(starts[ln], at - 8), at)) || (/^[ \t]*$/.test(masked.slice(starts[ln], at)) && /^[ \t]*:(?!:)/.test(masked.slice(at + name.length, at + name.length + 4)))) continue;
         if (at < declEnd) {
           if (/^[ \t]*[,)=[]/.test(masked.slice(at + name.length, at + name.length + 8)) && /(?:\w[ \t]+|[*&][ \t]*)$/.test(masked.slice(Math.max(0, at - 40), at))) continue;
@@ -1461,7 +1466,7 @@ export function analyze(files, rootName, progress = () => {}) {
           }
           if (!targets.length) {
             if (cands.length > MAXC) continue;
-            targets = L.group === 'c' ? cands.filter(c => isFn(nodes[c].kind) && (!member || prev === 58 || nodes[c].kind === 'method'))
+            targets = L.group === 'c' ? cands.filter(c => isFn(nodes[c].kind) && !privC.has(c) && (!member || prev === 58 || nodes[c].kind === 'method'))
               : !info.module || (L.pkgDir && info.pkg != null) ? cands
               : member ? preferImported(cands.filter(c => (memberish.has(c) || (nodes[c].parent >= 0 && isClassy(nodes[nodes[c].parent].kind))) && nf(c)), info)
               : masked.charCodeAt(at + name.length) === 33 ? cands : cands.filter(c => AMBIENT.test(nodes[c].path));
@@ -1470,7 +1475,7 @@ export function analyze(files, rootName, progress = () => {}) {
             else if (exRoot) targets = targets.filter(c => { const r = EX_ROOT.exec(nodes[c].path); return !r || r[0] === exRoot; });
             if (!targets.length) continue;
             const t0 = targets.length === 1 && !member ? nodes[targets[0]].path : null, ad = t0 && AMBIENT.test(t0) ? t0.slice(0, t0.lastIndexOf('/') + 1) : null;
-            if (!(ad != null && nodes[fid].path.startsWith(ad)) && (cands.length > 1 || L.explicit || member)) type = 'ref';
+            if (!(ad != null && nodes[fid].path.startsWith(ad)) && ((L.group === 'c' ? targets.length > 1 : cands.length > 1) || L.explicit || member)) type = 'ref';
           } else if (member && targets.length > 1) {
             const top = viaImport ? targets.filter(c => nodes[c].parent === nodes[c].file) : [];
             if (top.length) targets = top; else type = 'ref';
