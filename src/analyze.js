@@ -846,7 +846,7 @@ export function analyze(files, rootName, progress = () => {}) {
       if (L.sigil && prev === 36) continue;
       while (ln + 1 < starts.length && starts[ln + 1] <= at) ln++;
       const src = owner[ln];
-      let member = false, recv = '';
+      let member = false, recv = '', recvCall = '';
       const p2 = at > 1 ? masked.charCodeAt(at - 2) : 0;
       if ((prev === 46 && p2 !== 46) || (prev === 62 && p2 === 45) || (prev === 58 && p2 === 58)) {
         member = true;
@@ -856,6 +856,17 @@ export function analyze(files, rootName, progress = () => {}) {
         let k = j;
         while (k > 0 && isW(masked.charCodeAt(k - 1))) k--;
         recv = masked.slice(k, j);
+        if (!recv && masked.charCodeAt(j - 1) === 41) {
+          let d = 0, q2 = j - 1;
+          for (const lim = Math.max(0, j - 600); q2 >= lim; q2--) {
+            const c = masked.charCodeAt(q2);
+            if (c === 41) d++;
+            else if (c === 40 && --d === 0) break;
+          }
+          let e2 = q2;
+          while (e2 > 0 && isW(masked.charCodeAt(e2 - 1))) e2--;
+          if (d === 0 && e2 < q2) recvCall = masked.slice(e2, q2);
+        }
       }
       if (!member) {
         let shadow = false;
@@ -907,6 +918,13 @@ export function analyze(files, rootName, progress = () => {}) {
           const own = [...new Set(all)].filter(c => nodes[c].parent >= 0 && nodes[nodes[c].parent].name === recv && isClassy(nodes[nodes[c].parent].kind));
           if (own.length) targets = own;
           else if (COMMON.has(name)) continue;
+        } else if (COMMON.has(name)) continue;
+      } else if (member && recvCall) {
+        const rt = typeNames.has(recvCall) ? recvCall : retOf.get(recvCall);
+        if (rt) {
+          const own = cands.filter(c => ownerOf.get(c) === rt || (nodes[c].parent >= 0 && nodes[nodes[c].parent].name === rt && isClassy(nodes[nodes[c].parent].kind)));
+          if (own.length) targets = own;
+          else if (!typeNames.has(rt) || COMMON.has(name)) continue;
         } else if (COMMON.has(name)) continue;
       } else if (member && COMMON.has(name)) continue;
       if (!targets) {
