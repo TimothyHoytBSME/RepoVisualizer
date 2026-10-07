@@ -42,6 +42,7 @@ The funnel button shows or hides tests, variables, libraries and uncertain links
 | Fit to screen | ⛶ button | F | Back/Select |
 | Recenter | click the selected node | C | left stick press |
 | Show hidden (+N) links in place | click / tap the +N | E (highlighted node) | — |
+| Color by kind / folder | filter menu | K | — |
 | Links followed (both / uses / used by) | filter menu | U | — |
 | Show/hide tests | funnel button | T | — |
 | Details panel | tap the sheet | P | X |

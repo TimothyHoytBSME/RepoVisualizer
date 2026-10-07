@@ -543,6 +543,7 @@ const api = {
   help() { openHelp(); },
   cycleDir() { app.cycleDir(); },
   expand() { app.expand(); },
+  colorBy() { const el = $('#color-by'); el.value = app.colorBy === 'folder' ? 'kind' : 'folder'; el.dispatchEvent(new Event('change')); toast(app.colorBy === 'folder' ? 'Colored by folder' : 'Colored by kind'); },
   escape() {
     app.clearPath();
     app.hl = app.touchPeek = -1;
