@@ -103,6 +103,18 @@ function goMethods(t) {
   return out;
 }
 
+function pyBinds(raw) {
+  const out = [];
+  for (const x of raw.matchAll(/^[ \t]*import[ \t]+([\w.]+)[ \t]+as[ \t]+(\w+)/gm)) out.push([x[2], x[1]]);
+  for (const x of raw.matchAll(/^[ \t]*from[ \t]+(\.*[\w.]*)[ \t]+import[ \t]*\(?([^)\n]*)/gm)) {
+    for (const part of x[2].split(',')) {
+      const m = /^\s*(\w+)(?:\s+as\s+(\w+))?\s*$/.exec(part);
+      if (m) out.push([m[2] || m[1], x[1].endsWith('.') ? x[1] + m[1] : x[1] + '.' + m[1]]);
+    }
+  }
+  return out;
+}
+
 function pyImports(raw, m) {
   const out = [];
   for (const x of m.matchAll(/^[ \t]*from[ \t]+(\.*[\w.]*)[ \t]+import[ \t]*(?:\(([^)]*)\)|([^\n(]*))/gm)) {
@@ -246,7 +258,7 @@ const PY = {
     [R`^[ \t]*class[ \t]+(${N})`, 'class'],
     [R`^[ \t]*(${N})[ \t]*(?::[^=\n]+)?=(?!=)`, 'variable'],
   ],
-  imports: pyImports, resolve: 'py',
+  imports: pyImports, binds: pyBinds, resolve: 'py',
 };
 
 const GO = {
