@@ -507,10 +507,10 @@ export function wanted(path, size = 0) {
   const segs = path.split('/');
   for (let i = 0; i < segs.length - 1; i++) {
     const s = segs[i];
-    if (SKIP_DIRS.has(s) || (s[0] === '.' && s !== '.github')) return false;
+    if (SKIP_DIRS.has(s) || (s[0] === '.' && s !== '.github') || s.endsWith('.docset')) return false;
   }
   const base = segs[segs.length - 1].toLowerCase();
-  if (SKIP_FILES.has(base) || /\.min\.(js|css)$|\.map$|\.bundle\.js$|\.lock$/.test(base)) return false;
+  if (SKIP_FILES.has(base) || /\.min\.(js|css)$|\.map$|\.bundle\.js$|\.lock$|^(?:jquery|typeahead|lunr|underscore|doctools|searchtools|require)(?:[.-][\w.-]*)?\.js$/.test(base)) return false;
   const L = langOf(path);
   if (!L) return false;
   return size <= (TEXT_GROUPS.has(L.group) ? 250e3 : 800e3);
