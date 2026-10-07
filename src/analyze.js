@@ -663,6 +663,7 @@ export function analyze(files, rootName, progress = () => {}) {
     let masked = L.syntax ? mask(text, L) : null;
     info.specs = L.imports ? L.imports(text, masked) : [];
     if (L.binds) info.binds = L.binds(text);
+    if ((L.group === 'dart' && /^export[ \t]+['"]/m.test(text)) || (L.group === 'js' && /^export[ \t]+(?:type[ \t]+)?(?:\*|\{[^}]*\})[ \t]*from[ \t]/m.test(text))) info.facade = true;
     info.module = L.explicit && (L.group !== 'js' || (masked != null && /\b(?:import|export|require)\b/.test(masked)));
     if (L.pkg && masked) {
       const pm = L.pkg.exec(masked);
@@ -923,8 +924,8 @@ export function analyze(files, rootName, progress = () => {}) {
   const FACADE = /^(?:__init__\.pyi?|index\.[mc]?[jt]sx?|mod\.rs|lib\.rs)$/;
   for (const info of infos) {
     for (const t of [...info.imported]) {
-      if (!FACADE.test(nodes[t].name)) continue;
       const ti = infoOf.get(t);
+      if (!FACADE.test(nodes[t].name) && !(ti && ti.facade)) continue;
       if (ti) for (const u of ti.imported) if (u !== info.id) info.imported.add(u);
     }
   }
@@ -935,6 +936,11 @@ export function analyze(files, rootName, progress = () => {}) {
     const a = classByName.get(n.name);
     if (a) a.push(n.id); else classByName.set(n.name, [n.id]);
   }
+  const preferImported = (list, info) => {
+    if (list.length < 2) return list;
+    const near = list.filter(c => nodes[c].file === info.id || info.imported.has(nodes[c].file));
+    return near.length ? near : list;
+  };
   const memberIn = (cls, all) => {
     const seen = new Set([cls]);
     let level = [cls];
@@ -1094,7 +1100,7 @@ export function analyze(files, rootName, progress = () => {}) {
             if (cands.length > MAXC) continue;
             targets = L.group === 'c' ? cands.filter(c => isFn(nodes[c].kind))
               : !info.module || (L.pkgDir && info.pkg != null) ? cands
-              : member ? cands.filter(c => memberish.has(c) || (nodes[c].parent >= 0 && isClassy(nodes[nodes[c].parent].kind)))
+              : member ? preferImported(cands.filter(c => memberish.has(c) || (nodes[c].parent >= 0 && isClassy(nodes[nodes[c].parent].kind))), info)
               : masked.charCodeAt(at + name.length) === 33 ? cands : cands.filter(c => AMBIENT.test(nodes[c].path));
             if (!targets.length) continue;
             if (cands.length > 1 || L.explicit || member) type = 'ref';

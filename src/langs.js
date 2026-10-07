@@ -349,7 +349,7 @@ const SWIFT = {
 };
 
 const DART = {
-  paramLast: true, group: 'dart', exts: 'dart', localDecl: LOCAL_DECL,
+  paramLast: true, group: 'dart', explicit: true, exts: 'dart', localDecl: LOCAL_DECL,
   syntax: { line: ['//'], block: [['/*', '*/']], quotes: '\'"', triple: true },
   kw: kw(`abstract as assert async await break case catch class const continue covariant default deferred do dynamic else enum export extends extension external factory false final finally for get hide if implements import in interface is late library mixin new null on operator part required rethrow return set show static super switch sync this throw true try typedef var void while with yield int double num String bool List Map Set Future Stream Widget`),
   defs: [
