@@ -1115,7 +1115,7 @@ export function analyze(files, rootName, progress = () => {}) {
     const { L, masked, starts, owner, defPos, local, id: fid } = info;
     const g = names.get(L.group);
     const fdir = nodes[fid].parent;
-    const nf = L.group === 'c' || L.group === 'py' ? notField : () => true;
+    const nf = L.group === 'c' || L.group === 'py' ? notField : () => true, srcTest = TEST_PATH.test(nodes[fid].path);
     const out = new Map(), impCache = new Map();
     const idc = new Map();
     const countWords = !TEST_PATH.test(info.f.path);
@@ -1395,6 +1395,7 @@ export function analyze(files, rootName, progress = () => {}) {
               : !info.module || (L.pkgDir && info.pkg != null) ? cands
               : member ? preferImported(cands.filter(c => (memberish.has(c) || (nodes[c].parent >= 0 && isClassy(nodes[nodes[c].parent].kind))) && nf(c)), info)
               : masked.charCodeAt(at + name.length) === 33 ? cands : cands.filter(c => AMBIENT.test(nodes[c].path));
+            if (!srcTest) targets = targets.filter(c => !TEST_PATH.test(nodes[c].path));
             if (!targets.length) continue;
             const t0 = targets.length === 1 && !member ? nodes[targets[0]].path : null, ad = t0 && AMBIENT.test(t0) ? t0.slice(0, t0.lastIndexOf('/') + 1) : null;
             if (!(ad != null && nodes[fid].path.startsWith(ad)) && (cands.length > 1 || L.explicit || member)) type = 'ref';
