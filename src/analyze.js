@@ -57,6 +57,7 @@ const PROP_FN = /(?:\.[\w$]+\s*=|[\w$]+\s*:)\s*(?:async\s+)?function\s*\*?\s*$|\
 const CAP_TYPES = new Set(['jvm', 'cs', 'swift', 'dart', 'py', 'rs', 'rb', 'php']);
 const IMPLICIT_THIS = new Set(['jvm', 'cs', 'swift', 'dart', 'c', 'rb']);
 const AMBIENT = /\.d\.[mc]?ts$/;
+const DECLS = new Set(['c', 'jvm', 'cs']);
 const TRAILING = new Set(['swift', 'jvm']);
 const GLOBAL_VARS = new Set(['swift', 'go', 'c', 'jvm', 'cs']);
 const EX_PATH = /^(?:[^/]+\/){0,2}(?:examples?|samples?|demos?|docs?|benchmarks?|bench)\//i;
@@ -1340,8 +1341,8 @@ export function analyze(files, rootName, progress = () => {}) {
         const call = /^[ \t]*[(/]/.test(nx) || (/^[ \t]+[\w:@\[{%&~]/.test(nx) && !/^[ \t]+(?:when|do|in|and|or|not|else|end|after|catch|rescue)\b/.test(nx));
         if (!call && !/(?:\|>|&)[ \t]*$/.test(masked.slice(Math.max(0, at - 4), at))) continue;
       }
-      if (L.group === 'c' && !member) {
-        if (/(?:goto[ \t]+|^[ \t]*#[ \t]*)$/.test(masked.slice(Math.max(starts[ln], at - 8), at)) || (/^[ \t]*$/.test(masked.slice(starts[ln], at)) && /^[ \t]*:(?!:)/.test(masked.slice(at + name.length, at + name.length + 4)))) continue;
+      if (DECLS.has(L.group) && !member) {
+        if (L.group === 'c' && /(?:goto[ \t]+|^[ \t]*#[ \t]*)$/.test(masked.slice(Math.max(starts[ln], at - 8), at)) || (/^[ \t]*$/.test(masked.slice(starts[ln], at)) && /^[ \t]*:(?!:)/.test(masked.slice(at + name.length, at + name.length + 4)))) continue;
         if (at < declEnd) {
           if (/^[ \t]*[,)=[]/.test(masked.slice(at + name.length, at + name.length + 8)) && /(?:\w[ \t]+|[*&][ \t]*)$/.test(masked.slice(Math.max(0, at - 40), at))) continue;
         } else if (src === fid || isClassy(nodes[src].kind) || nodes[src].kind === 'module') {
@@ -1349,7 +1350,7 @@ export function analyze(files, rootName, progress = () => {}) {
           while (masked.charCodeAt(q) === 32 || masked.charCodeAt(q) === 9) q++;
           if (masked.charCodeAt(q) === 40 && /(?:[\w>][ \t]+|[*&][ \t]*)$/.test(masked.slice(Math.max(0, at - 40), at))) {
             const e = afterParams(masked, q);
-            if (e > 0 && /^\s*(?:(?:const|override|final|noexcept|volatile|&&?)\s*)*(?:=\s*(?:0|default|delete)\s*)?;/.test(masked.slice(e, e + 80))) declEnd = e;
+            if (e > 0 && /^\s*(?:(?:const|override|final|noexcept|volatile|&&?)\s*)*(?:=\s*(?:0|default|delete)\s*)?(?:throws\s+[\w.,\s]+)?;/.test(masked.slice(e, e + 80))) { declEnd = e; if (L.group !== 'c') continue; }
           }
         }
       }
@@ -1371,6 +1372,7 @@ export function analyze(files, rootName, progress = () => {}) {
         targets = [...hit];
       }
       if (member && recv && info.ext && info.ext.has(recv) && !local.has(recv)) continue;
+      if (member && recv === 'class' && L.group === 'jvm') continue;
       if (member && (recv || recvIdx || chainT)) {
         let selfT = chainT || (recvIdx ? headOf(elemOf(varType(recvIdx, src, ln, 0, true))) : SELF.has(recv) ? null : varType(recv, src, ln, 0));
         if (!selfT) for (let o = src; o !== fid && o >= 0; o = nodes[o].parent) {
