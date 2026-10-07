@@ -133,6 +133,17 @@ const state = page => page.evaluate(() => {
   await page.keyboard.press('u');
   await page.waitForTimeout(200);
   check('direction filter cycles back', await page.evaluate(() => window.__rv.app.dir === 'both' && !document.querySelector('#counts .dirtag')));
+  await page.evaluate(() => { const a = window.__rv.app; a.prevLimit = a.limit; a.limit = 12; });
+  await page.keyboard.press(']');
+  await page.waitForTimeout(250);
+  const ex = await page.evaluate(() => { const a = window.__rv.app, k = a.nb.hidden ? [...a.nb.hidden.keys()].find(u => u !== a.sel) : undefined; if (k === undefined) return { none: true }; a.hl = k; return { k, n: a.nb.nodes.length, hid: a.nb.hidden.get(k), sel: a.sel }; });
+  await page.keyboard.press('e');
+  await page.waitForTimeout(250);
+  const ex2 = await page.evaluate(k => { const a = window.__rv.app; return { n: a.nb.nodes.length, still: a.nb.hidden?.get(k) || 0, sel: a.sel }; }, ex.k);
+  check('E shows hidden neighbors in place', !ex.none && ex2.n >= ex.n + ex.hid && !ex2.still && ex2.sel === ex.sel, { ex, ex2 });
+  await page.evaluate(() => { const a = window.__rv.app; a.limit = a.prevLimit; a.expanded = null; });
+  await page.keyboard.press('[');
+  await page.waitForTimeout(250);
   await page.keyboard.press('ArrowRight');
   await page.waitForTimeout(150);
   await page.keyboard.press('g');

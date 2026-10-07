@@ -184,6 +184,7 @@ function setMap(type, gid = -1, push = false) {
   app.lay.onFresh = kick;
   app.sel = app.hl = app.hover = app.touchPeek = -1;
   app.path = null;
+  app.expanded = null;
   let i = gid >= 0 ? mapInto(gid) : -1;
   if (i < 0) i = defaultNode(app.g, app.view);
   app.cam.x = app.cam.y = 0;
@@ -193,7 +194,7 @@ function setMap(type, gid = -1, push = false) {
 
 function refresh() {
   const { cam } = app;
-  app.nb = neighborhood(app.view, app.sel, app.depth, app.limit || Infinity, app.dir);
+  app.nb = neighborhood(app.view, app.sel, app.depth, app.limit || Infinity, app.dir, app.expanded);
   app.pathNodes = null;
   if (app.path != null) {
     const p = shortestPath(app.view, app.sel, app.path);
@@ -213,6 +214,7 @@ function select(i, instant, push = !instant) {
   if (i < 0 || !app.view) return;
   if (push) app.pendingFit = 'in';
   if (app.path != null && !(app.pathNodes && app.pathNodes.includes(i))) app.path = null;
+  if (i !== app.sel) app.expanded = null;
   app.sel = i;
   app.hl = -1;
   refresh();
@@ -521,6 +523,7 @@ const api = {
   pathToHighlight() { if (app.hl >= 0 && app.hl !== app.sel) app.setPath(app.view.ids[app.hl]); else if (app.path != null) app.clearPath(); else api.recenter(); },
   help() { openHelp(); },
   cycleDir() { app.cycleDir(); },
+  expand() { app.expand(); },
   escape() {
     app.clearPath();
     app.hl = app.touchPeek = -1;
@@ -559,6 +562,13 @@ function setDir(d) {
 }
 $('#dir').value = app.dir;
 $('#dir').addEventListener('change', e => setDir(e.target.value));
+app.expand = () => {
+  const i = app.hl >= 0 ? app.hl : app.hover >= 0 ? app.hover : app.sel, hid = app.nb?.hidden?.get(i);
+  if (!hid) { toast('Nothing hidden next to this node'); return; }
+  (app.expanded ??= new Set()).add(i);
+  refresh();
+  toast(`Showing ${fmt(hid)} more`);
+};
 app.cycleDir = () => { setDir(app.dir === 'both' ? 'out' : app.dir === 'out' ? 'in' : 'both'); toast(app.dir === 'both' ? 'Following links both ways' : app.dir === 'out' ? 'Following only what it uses' : 'Following only what uses it'); };
 $('#limit').value = String(app.limit);
 $('#limit').addEventListener('change', e => {

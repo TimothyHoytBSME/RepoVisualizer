@@ -23,7 +23,7 @@ Share a view with a link like `?repo=pallets/flask&node=f:src/flask/app.py&depth
 - **Folder map**: folders and libraries only, with every dependency rolled up to folder level: an architecture overview.
 - **Keyword map**: the distinctive words used across the code, linked to the files that use them.
 
-The funnel button shows or hides tests, variables, libraries and uncertain links, sets the direction and the node limit, saves the map as an image, and holds the color legend. When the limit trims a big neighborhood, labels show "+N" where nodes were hidden. Press ? for all controls.
+The funnel button shows or hides tests, variables, libraries and uncertain links, sets the direction and the node limit, saves the map as an image, and holds the color legend. When the limit trims a big neighborhood, labels show "+N" where nodes were hidden; press E on a highlighted node to show them in place. Press ? for all controls.
 
 ## Controls
 
@@ -38,6 +38,7 @@ The funnel button shows or hides tests, variables, libraries and uncertain links
 | Depth | slider | [ / ] | LB / RB |
 | Fit to screen | ⛶ button | F | Back/Select |
 | Recenter | click the selected node | C | left stick press |
+| Show hidden (+N) links in place | select the node | E (highlighted node) | — |
 | Links followed (both / uses / used by) | filter menu | U | — |
 | Show/hide tests | funnel button | T | — |
 | Details panel | tap the sheet | P | X |

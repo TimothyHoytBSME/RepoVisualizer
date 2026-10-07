@@ -264,8 +264,10 @@ export class Panel {
     if (id < 0) { this.peekEl.hidden = true; this.peekId = -1; return; }
     const { g, files } = this.app;
     const n = g.nodes[id];
-    if (this.peekId !== id) {
+    const li = this.app.view ? this.app.view.local[id] : -1, hid = li >= 0 && this.app.nb?.hidden?.get(li) || 0;
+    if (this.peekId !== id || this.peekHid !== hid) {
       this.peekId = id;
+      this.peekHid = hid;
       let body = '';
       if (n.kind === 'keyword') body = `<div class="pk-sub">keyword · found in ${edgesOf(g, id, 'in').length} files</div>`;
       else if (n.kind === 'lib') body = `<div class="pk-sub">external library · used by ${edgesOf(g, id, 'in').length} files</div>`;
@@ -281,6 +283,7 @@ export class Panel {
         if (L && L.syntax) mask(line, L, cls);
         body = `<div class="pk-sub">${esc(n.path)}:${n.line + 1}</div><div class="pk-code">${lineHTML(line, cls, 0, line.length, L, null, n.name)}</div>`;
       }
+      if (hid) body += `<div class="pk-sub pk-more">+${hid} hidden connection${hid === 1 ? '' : 's'} · press E to show</div>`;
       this.peekEl.innerHTML = `<div class="pk-t">${this.chip(n.kind)}<b>${esc(n.name)}</b></div>${body}`;
       this.peekEl.hidden = false;
     }

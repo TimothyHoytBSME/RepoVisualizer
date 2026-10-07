@@ -88,7 +88,7 @@ function inducedEdges(v, order, d) {
   return edges;
 }
 
-export function neighborhood(v, sel, depth, limit = Infinity, dir = 'both') {
+export function neighborhood(v, sel, depth, limit = Infinity, dir = 'both', extra = null) {
   const pass = dir === 'out' ? (e, u) => v.eA[e] === u : dir === 'in' ? (e, u) => (v.eT[e] === CONTAIN ? v.eA[e] === u : v.eB[e] === u) : null;
   const d = new Int32Array(v.n).fill(-1);
   const from = new Int32Array(v.n).fill(-1);
@@ -131,6 +131,17 @@ export function neighborhood(v, sel, depth, limit = Infinity, dir = 'both') {
     for (const w of cands) keep[w] = 1;
     kept += cands.length;
     level = cands;
+  }
+  if (extra) for (const u of extra) {
+    if (!keep[u] || d[u] < 0 || d[u] >= depth) continue;
+    let n = 0;
+    for (let k = v.start[u]; k < v.start[u + 1] && n < 500; k++) {
+      const e = v.adj[k];
+      if (pass && !pass(e, u)) continue;
+      const w = v.eA[e] === u ? v.eB[e] : v.eA[e];
+      if (d[w] !== d[u] + 1 || keep[w]) continue;
+      keep[w] = 1; from[w] = u; n++;
+    }
   }
   const nodes = order.filter(u => keep[u]);
   const hidden = new Map();
