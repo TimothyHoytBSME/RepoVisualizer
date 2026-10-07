@@ -157,6 +157,10 @@ const state = page => page.evaluate(() => {
   await page.selectOption('#map-type', 'files');
   await page.waitForTimeout(500);
   check('file map works', (await state(page)).map === 'files');
+  await page.selectOption('#map-type', 'dirs');
+  await page.waitForTimeout(500);
+  const fm = await page.evaluate(() => { const a = window.__rv.app; return { map: a.mapType, kinds: [...new Set([...a.nb.nodes].map(i => a.g.nodes[a.view.ids[i]].kind))], uses: document.querySelectorAll('#panel .rel ul').length }; });
+  check('folder map shows folders and libraries', fm.map === 'dirs' && fm.kinds.every(k => k === 'dir' || k === 'lib') && fm.kinds.includes('dir'), fm);
 
   check('no page errors (desktop)', errors.length === 0, errors);
   await ctx.close();

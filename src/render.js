@@ -148,14 +148,14 @@ const SHAPE = { file: 1, dir: 1, lib: 2, keyword: 3 };
 export function nodeStyle(g, view) {
   const kind = new Uint8Array(view.n), rad = new Float32Array(view.n), shape = new Uint8Array(view.n), label = new Array(view.n);
   const seen = new Map();
-  for (const n of g.nodes) if (n.kind === 'file') seen.set(n.name, (seen.get(n.name) || 0) + 1);
+  for (const n of g.nodes) if (n.kind === 'file' || n.kind === 'dir') seen.set(n.kind + n.name, (seen.get(n.kind + n.name) || 0) + 1);
   for (let i = 0; i < view.n; i++) {
     const n = g.nodes[view.ids[i]];
     const k = KINDS.indexOf(n.kind);
     kind[i] = k < 0 ? 6 : k;
     rad[i] = (BASE_R[n.kind] || 3.3) + Math.min(5, 0.8 * Math.log2(1 + view.deg[i]));
     shape[i] = SHAPE[n.kind] || 0;
-    label[i] = n.kind === 'file' && seen.get(n.name) > 1 && n.parent > 0 ? g.nodes[n.parent].name + '/' + n.name : n.name;
+    label[i] = (n.kind === 'file' || n.kind === 'dir') && seen.get(n.kind + n.name) > 1 && n.parent > 0 ? g.nodes[n.parent].name + '/' + n.name : n.name;
   }
   return { kind, rad, shape, label };
 }

@@ -37,8 +37,8 @@ export function isTest(n) {
 }
 
 export function buildView(g, type, filters = {}) {
-  const files = type === 'files', words = type === 'words';
-  const keep = files ? k => STRUCT.has(k) : words ? k => k === 'file' || k === 'keyword' : k => k !== 'dir' && k !== 'keyword';
+  const files = type === 'files', words = type === 'words', dirsMap = type === 'dirs';
+  const keep = dirsMap ? k => k === 'dir' || k === 'lib' : files ? k => STRUCT.has(k) : words ? k => k === 'file' || k === 'keyword' : k => k !== 'dir' && k !== 'keyword';
   const shown = n => keep(n.kind)
     && !(filters.tests === false && isTest(n))
     && !(filters.vars === false && n.kind === 'variable')
@@ -48,7 +48,9 @@ export function buildView(g, type, filters = {}) {
   for (const n of g.nodes) if (shown(n)) { local[n.id] = ids.length; ids.push(n.id); }
   if (!ids.length) for (const n of g.nodes) if (keep(n.kind)) { local[n.id] = ids.length; ids.push(n.id); }
   const n = ids.length;
-  const lift = id => (STRUCT.has(g.nodes[id].kind) ? id : g.nodes[id].file);
+  const lift = dirsMap
+    ? id => { const n = g.nodes[id]; return n.kind === 'dir' || n.kind === 'lib' ? id : n.kind === 'file' ? n.parent : n.file >= 0 ? g.nodes[n.file].parent : -1; }
+    : id => (STRUCT.has(g.nodes[id].kind) ? id : g.nodes[id].file);
   const { s: ES, t: ET, type: TY } = g.edges;
   const seen = new Map();
   const A = [], B = [], T = [];
@@ -57,7 +59,7 @@ export function buildView(g, type, filters = {}) {
     const ty = TY[k];
     if (words ? g.nodes[t].kind !== 'keyword' : g.nodes[t].kind === 'keyword') continue;
     if (ty === REF && filters.refs === false && !words) continue;
-    if (files && ty !== CONTAIN) { s = lift(s); t = lift(t); }
+    if ((files || dirsMap) && ty !== CONTAIN) { s = lift(s); t = lift(t); if (s < 0 || t < 0) continue; }
     const a = local[s], b = local[t];
     if (!(a >= 0) || !(b >= 0) || a === b) continue;
     const key = a * n + b;
@@ -180,7 +182,7 @@ export function withPath(v, nb, path) {
 }
 
 export function defaultNode(g, v) {
-  if (v.type === 'files') return v.local[0] >= 0 ? v.local[0] : 0;
+  if (v.type === 'files' || v.type === 'dirs') return v.local[0] >= 0 ? v.local[0] : 0;
   if (v.type === 'words') {
     let best = 0, bd = -1;
     for (let i = 0; i < v.n; i++) if (g.nodes[v.ids[i]].kind === 'keyword' && v.deg[i] > bd) { bd = v.deg[i]; best = i; }

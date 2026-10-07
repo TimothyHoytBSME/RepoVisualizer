@@ -17,6 +17,7 @@ Share a view with a link like `?repo=pallets/flask&node=f:src/flask/app.py&depth
 
 - **Code map**: functions, classes, methods, variables, files and libraries, linked by what uses what.
 - **File map**: folders, files and libraries, with file-to-file dependencies.
+- **Folder map**: folders and libraries only, with every dependency rolled up to folder level: an architecture overview.
 - **Keyword map**: the distinctive words used across the code, linked to the files that use them.
 
 The funnel button shows or hides tests, variables and libraries, and holds the color legend.

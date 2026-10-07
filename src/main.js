@@ -13,14 +13,14 @@ const store = {
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const fmt = n => n.toLocaleString();
 const narrow = () => matchMedia('(max-width: 760px)').matches;
-const MAPS = ['code', 'files', 'words'];
+const MAPS = ['code', 'files', 'dirs', 'words'];
 
 let pendingTo = null;
 const stage = $('#stage'), panelEl = $('#panel'), dlg = $('#src-dialog');
 const MAX_DEPTH = +$('#depth').max;
 const app = {
   g: null, files: null, meta: null, view: null, lay: null, nb: null, style: null,
-  mapType: ['files', 'words'].includes(store.get('rv:map')) ? store.get('rv:map') : 'code',
+  mapType: ['files', 'dirs', 'words'].includes(store.get('rv:map')) ? store.get('rv:map') : 'code',
   sel: -1, hl: -1, hover: -1, touchPeek: -1,
   depth: clamp(+store.get('rv:depth') || 2, 1, MAX_DEPTH),
   cam: { x: 0, y: 0, scale: narrow() ? 0.85 : 1 },
@@ -166,6 +166,7 @@ const openSaved = key => load(async (p, signal) => {
 function mapInto(gid) {
   const v = app.view, n = app.g.nodes[gid];
   if (v.local[gid] >= 0) return v.local[gid];
+  if (v.type === 'dirs') { const d = n.kind === 'file' ? n.parent : n.file >= 0 ? app.g.nodes[n.file].parent : -1; return d >= 0 && v.local[d] >= 0 ? v.local[d] : -1; }
   if (n.file >= 0 && v.local[n.file] >= 0) return v.local[n.file];
   return -1;
 }

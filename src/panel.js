@@ -189,6 +189,16 @@ export class Panel {
       usedBy.push(e.s);
       if (e.type === 'ref') weak.add(e.s);
     }
+    const v = this.app.view;
+    if (n.kind === 'dir' && v && v.type === 'dirs' && v.local[id] >= 0) {
+      const u = v.local[id];
+      for (let k = v.start[u]; k < v.start[u + 1]; k++) {
+        const e = v.adj[k];
+        if (v.eT[e] === 2) continue;
+        const a = v.ids[v.eA[e]], b = v.ids[v.eB[e]];
+        if (a === id) { uses.push(b); if (v.eT[e] === 1) weak.add(b); } else { usedBy.push(a); if (v.eT[e] === 1) weak.add(a); }
+      }
+    }
     const strong = (a, b) => (weak.has(a) ? 1 : 0) - (weak.has(b) ? 1 : 0);
     const byName = (a, b) => g.nodes[a].name.localeCompare(g.nodes[b].name);
     uses.sort((a, b) => strong(a, b) || byName(a, b));
