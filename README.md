@@ -7,7 +7,8 @@ Explore a code repository as an interactive map of its files, functions, classes
 - Load any public GitHub repository (`owner/repo` or a link), or open a `.zip` / folder from your device. Local files never leave your device.
 - Select a node to see its code in context; hover or long-press to peek.
 - The depth slider controls how many steps away from the selected node are shown.
-- Find how two things connect: the route button in the details panel (or G) shows the shortest path from the selected node to any other.
+- Find how two things connect: Shift+click a node, or use the route button in the details panel (or G), to see the shortest path from the selected node.
+- Follow only what a node uses, or only what uses it (impact), with the "Links followed" setting (or U).
 - Arrows mean "uses / depends on"; plain lines mean "related" (a name match the analyzer couldn't pin down) or "contains".
 - Works with mouse, touch, keyboard and gamepad. Runs entirely in the browser, with nothing to install.
 
@@ -20,7 +21,7 @@ Share a view with a link like `?repo=pallets/flask&node=f:src/flask/app.py&depth
 - **Folder map**: folders and libraries only, with every dependency rolled up to folder level: an architecture overview.
 - **Keyword map**: the distinctive words used across the code, linked to the files that use them.
 
-The funnel button shows or hides tests, variables and libraries, and holds the color legend.
+The funnel button shows or hides tests, variables, libraries and uncertain links, sets the direction and the node limit, and holds the color legend. When the limit trims a big neighborhood, labels show "+N" where nodes were hidden. Press ? for all controls.
 
 ## Controls
 
