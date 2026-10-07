@@ -1107,7 +1107,7 @@ export function analyze(files, rootName, progress = () => {}) {
     const g = names.get(L.group);
     const fdir = nodes[fid].parent;
     const nf = L.group === 'c' || L.group === 'py' ? notField : () => true;
-    const out = new Map();
+    const out = new Map(), impCache = new Map();
     const idc = new Map();
     const countWords = !TEST_PATH.test(info.f.path);
     if (countWords) info.idc = idc;
@@ -1364,7 +1364,9 @@ export function analyze(files, rootName, progress = () => {}) {
         targets = local.get(name);
         if (!targets) {
           if (cands.length > 200) continue;
-          targets = cands.filter(c => info.imported.has(nodes[c].file) && (!member || nf(c)));
+          const ck = member ? '.' + name : name;
+          targets = impCache.get(ck);
+          if (!targets) impCache.set(ck, (targets = cands.filter(c => info.imported.has(nodes[c].file) && (!member || nf(c)))));
           const viaImport = targets.length > 0;
           if (!targets.length && L.pkgDir) {
             const pk = info.pkg, uses = info.uses;
@@ -1395,15 +1397,12 @@ export function analyze(files, rootName, progress = () => {}) {
       if (targets.length > MAXC) continue;
       for (const t of targets) {
         if (t === src || nodes[t].parent === src || nodes[src].parent === t) continue;
-        const k = src + ',' + t;
+        const k = src * 4194304 + t;
         const prev = out.get(k);
         if (prev === undefined || (prev === 'ref' && type === 'dep')) out.set(k, type);
       }
     }
-    for (const [k, type] of out) {
-      const i = k.indexOf(',');
-      edges.push({ s: +k.slice(0, i), t: +k.slice(i + 1), type });
-    }
+    for (const [k, type] of out) edges.push({ s: Math.floor(k / 4194304), t: k % 4194304, type });
   }
 
   keywords(infos, nodes, edges, add);
