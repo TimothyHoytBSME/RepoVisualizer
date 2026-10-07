@@ -71,6 +71,8 @@ export function lineOf(text, ln) {
   return text.slice(s, e < 0 ? text.length : e).replace(/\r$/, '');
 }
 
+const LANG_NAMES = { js: 'JavaScript/TypeScript', py: 'Python', go: 'Go', rs: 'Rust', c: 'C/C++', jvm: 'Java/Kotlin', cs: 'C#', swift: 'Swift', dart: 'Dart', rb: 'Ruby', php: 'PHP', lua: 'Lua', sh: 'Shell', sql: 'SQL', gen: 'Other code', md: 'Docs', html: 'HTML', css: 'Styles', text: 'Config & text', other: 'Other' };
+
 export class Panel {
   constructor(el, peek, app) {
     this.el = el;
@@ -107,6 +109,14 @@ export class Panel {
     if (line < n.line || line > n.end) return;
     hit(n);
     for (const c of edgesOf(g, n.id, 'out')) this.walk(c, line, hit);
+  }
+
+  overview() {
+    const { g } = this.app, by = new Map();
+    for (const n of g.nodes) if (n.kind === 'file') by.set(n.group || 'other', (by.get(n.group || 'other') || 0) + 1);
+    const rows = [...by].sort((a, b) => b[1] - a[1]).map(([k, c]) => `<span class="lang"><b>${esc(LANG_NAMES[k] || k)}</b> ${c.toLocaleString()}</span>`).join('');
+    const s = g.stats || {};
+    return `<div class="rel overview"><div class="phd">Repository</div><div class="ovs">${(s.files || 0).toLocaleString()} files · ${(s.symbols || 0).toLocaleString()} symbols · ${(s.libs || 0).toLocaleString()} libraries</div><div class="langs">${rows}</div></div>`;
   }
 
   pathHTML(id) {
@@ -230,6 +240,7 @@ export class Panel {
     }
     if (n.parent >= 0 && n.kind !== 'dir') html += `<div class="rel in">in ${this.item(n.parent).replace(/^<li>|<\/li>$/g, '')}</div>`;
     if (kws.length) html += `<div class="kws">${kws.map(k => `<a href="#" data-n="${k}" class="kw">${esc(g.nodes[k].name)}</a>`).join('')}</div>`;
+    if (n.kind === 'dir' && !n.path) html += this.overview();
     if (n.kind === 'keyword') html += this.mentions(n.name, usedBy);
     html += this.list(n.kind === 'dir' ? 'Contents' : 'Defines', children, n.kind !== 'file' || children.length < 40);
     if (n.kind !== 'keyword') {
