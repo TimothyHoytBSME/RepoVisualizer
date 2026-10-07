@@ -201,6 +201,7 @@ function refresh() {
     if (p && p.length > 1) { app.nb = withPath(app.view, app.nb, p); app.pathNodes = p; } else app.path = null;
   }
   app.lay.set(app.nb, app.sel, cam.x, cam.y);
+  if (app.marks) setMarks(search.value.trim().toLowerCase());
   renderer?.setLabelOrder(app.nb, app.style.rad);
   for (const k of ['hl', 'hover', 'touchPeek']) if (app[k] >= 0 && app.nb.depth[app[k]] < 0) app[k] = -1;
   const { nodes, edges, total } = app.nb;
@@ -659,14 +660,23 @@ function frame(t) {
 
 function paint() {
   dirtyFlag = false;
-  renderer.draw({ g: app.g, view: app.view, nb: app.nb, lay: app.lay, cam: app.cam, pal: app.pal, style: app.style, sel: app.sel, hl: app.hl, hover: app.hover, ver: app.ver });
+  renderer.draw({ g: app.g, view: app.view, nb: app.nb, lay: app.lay, cam: app.cam, pal: app.pal, style: app.style, sel: app.sel, hl: app.hl, hover: app.hover, ver: app.ver, marks: app.marks });
   updatePeek();
 }
 kick();
 
 const search = $('#search'), results = $('#results');
 let hits = [], hitIdx = 0, searchTimer = 0;
-function closeResults() { results.hidden = true; hits = []; }
+function closeResults() { results.hidden = true; hits = []; setMarks(''); }
+function setMarks(q) {
+  let m = null;
+  if (q.length > 1 && app.nb) {
+    m = new Set();
+    for (const i of app.nb.nodes) if (app.g.nodes[app.view.ids[i]].name.toLowerCase().includes(q)) m.add(i);
+    if (!m.size) m = null;
+  }
+  if (m || app.marks) { app.marks = m; app.dirty = true; }
+}
 function renderResults() {
   if (!hits.length) { results.innerHTML = '<div class="none">No matches</div>'; results.hidden = false; return; }
   results.innerHTML = `<ul>${hits.map((id, k) => {
@@ -704,6 +714,7 @@ function runSearch() {
   }
   found.sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2] || a[3] - b[3]);
   hits = found.slice(0, 50).map(f => f[4]);
+  setMarks(q);
   hitIdx = 0;
   renderResults();
 }

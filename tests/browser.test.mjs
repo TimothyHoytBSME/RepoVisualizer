@@ -114,6 +114,10 @@ const state = page => page.evaluate(() => {
   await page.waitForTimeout(300);
   const qs = await page.evaluate(() => document.querySelector('#results li.on .sub')?.textContent || '');
   check('qualified search finds Class.member', qs.startsWith('src/render.js'), qs);
+  await page.fill('#search', 'label');
+  await page.waitForTimeout(300);
+  const mk = await page.evaluate(() => { const a = window.__rv.app; return a.marks ? [...a.marks].every(i => a.g.nodes[a.view.ids[i]].name.toLowerCase().includes('label')) && a.marks.size : 0; });
+  check('typing a search marks matching nodes on the map', mk > 0, mk);
   await page.fill('#search', '');
   await page.evaluate(() => document.activeElement.blur());
 

@@ -245,10 +245,10 @@ export class Renderer {
 
   draw(s) {
     if (this.lost) return;
-    const key = [s.nb, s.sel, s.hl, s.hover, s.pal, s.ver];
+    const key = [s.nb, s.sel, s.hl, s.hover, s.pal, s.ver, s.marks];
     const same = this.packKey && key.every((v, i) => v === this.packKey[i]);
     this.packKey = key;
-    const { view, nb, lay, cam, pal, style, sel, hl, hover } = s;
+    const { view, nb, lay, cam, pal, style, sel, hl, hover, marks } = s;
     const { x, y } = lay;
     const { kind, rad } = style;
     const nodes = nb.nodes, depth = nb.depth;
@@ -275,6 +275,7 @@ export class Renderer {
       const c = onPath ? pal.accent : t === DEP ? pal.fg : pal.muted;
       let al = (t === DEP ? 0.34 : t === REF ? 0.3 : 0.2) * fade(Math.max(depth[a], depth[b])) * (depth[a] === depth[b] && depth[a] > 0 ? 0.45 : 1);
       if (hot) al = onPath ? 0.95 : Math.min(0.95, al * 2.6 + 0.15);
+      else if (marks && !marks.has(a) && !marks.has(b)) al *= 0.35;
       const o = i * 12;
       ed[o] = x[a]; ed[o + 1] = y[a]; ed[o + 2] = x[b]; ed[o + 3] = y[b];
       ed[o + 4] = c[0]; ed[o + 5] = c[1]; ed[o + 6] = c[2]; ed[o + 7] = al;
@@ -288,8 +289,8 @@ export class Renderer {
       const c = pal.kinds[kind[i]];
       const o = j * 8;
       nd[o] = x[i]; nd[o + 1] = y[i]; nd[o + 2] = rad[i];
-      nd[o + 3] = c[0]; nd[o + 4] = c[1]; nd[o + 5] = c[2]; nd[o + 6] = fade(depth[i]);
-      nd[o + 7] = (i === sel ? 1 : i === hl || i === hover || (nb.pathN && nb.pathN.has(i)) ? 2 : 0) + style.shape[i] * 4;
+      nd[o + 3] = c[0]; nd[o + 4] = c[1]; nd[o + 5] = c[2]; nd[o + 6] = marks ? (marks.has(i) ? 1 : i === sel ? fade(depth[i]) : 0.25) : fade(depth[i]);
+      nd[o + 7] = (i === sel ? 1 : i === hl || i === hover || (nb.pathN && nb.pathN.has(i)) || (marks && marks.has(i)) ? 2 : 0) + style.shape[i] * 4;
     }
 
     this.counts = { edge: E.length, arrow: ai, node: nodes.length };
@@ -360,10 +361,10 @@ export class Renderer {
     }
     let count = 0;
     const more = this.moreHits = [];
-    const label = (i, sp) => {
+    const label = (i, sp, pri) => {
       if (nb.depth[i] < 0) return;
       const r = Math.max(style.rad[i] * cam.scale, 2.5);
-      if (!sp && r < 3.2 && nb.depth[i] > 1) return;
+      if (!sp && !pri && r < 3.2 && nb.depth[i] > 1) return;
       const sx = (lay.x[i] - cam.x) * cam.scale + W / 2;
       const sy = (lay.y[i] - cam.y) * cam.scale + H / 2;
       if (sx < -200 || sx > W + 20 || sy < -20 || sy > H + 20) return;
@@ -396,7 +397,8 @@ export class Renderer {
       for (let rr = r0; rr <= r1; rr++) grid.fill(1, rr * cols + c0, rr * cols + c1 + 1);
       ctx.font = font;
       ctx.globalAlpha = sp ? 1 : Math.max(0.45, 1 - 0.15 * Math.max(0, nb.depth[i] - 1));
-      ctx.fillStyle = sp || nb.depth[i] <= 1 ? pal.css.fg : pal.css.muted;
+      ctx.fillStyle = sp || pri || nb.depth[i] <= 1 ? pal.css.fg : pal.css.muted;
+      if (pri) ctx.globalAlpha = 1;
       ctx.strokeText(name, lx, ly);
       ctx.fillText(name, lx, ly);
       if (hid) {
@@ -412,9 +414,10 @@ export class Renderer {
     if (hl >= 0 && hl !== sel) label(hl, true);
     if (hover >= 0 && hover !== sel && hover !== hl) label(hover, true);
     if (nb.pathN) for (const i of nb.pathN) if (i !== sel && i !== hl && i !== hover) label(i, true);
+    if (s.marks) { let n = 0; for (const i of s.marks) if (i !== sel && i !== hl && i !== hover && n++ < 80) label(i, false, true); }
     const order = this.labelOrder;
     const cap = Math.max(60, Math.min(220, (W * H) / 4000));
-    for (let k = 0; k < order.length && count <= cap; k++) {
+    for (let k = 0; k < order.length && count <= cap && !s.marks; k++) {
       const i = order[k];
       if (i !== sel && i !== hl && i !== hover && !(nb.pathN && nb.pathN.has(i))) label(i, false);
     }

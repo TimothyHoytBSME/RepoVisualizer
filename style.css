@@ -42,7 +42,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 #search:focus, dialog input:focus { border-color: var(--accent); }
 #map-type { width: auto; padding-right: 6px; }
 #bar .icon { background: none; border: 0; width: 36px; height: 36px; border-radius: 9px; display: grid; place-items: center; color: var(--muted); flex: none; }
-#results { position: absolute; top: calc(100% + 6px); left: 0; right: 0; max-height: min(60vh, 460px); overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 12px 32px rgba(0,0,0,.35); z-index: 20; min-width: 260px; }
+#results { position: absolute; top: calc(100% + 6px); left: 0; width: min(100%, 640px); max-height: min(45vh, 360px); overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 12px 32px rgba(0,0,0,.35); z-index: 20; min-width: 260px; }
 #results ul { list-style: none; margin: 0; padding: 4px; }
 #results li { display: flex; gap: 8px; align-items: baseline; padding: 7px 8px; border-radius: 7px; cursor: pointer; min-width: 0; }
 #results li.on, #results li:hover { background: var(--raise); }
@@ -198,7 +198,7 @@ body.dropping #stage { outline: 2px dashed var(--accent); outline-offset: -8px; 
 }
 @media (max-width: 760px), (max-width: 1100px) and (orientation: portrait) {
   #search-wrap { position: static; }
-  #results { left: max(8px, env(safe-area-inset-left)); right: max(8px, env(safe-area-inset-right)); top: calc(100% + 4px); min-width: 0; max-height: 55vh; touch-action: pan-y; }
+  #results { left: max(8px, env(safe-area-inset-left)); right: max(8px, env(safe-area-inset-right)); top: calc(100% + 4px); min-width: 0; width: auto; max-height: 40vh; touch-action: pan-y; }
   #status { top: 30%; z-index: 9; }
   #bar { gap: 6px; padding-left: max(8px, env(safe-area-inset-left)); padding-right: max(8px, env(safe-area-inset-right)); }
   #bar .repo { max-width: 34%; padding: 6px 4px; }
