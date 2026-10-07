@@ -49,7 +49,7 @@ async function open(viewport, mobile, init, q = '') {
   return { ctx, page, errors };
 }
 
-const settled = page => page.waitForFunction(() => window.__rv.app.nb && window.__rv.app.lay.alpha < 0.01, null, { timeout: 60000 });
+const settled = page => page.waitForFunction(() => { const a = window.__rv.app; return a.nb && a.lay.alpha < 0.01 && !a.pendingFit && !a.goto; }, null, { timeout: 60000 });
 const state = page => page.evaluate(() => {
   const a = window.__rv.app;
   return { sel: a.g.nodes[a.view.ids[a.sel]].key, hl: a.hl >= 0 ? a.g.nodes[a.view.ids[a.hl]].key : null, depth: a.depth, map: a.mapType, nodes: a.nb.nodes.length };
