@@ -216,7 +216,7 @@ export class Panel {
     this.el.querySelector('.pbody').scrollTop = 0;
   }
 
-  peek(id, sx, sy, W, H) {
+  peek(id, sx, sy, W, H, top = 0, bottom = H) {
     if (id < 0) { this.peekEl.hidden = true; this.peekId = -1; return; }
     const { g, files } = this.app;
     const n = g.nodes[id];
@@ -225,7 +225,7 @@ export class Panel {
       let body = '';
       if (n.kind === 'keyword') body = `<div class="pk-sub">keyword · found in ${edgesOf(g, id, 'in').length} files</div>`;
       else if (n.kind === 'lib') body = `<div class="pk-sub">external library · used by ${edgesOf(g, id, 'in').length} files</div>`;
-      else if (n.kind === 'dir') body = `<div class="pk-sub">${n.path || '/'} · ${edgesOf(g, id, 'out').length} items</div>`;
+      else if (n.kind === 'dir') body = `<div class="pk-sub">${esc(n.path || '/')} · ${edgesOf(g, id, 'out').length} items</div>`;
       else if (n.kind === 'file') {
         const defs = edgesOf(g, id, 'out').filter(e => e.type === 'contain').length;
         body = `<div class="pk-sub">${esc(n.path)} · ${n.end + 1} lines${defs ? ` · ${defs} definitions` : ''}</div>`;
@@ -243,7 +243,8 @@ export class Panel {
     const pw = this.peekEl.offsetWidth, ph = this.peekEl.offsetHeight;
     let x = sx + 16, y = sy + 16;
     if (x + pw > W - 8) x = Math.max(8, sx - pw - 16);
-    if (y + ph > H - 8) y = Math.max(8, sy - ph - 16);
+    if (y + ph > bottom - 8) y = Math.max(top + 8, sy - ph - 16);
+    if (y < top + 8) y = top + 8;
     this.peekEl.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
   }
 }

@@ -132,6 +132,30 @@ const state = page => page.evaluate(() => {
 }
 
 {
+  const { ctx, page, errors } = await open({ width: 1100, height: 700 }, false);
+  const evil = '<img src=x onerror=window.__pwned=1>';
+  await page.evaluate(f => window.__rv.loadFiles(f), [
+    { path: 'src/a.js', text: "import { helper } from './b.js'\nexport function main() { return helper() }\n" },
+    { path: 'src/b.js', text: 'export function helper() { return 1 }\n' },
+    { path: `${evil}/c.js`, text: 'export const x = 1\n' },
+    { path: 'tests/a.test.js', text: "import { main } from '../src/a.js'\nfunction testThingy() { main() }\n" },
+  ]);
+  await settled(page);
+  await page.selectOption('#map-type', 'files');
+  await page.waitForTimeout(300);
+  await page.evaluate(evil => { const a = window.__rv.app; const gid = a.g.byKey.get('d:' + evil); a.hover = a.view.local[gid]; a.dirty = true; }, evil);
+  await page.waitForTimeout(400);
+  check('folder names are escaped in the peek', await page.evaluate(() => window.__pwned === undefined && !document.querySelector('#peek img')));
+  await page.fill('#search', 'testThingy');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(500);
+  const t = await state(page);
+  check('search reveals a node hidden by the tests filter', t.sel === 's:tests/a.test.js#testThingy', t);
+  check('no page errors (filters)', errors.length === 0, errors);
+  await ctx.close();
+}
+
+{
   const { ctx, page, errors } = await open({ width: 320, height: 568 }, true);
   await page.setInputFiles('#zip-input', path.join(ROOT, 'tests/fixtures/basic.zip'));
   await settled(page);

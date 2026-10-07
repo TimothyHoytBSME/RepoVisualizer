@@ -1,5 +1,5 @@
 import { parseRepo, loadGitHub, loadLocal, dropEntries, scanEntries, saveLocal, loadSaved, recent } from './source.js';
-import { indexGraph, buildView, neighborhood, defaultNode } from './graph.js';
+import { indexGraph, buildView, neighborhood, defaultNode, isTest } from './graph.js';
 import { LayoutHost } from './layout-host.js';
 import { Renderer, readPalette, nodeStyle } from './render.js';
 import { attachControls, makeGamepad } from './controls.js';
@@ -99,6 +99,7 @@ $('#cancel-load').addEventListener('click', () => {
   if (!app.g) openSource();
 });
 async function load(getSource, nodeKey) {
+  if (narrow()) togglePanel(true);
   const seq = ++loadSeq;
   abort?.abort();
   abort = new AbortController();
@@ -113,6 +114,8 @@ async function load(getSource, nodeKey) {
     if (seq !== loadSeq) return;
     indexGraph(g);
     Object.assign(app, { g, files: new Map(src.files.map(f => [f.path, f.text])), meta: src.meta, hl: -1, hover: -1, touchPeek: -1 });
+    search.value = '';
+    closeResults();
     $('#repo-name').textContent = src.meta.label;
     document.title = `${src.meta.label} · RepoVisualizer`;
     hideStatus();
@@ -201,17 +204,37 @@ function select(i, instant, push = !instant) {
   syncURL(push);
 }
 
+function hiddenBy(n) {
+  const f = app.filters, file = n.file >= 0 ? app.g.nodes[n.file] : null;
+  if (f.tests === false && (isTest(n) || (file && isTest(file)))) return ['tests', 'tests'];
+  if (f.vars === false && n.kind === 'variable') return ['vars', 'variables'];
+  if (f.libs === false && n.kind === 'lib') return ['libs', 'libraries'];
+  return null;
+}
+
 app.selectGlobal = (gid, push = true) => {
+  if (gid == null || !app.g.nodes[gid]) return;
   let i = app.view.local[gid];
   if (i < 0) {
-    const k = app.g.nodes[gid].kind;
-    const want = k === 'dir' ? 'files' : k === 'keyword' ? 'words' : 'code';
-    if (want !== app.mapType) { setMap(want, gid, push); return; }
+    const n = app.g.nodes[gid];
+    const want = n.kind === 'dir' ? 'files' : n.kind === 'keyword' ? 'words' : 'code';
+    const block = hiddenBy(n);
+    if (block) {
+      app.filters[block[0]] = true;
+      store.set('rv:filters', JSON.stringify(app.filters));
+      syncFilters();
+      toast(`Showing ${block[1]} to reach ${n.name}`);
+      setMap(want, gid, push);
+      if (narrow()) togglePanel(true);
+      return;
+    }
+    if (want !== app.mapType) { setMap(want, gid, push); if (narrow()) togglePanel(true); return; }
     i = mapInto(gid);
     if (i < 0) return;
   }
-  if (i !== app.sel) select(i, false, push); else app.follow = true;
-  if (narrow()) panelEl.classList.add('collapsed');
+  if (i !== app.sel) select(i, false, push);
+  else { app.follow = true; app.dirty = true; }
+  if (narrow()) togglePanel(true);
 };
 
 function setDepth(d) {
@@ -249,8 +272,8 @@ function syncURL(push = false) {
   const url = `${location.pathname}?${q}`;
   if (push && url !== location.pathname + location.search) {
     navMax = ++navCur;
-    history.pushState({ n: navCur }, '', url);
-  } else history.replaceState({ n: navCur }, '', url);
+    history.pushState({ n: navCur, saved: m?.saved }, '', url);
+  } else history.replaceState({ n: navCur, saved: m?.saved }, '', url);
   panel.nav(navCur > 0, navCur < navMax);
 }
 
@@ -260,12 +283,19 @@ window.addEventListener('popstate', e => {
   if (!app.g) return;
   const q = new URLSearchParams(location.search);
   const m = app.meta, repo = q.get('repo');
-  if (repo && m && (m.kind !== 'github' || repo.toLowerCase() !== `${m.owner}/${m.repo}`.toLowerCase())) {
-    const spec = parseRepo(repo);
-    if (spec) {
-      spec.ref = q.get('ref') || '';
-      spec.sub = q.get('path') || '';
-      loadRepo(spec, q.get('node'));
+  const here = m ? (m.kind === 'github' ? `gh:${m.owner}/${m.repo}@${m.ref === 'HEAD' ? '' : m.ref}:${m.sub || ''}`.toLowerCase() : `local:${m.saved || ''}`) : '';
+  const there = repo ? `gh:${repo}@${q.get('ref') || ''}:${q.get('path') || ''}`.toLowerCase() : e.state?.saved ? `local:${e.state.saved}` : here;
+  if (there !== here) {
+    if (repo) {
+      const spec = parseRepo(repo);
+      if (spec) {
+        spec.ref = q.get('ref') || '';
+        spec.sub = q.get('path') || '';
+        loadRepo(spec, q.get('node'));
+        return;
+      }
+    } else if (e.state?.saved) {
+      load(async () => (await loadSaved(e.state.saved)).src, q.get('node'));
       return;
     }
   }
@@ -282,6 +312,12 @@ function viewOffset() {
   const top = Math.max(s.top, $('#hud').getBoundingClientRect().bottom);
   const bottom = Math.min(s.bottom, p.height ? p.top : s.bottom);
   return (top + bottom) / 2 - (s.top + s.bottom) / 2;
+}
+
+function visibleRect() {
+  if (!narrow()) return { top: 0, bottom: renderer.H };
+  const s = stage.getBoundingClientRect(), p = panelEl.getBoundingClientRect();
+  return { top: Math.max(0, $('#hud').getBoundingClientRect().bottom - s.top), bottom: Math.min(s.height, p.height ? p.top - s.top : s.height) };
 }
 
 function toScreen(i) {
@@ -411,7 +447,7 @@ const api = {
     if (i < 0) { if (app.hl >= 0) { app.hl = -1; app.dirty = true; } return; }
     if (i !== app.sel) select(i);
     else if (narrow()) togglePanel(false);
-    else app.follow = true;
+    else { app.follow = true; app.dirty = true; }
   },
   peekAt(sx, sy) { app.touchPeek = pick(sx, sy, 14); app.dirty = true; },
   peekEnd() { app.touchPeek = -1; app.dirty = true; },
@@ -433,7 +469,8 @@ const api = {
     app.hl = best;
     const [sx, sy] = toScreen(best);
     const m = 70;
-    if (sx < m || sy < m || sx > renderer.W - m || sy > renderer.H - m) { app.follow = false; app.goto = { i: best }; }
+    const vr = visibleRect();
+    if (sx < m || sy < vr.top + m || sx > renderer.W - m || sy > vr.bottom - m) { app.follow = false; app.goto = { i: best }; }
     app.dirty = true;
   },
   activate() {
@@ -485,13 +522,17 @@ let lastPoll = 0;
 setInterval(() => {
   if (gamepadOn && app.nb && performance.now() - lastPoll > 90) { lastPoll = performance.now(); pollPad(lastPoll); }
 }, 50);
+window.addEventListener('gamepaddisconnected', () => {
+  gamepadOn = [...(navigator.getGamepads?.() || [])].some(p => p && p.connected);
+});
 window.addEventListener('gamepadconnected', () => { gamepadOn = true; kick(); toast('Gamepad connected: left stick pans, D-pad moves, A selects, LB/RB depth'); });
 
 function updatePeek() {
   const i = app.touchPeek >= 0 ? app.touchPeek : app.hl >= 0 ? app.hl : app.hover;
   if (i < 0 || !app.nb || app.nb.depth[i] < 0) { panel.peek(-1); return; }
   const [sx, sy] = toScreen(i);
-  panel.peek(app.view.ids[i], sx, sy, renderer.W, renderer.H);
+  const vr = visibleRect();
+  panel.peek(app.view.ids[i], sx, sy, renderer.W, renderer.H, vr.top, vr.bottom);
 }
 
 let running = false, dirtyFlag = true;
@@ -510,6 +551,7 @@ function frame(t) {
     busy = true;
     if (app.nb) { pollPad(t); lastPoll = performance.now(); }
   }
+  if (!app.nb || !renderer) dirtyFlag = false;
   if (app.nb && renderer) {
     if (app.lay.run(9)) { dirtyFlag = true; app.ver++; if (app.lay.local) busy = true; }
     const { cam, lay } = app;
@@ -594,7 +636,7 @@ function choose(id) {
   search.blur();
   app.selectGlobal(id);
 }
-search.addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(runSearch, 70); });
+search.addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => { searchTimer = 0; runSearch(); }, 70); });
 search.addEventListener('keydown', e => {
   if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
     e.preventDefault();
@@ -603,15 +645,25 @@ search.addEventListener('keydown', e => {
     renderResults();
   } else if (e.key === 'Enter') {
     e.preventDefault();
-    clearTimeout(searchTimer);
-    if (!hits.length) runSearch();
+    if (searchTimer || !hits.length) { clearTimeout(searchTimer); searchTimer = 0; runSearch(); }
     if (hits.length) choose(hits[hitIdx]);
   } else if (e.key === 'Escape') { closeResults(); search.blur(); }
 });
-search.addEventListener('blur', () => setTimeout(closeResults, 150));
-results.addEventListener('pointerdown', e => {
+let pressingResults = false;
+search.addEventListener('blur', e => {
+  if (e.relatedTarget && results.contains(e.relatedTarget)) return;
+  const close = () => {
+    if (pressingResults) { setTimeout(close, 200); return; }
+    if (document.activeElement !== search) closeResults();
+  };
+  setTimeout(close, 250);
+});
+results.addEventListener('mousedown', e => e.preventDefault());
+results.addEventListener('pointerdown', () => { pressingResults = true; });
+for (const t of ['pointerup', 'pointercancel']) results.addEventListener(t, () => setTimeout(() => { pressingResults = false; }, 400));
+results.addEventListener('click', e => {
   const li = e.target.closest('[data-n]');
-  if (li) { e.preventDefault(); choose(+li.dataset.n); }
+  if (li) choose(+li.dataset.n);
 });
 
 function openSource(err = '') {
@@ -661,9 +713,11 @@ for (const id of ['#zip-input', '#dir-input']) {
     loadFiles(list);
   });
 }
-window.addEventListener('dragover', e => { e.preventDefault(); document.body.classList.add('dropping'); });
+const hasFiles = e => [...(e.dataTransfer?.types || [])].includes('Files');
+window.addEventListener('dragover', e => { if (!hasFiles(e)) return; e.preventDefault(); document.body.classList.add('dropping'); });
 window.addEventListener('dragleave', e => { if (!e.relatedTarget) document.body.classList.remove('dropping'); });
 window.addEventListener('drop', e => {
+  if (!hasFiles(e)) return;
   e.preventDefault();
   document.body.classList.remove('dropping');
   const entries = dropEntries(e.dataTransfer);

@@ -72,6 +72,15 @@ export function attachControls(el, api) {
     api.zoomAt(Math.exp(-e.deltaY * k * (e.ctrlKey ? 4 : 1)), ...loc(e));
   }, { passive: false });
   el.addEventListener('contextmenu', e => e.preventDefault());
+  let gs = 1;
+  el.addEventListener('gesturestart', e => { e.preventDefault(); gs = e.scale || 1; rect = el.getBoundingClientRect(); });
+  el.addEventListener('gesturechange', e => {
+    e.preventDefault();
+    const s = e.scale || 1;
+    api.zoomAt(s / gs, e.clientX - rect.left, e.clientY - rect.top);
+    gs = s;
+  });
+  el.addEventListener('gestureend', e => e.preventDefault());
 
   window.addEventListener('keydown', e => {
     const t = e.target;

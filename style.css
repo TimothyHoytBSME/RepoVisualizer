@@ -31,7 +31,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 [hidden] { display: none !important; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
-#bar { display: flex; gap: 8px; align-items: center; padding: 8px 12px; padding-top: max(8px, env(safe-area-inset-top)); padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); background: var(--panel); border-bottom: 1px solid var(--line); z-index: 5; }
+#bar { position: relative; z-index: 8; display: flex; gap: 8px; align-items: center; padding: 8px 12px; padding-top: max(8px, env(safe-area-inset-top)); padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); background: var(--panel); border-bottom: 1px solid var(--line); }
 #bar .repo { display: flex; align-items: center; gap: 8px; background: none; border: 0; padding: 6px 8px; border-radius: 8px; min-width: 0; max-width: 40%; font-weight: 600; }
 #bar .repo svg { flex: none; color: var(--accent); }
 #bar .repo svg circle { fill: currentColor; stroke: none; }
@@ -55,7 +55,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 #stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 #labels { pointer-events: none; }
 
-#hud { position: absolute; left: 12px; bottom: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 8px 12px; background: var(--panel); background: color-mix(in srgb, var(--panel) 88%, transparent); border: 1px solid var(--line); border-radius: 12px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); font-size: 13px; max-width: calc(100% - 24px); }
+#hud { position: absolute; left: max(12px, env(safe-area-inset-left)); bottom: max(12px, env(safe-area-inset-bottom)); display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 8px 12px; background: var(--panel); background: color-mix(in srgb, var(--panel) 88%, transparent); border: 1px solid var(--line); border-radius: 12px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); font-size: 13px; max-width: calc(100% - 24px); }
 #hud label { white-space: nowrap; color: var(--muted); }
 #hud label b { color: var(--fg); display: inline-block; min-width: 1ch; }
 #depth { width: 140px; accent-color: var(--accent); }
@@ -64,7 +64,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .hud-btn:hover { background: var(--raise); color: var(--fg); }
 .hud-btn.on { color: var(--accent); }
 .hud-btn svg { width: 18px; height: 18px; }
-#filters { position: absolute; left: 12px; bottom: 64px; z-index: 7; max-height: calc(100% - 80px); overflow: auto; display: flex; flex-direction: column; gap: 2px; padding: 8px; min-width: 220px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 12px 32px rgba(0,0,0,.3); font-size: 13px; }
+#filters { position: absolute; left: max(12px, env(safe-area-inset-left)); bottom: calc(52px + max(12px, env(safe-area-inset-bottom))); z-index: 7; max-height: calc(100% - 80px); overflow: auto; display: flex; flex-direction: column; gap: 2px; padding: 8px; min-width: 220px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 12px 32px rgba(0,0,0,.3); font-size: 13px; }
 #filters .ft { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; padding: 2px 6px 4px; }
 #filters .ft + #legend, #filters label + .ft { margin-top: 6px; }
 #filters label { display: flex; align-items: center; gap: 10px; padding: 7px 6px; border-radius: 7px; cursor: pointer; }
@@ -107,7 +107,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .k-keyword { color: var(--k-keyword); --c: var(--k-keyword); }
 .k-function { color: var(--k-function); --c: var(--k-function); } .k-method { color: var(--k-method); --c: var(--k-method); } .k-variable { color: var(--k-variable); --c: var(--k-variable); }
 
-#panel { width: min(44%, 600px); background: var(--panel); border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+#panel { padding-right: env(safe-area-inset-right); width: min(44%, 600px); background: var(--panel); border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
 #panel.collapsed { display: none; }
 #panel:empty { display: none !important; }
 .ph { padding: 12px 14px 10px; border-bottom: 1px solid var(--line); }
@@ -171,7 +171,13 @@ dialog .close { position: absolute; right: -10px; top: -12px; width: 34px; heigh
 .error { margin: 0; color: #ff6b6b; font-size: 13px; }
 body.dropping #stage { outline: 2px dashed var(--accent); outline-offset: -8px; }
 
+@media (pointer: coarse) {
+  #search, dialog input, #map-type, #filters select { font-size: 16px; }
+}
 @media (max-width: 760px) {
+  #search-wrap { position: static; }
+  #results { left: max(8px, env(safe-area-inset-left)); right: max(8px, env(safe-area-inset-right)); top: calc(100% + 4px); min-width: 0; max-height: 55vh; touch-action: pan-y; }
+  #status { top: 30%; z-index: 9; }
   #bar { gap: 6px; padding-left: max(8px, env(safe-area-inset-left)); padding-right: max(8px, env(safe-area-inset-right)); }
   #bar .repo { max-width: 34%; padding: 6px 4px; }
   #map-type { padding: 0 4px; font-size: 13px; }
