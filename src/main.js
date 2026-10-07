@@ -842,6 +842,13 @@ function saveImage() {
   const x = c.getContext('2d');
   x.drawImage(src, 0, 0);
   x.drawImage(renderer.labels, 0, 0, c.width, c.height);
+  const d = c.width / renderer.W, mapName = $('#map-type').selectedOptions[0]?.textContent || '';
+  const cap = [app.meta?.label || 'repo', mapName, app.g.nodes[app.view.ids[app.sel]].name, `depth ${app.depth}`].join(' · ');
+  x.font = `500 ${12 * d}px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
+  x.globalAlpha = 0.85;
+  x.fillStyle = app.pal.css.muted;
+  x.fillText(cap, 14 * d, c.height - 14 * d);
+  x.globalAlpha = 1;
   const name = (app.meta?.label || 'repo').replace(/[^\w.-]+/g, '-') + '-' + app.g.nodes[app.view.ids[app.sel]].name.replace(/[^\w.-]+/g, '-');
   c.toBlob(b => {
     if (!b) { toast("Couldn't create the image"); return; }
