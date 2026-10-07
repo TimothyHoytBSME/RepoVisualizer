@@ -703,7 +703,7 @@ export function analyze(files, rootName, progress = () => {}) {
     }
     for (const d of defs) {
       if (d.kind !== 'variable') continue;
-      for (let p = d.up; p; p = p.up) if (isFn(p.kind) || p.kind === 'variable') { d.drop = true; break; }
+      for (let p = d.up; p; p = p.up) if (isFn(p.kind) || (p.kind === 'variable' && /[{([]\s*$/.test(lines[p.line]))) { d.drop = true; break; }
     }
     for (const d of defs) {
       if (d.drop) {
@@ -873,6 +873,22 @@ export function analyze(files, rootName, progress = () => {}) {
       if (!ft) fieldTypes.set(c.node, (ft = new Map()));
       if (!ft.has(m[1])) ft.set(m[1], ty);
     }
+    if (L.group === 'go' || L.group === 'rs' || L.group === 'swift' || L.group === 'c') {
+      for (const m of masked.matchAll(/\b(?:type[ \t]+(\w+)[ \t]+struct|struct[ \t]+(\w+)(?:<[^>{]*>)?)[^{;\n]*\{/g)) {
+        const t = types.get(m[1] || m[2]);
+        if (!t || t.node == null) continue;
+        let d = 1, k = m.index + m[0].length;
+        const lim = Math.min(masked.length, k + 20000), body0 = k;
+        for (; k < lim && d; k++) { const c = masked.charCodeAt(k); if (c === 123) d++; else if (c === 125) d--; }
+        const body = masked.slice(body0, k - 1);
+        let ft = fieldTypes.get(t.node);
+        for (const f of body.matchAll(/^[ \t]*(?:pub(?:\([^)]*\))?[ \t]+)?(?:(?:let|var)[ \t]+)?([A-Za-z_]\w*)[ \t]*:?[ \t]*[*&]?(?:\[\])?(?:mut[ \t]+)?(?:\w+(?:\.|::))*([A-Z]\w*)/gm)) {
+          if (f[1] === f[2]) continue;
+          if (!ft) fieldTypes.set(t.node, (ft = new Map()));
+          if (!ft.has(f[1])) ft.set(f[1], f[2]);
+        }
+      }
+    }
     if (L.group === 'cs') {
       for (const m of masked.matchAll(/\bnew[ \t]+([A-Za-z_][\w.]*)(?:<[^>\n]*>)?[ \t]*(?:\([^()]*\))?\s*\{/g)) {
         let d = 1, k = m.index + m[0].length;
@@ -1028,6 +1044,11 @@ export function analyze(files, rootName, progress = () => {}) {
         if (selfOf.get(o) === v) break;
         const ft = fieldTypes.get(o), fy = ft && ft.get(v);
         if (fy) { t = fy; break; }
+      }
+      if (!t) {
+        let ow = null;
+        for (let o = src; o !== fid && o >= 0 && !ow; o = nodes[o].parent) ow = ownerOf.get(o);
+        if (ow) for (const c of classes(ow, fid)) { const fy = fieldTypes.get(c)?.get(v); if (fy) { t = fy; break; } }
       }
       if (!t) {
         let cls = src;
