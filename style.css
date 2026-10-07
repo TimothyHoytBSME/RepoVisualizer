@@ -168,6 +168,15 @@ dialog button { height: 36px; padding: 0 14px; border-radius: 9px; border: 1px s
 dialog button:hover { border-color: var(--muted); }
 dialog button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
 dialog .row button:not(.primary) { flex: 1; }
+#help-dialog { width: min(calc(100vw - 24px), 640px); }
+.help-scroll { overflow: auto; max-height: min(60vh, 520px); margin: 0 -6px; }
+.help { border-collapse: collapse; font-size: 13px; width: 100%; }
+.help th, .help td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.help thead th { color: var(--muted); font-weight: 600; font-size: 12px; }
+.help tbody th { font-weight: 600; white-space: nowrap; }
+.help td { color: var(--muted); }
+@media (max-width: 560px) { .help th:nth-child(n+3), .help td:nth-child(n+3) { display: none; } .help tbody th { white-space: normal; } }
+.linkish { background: none; border: 0; padding: 4px 0; color: var(--accent); font-size: 13px; cursor: pointer; text-align: left; }
 dialog .close { position: absolute; right: -10px; top: -12px; width: 34px; height: 34px; padding: 0; border: 0; background: none; font-size: 22px; color: var(--muted); }
 .examples { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; color: var(--muted); font-size: 12px; }
 .examples button { height: 28px; padding: 0 10px; font-size: 12px; border-radius: 999px; }

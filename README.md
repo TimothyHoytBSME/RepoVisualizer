@@ -40,6 +40,7 @@ The funnel button shows or hides tests, variables and libraries, and holds the c
 | Search | search box | / | — |
 | Open repository | repo name in the top bar | O | Start |
 | Path to another node | route button in the details panel | G | — |
+| Controls help | Controls… in the filter menu | ? | — |
 
 ## How it works
 

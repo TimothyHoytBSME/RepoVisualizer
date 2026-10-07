@@ -63,6 +63,7 @@
           <option value="auto">Auto</option><option value="light">Light</option><option value="dark">Dark</option>
         </select>
       </label>
+      <button type="button" id="help-btn" class="linkish">Controls…</button>
       <div class="ft">Legend</div>
       <div id="legend">
         <span class="k-file">file</span><span class="k-class">class</span><span class="k-function">function</span><span class="k-method">method</span><span class="k-variable">variable</span><span class="k-type">type</span><span class="k-module">module</span><span class="k-lib">library</span><span class="k-dir">folder</span><span class="k-keyword">keyword</span>
@@ -103,6 +104,36 @@
   </form>
   <input type="file" id="zip-input" accept=".zip,application/zip" hidden>
   <input type="file" id="dir-input" webkitdirectory multiple hidden>
+</dialog>
+<dialog id="help-dialog" aria-labelledby="help-title">
+  <form method="dialog">
+    <button class="close" aria-label="Close">×</button>
+    <h1 id="help-title">Controls</h1>
+    <div class="help-scroll">
+      <table class="help">
+        <thead><tr><th></th><th>Mouse / touch</th><th>Keyboard</th><th>Gamepad</th></tr></thead>
+        <tbody>
+        <tr><th>Select a node</th><td>click / tap</td><td>Enter</td><td>A</td></tr>
+        <tr><th>Move the highlight</th><td>hover</td><td>arrows</td><td>D-pad / right stick</td></tr>
+        <tr><th>Pan</th><td>drag</td><td>WASD / Shift+arrows</td><td>left stick</td></tr>
+        <tr><th>Zoom</th><td>wheel / pinch</td><td>+ / −</td><td>triggers</td></tr>
+        <tr><th>Depth</th><td>slider</td><td>[ / ]</td><td>LB / RB</td></tr>
+        <tr><th>Peek at code</th><td>hover / long-press</td><td>(highlight)</td><td>(highlight)</td></tr>
+        <tr><th>Back / forward</th><td>‹ › in the panel</td><td>Backspace, Alt+← / →</td><td>B</td></tr>
+        <tr><th>Path to another node</th><td>route button in the panel</td><td>G</td><td>—</td></tr>
+        <tr><th>Fit to screen</th><td>⛶ button</td><td>F</td><td>Back / Select</td></tr>
+        <tr><th>Recenter</th><td>click the selected node</td><td>C</td><td>stick press</td></tr>
+        <tr><th>Details panel</th><td>tap the sheet</td><td>P</td><td>X</td></tr>
+        <tr><th>Switch map</th><td>map menu</td><td>M</td><td>Y</td></tr>
+        <tr><th>Search</th><td>search box</td><td>/</td><td>—</td></tr>
+        <tr><th>Show / hide tests</th><td>filter menu</td><td>T</td><td>—</td></tr>
+        <tr><th>Open a repository</th><td>repo name</td><td>O</td><td>Start</td></tr>
+        <tr><th>This help</th><td>Controls in the filter menu</td><td>?</td><td>—</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="lead">Arrows mean “uses”; plain lines mean “contains” or “related” (≈, a name match that couldn’t be confirmed).</p>
+  </form>
 </dialog>
 </body>
 </html>

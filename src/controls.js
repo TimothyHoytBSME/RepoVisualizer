@@ -103,7 +103,7 @@ export function attachControls(el, api) {
       '[': () => api.depth(-1), ']': () => api.depth(1),
       '/': () => api.focusSearch(), Escape: () => api.escape(), Backspace: () => api.back(),
       c: () => api.recenter(), Home: () => api.recenter(), f: () => api.fit(), t: () => api.toggleTests(),
-      p: () => api.togglePanel(), g: () => api.path(), m: () => api.cycleMap(), o: () => api.openSource(),
+      p: () => api.togglePanel(), g: () => api.path(), '?': () => api.help(), m: () => api.cycleMap(), o: () => api.openSource(),
     };
     const f = map[k];
     if (!f) return;

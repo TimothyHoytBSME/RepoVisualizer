@@ -505,6 +505,7 @@ const api = {
   depth: d => setDepth(app.depth + d),
   focusSearch() { $('#search').focus(); },
   path() { app.startPath(); },
+  help() { openHelp(); },
   escape() {
     app.clearPath();
     app.hl = app.touchPeek = -1;
@@ -756,6 +757,13 @@ function openSource(err = '') {
 dlg.addEventListener('cancel', e => { if (!app.g) e.preventDefault(); });
 $('#src-btn').addEventListener('click', () => openSource());
 $('#src-close').addEventListener('click', () => dlg.close());
+function openHelp() {
+  const h = $('#help-dialog');
+  $('#filters').hidden = true;
+  $('#filter-btn').setAttribute('aria-expanded', 'false');
+  if (!h.open && !dlg.open) h.showModal();
+}
+$('#help-btn').addEventListener('click', openHelp);
 $('#src-form').addEventListener('submit', e => {
   e.preventDefault();
   const spec = parseRepo($('#repo-input').value);
