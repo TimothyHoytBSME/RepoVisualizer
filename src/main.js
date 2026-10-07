@@ -142,6 +142,7 @@ function setMap(type, gid = -1, push = false) {
   app.style = nodeStyle(app.g, app.view);
   app.lay?.dispose();
   app.lay = new LayoutHost(app.view);
+  app.lay.onFresh = kick;
   app.sel = app.hl = app.hover = app.touchPeek = -1;
   let i = gid >= 0 ? mapInto(gid) : -1;
   if (i < 0) i = defaultNode(app.g, app.view);
@@ -413,7 +414,11 @@ if (narrow()) togglePanel(true);
 
 let gamepadOn = false;
 const pollPad = makeGamepad(api);
-window.addEventListener('gamepadconnected', () => { gamepadOn = true; toast('Gamepad connected: left stick pans, D-pad moves, A selects, LB/RB depth'); });
+let lastPoll = 0;
+setInterval(() => {
+  if (gamepadOn && app.nb && performance.now() - lastPoll > 90) { lastPoll = performance.now(); pollPad(lastPoll); }
+}, 50);
+window.addEventListener('gamepadconnected', () => { gamepadOn = true; kick(); toast('Gamepad connected: left stick pans, D-pad moves, A selects, LB/RB depth'); });
 
 function updatePeek() {
   const i = app.touchPeek >= 0 ? app.touchPeek : app.hl >= 0 ? app.hl : app.hover;
@@ -422,41 +427,61 @@ function updatePeek() {
   panel.peek(app.view.ids[i], sx, sy, renderer.W, renderer.H);
 }
 
-function frame(t) {
+let running = false, dirtyFlag = true;
+Object.defineProperty(app, 'dirty', { get: () => dirtyFlag, set: v => { dirtyFlag = v; if (v) kick(); } });
+
+function kick() {
+  if (running) return;
+  running = true;
   requestAnimationFrame(frame);
-  if (gamepadOn && app.nb) pollPad(t);
-  if (!app.nb || !renderer) return;
-  if (app.lay.run(9)) { app.dirty = true; app.ver++; }
-  const { cam, lay } = app;
-  const go = app.goto;
-  const ti = app.follow ? app.sel : go && go.i != null ? go.i : -1;
-  if (ti >= 0 || go) {
-    let ts = null;
-    if (ti < 0 && go.scale) {
-      ts = go.scale;
-      cam.scale += (ts - cam.scale) * 0.2;
-      if (Math.abs(ts - cam.scale) < ts * 0.002) cam.scale = ts;
-    }
-    const tx = ti >= 0 ? lay.x[ti] : go.x, ty = (ti >= 0 ? lay.y[ti] : go.y) - viewOffset() / cam.scale;
-    const dx = tx - cam.x, dy = ty - cam.y;
-    if (Math.abs(dx) * cam.scale < 0.4 && Math.abs(dy) * cam.scale < 0.4 && (ts === null || cam.scale === ts)) {
-      cam.x = tx; cam.y = ty;
-      app.goto = null;
-    } else {
-      cam.x += dx * 0.2; cam.y += dy * 0.2;
-    }
-    app.dirty = true;
+}
+
+function frame(t) {
+  running = false;
+  let busy = false;
+  if (gamepadOn) {
+    busy = true;
+    if (app.nb) { pollPad(t); lastPoll = performance.now(); }
   }
-  if (app.pendingFit && app.lay.alpha < 0.08) { app.pendingFit = false; fitView(0.35); }
-  if (app.dirty) paint();
+  if (app.nb && renderer) {
+    if (app.lay.run(9)) { dirtyFlag = true; app.ver++; if (app.lay.local) busy = true; }
+    const { cam, lay } = app;
+    const go = app.goto;
+    const ti = app.follow ? app.sel : go && go.i != null ? go.i : -1;
+    if (ti >= 0 || go) {
+      const before = cam.x + ',' + cam.y + ',' + cam.scale;
+      let ts = null;
+      if (ti < 0 && go.scale) {
+        ts = go.scale;
+        cam.scale += (ts - cam.scale) * 0.2;
+        if (Math.abs(ts - cam.scale) < ts * 0.002) cam.scale = ts;
+      }
+      const tx = ti >= 0 ? lay.x[ti] : go.x, ty = (ti >= 0 ? lay.y[ti] : go.y) - viewOffset() / cam.scale;
+      const dx = tx - cam.x, dy = ty - cam.y;
+      if (Math.abs(dx) * cam.scale < 0.4 && Math.abs(dy) * cam.scale < 0.4 && (ts === null || cam.scale === ts)) {
+        cam.x = tx; cam.y = ty;
+        app.goto = null;
+      } else {
+        cam.x += dx * 0.2; cam.y += dy * 0.2;
+        busy = true;
+      }
+      if (before !== cam.x + ',' + cam.y + ',' + cam.scale) dirtyFlag = true;
+    }
+    if (app.pendingFit) {
+      if (app.lay.alpha < 0.08) { app.pendingFit = false; fitView(0.35); }
+      busy = true;
+    }
+    if (dirtyFlag) paint();
+  }
+  if (busy || dirtyFlag) kick();
 }
 
 function paint() {
-  app.dirty = false;
+  dirtyFlag = false;
   renderer.draw({ g: app.g, view: app.view, nb: app.nb, lay: app.lay, cam: app.cam, pal: app.pal, style: app.style, sel: app.sel, hl: app.hl, hover: app.hover, ver: app.ver });
   updatePeek();
 }
-requestAnimationFrame(frame);
+kick();
 
 const search = $('#search'), results = $('#results');
 let hits = [], hitIdx = 0, searchTimer = 0;

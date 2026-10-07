@@ -1,4 +1,4 @@
-const INTERACTIVE = new Set(['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON', 'A', 'DIALOG']);
+const TYPING = new Set(['INPUT', 'TEXTAREA', 'SELECT']);
 
 export function attachControls(el, api) {
   const pts = new Map();
@@ -75,10 +75,11 @@ export function attachControls(el, api) {
 
   window.addEventListener('keydown', e => {
     const t = e.target;
-    if (t && t !== el && (INTERACTIVE.has(t.tagName) || t.isContentEditable)) {
-      if (e.key === 'Escape' && t.tagName !== 'DIALOG') t.blur();
+    if (t && t !== el && (TYPING.has(t.tagName) || t.isContentEditable || t.closest?.('dialog'))) {
+      if (e.key === 'Escape' && TYPING.has(t.tagName)) t.blur();
       return;
     }
+    if (t && (t.tagName === 'BUTTON' || t.tagName === 'A' || t.tagName === 'SUMMARY') && (e.key === 'Enter' || e.key === ' ')) return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     const P = 70;
     const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;

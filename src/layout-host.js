@@ -45,6 +45,7 @@ export class LayoutHost {
     }
     this.alpha = d.alpha;
     this.fresh = true;
+    this.onFresh?.();
   }
 
   set(nb, sel, hx = 0, hy = 0) {
@@ -53,6 +54,7 @@ export class LayoutHost {
     if (this.local) {
       this.local.set(nb, sel, hx, hy);
       this.alpha = this.local.alpha;
+      this.onFresh?.();
       return;
     }
     place(this, nb, sel, hx, hy);
