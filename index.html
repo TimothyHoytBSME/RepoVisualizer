@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Explore any code repository as an interactive map of its files, functions, classes and dependencies.">
+<meta name="theme-color" content="#0f1115" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<title>RepoVisualizer</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="style.css">
+<script type="module" src="src/main.js"></script>
+</head>
+<body>
+<header id="bar">
+  <button id="src-btn" class="repo" title="Open a repository (O)">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="7" r="2.6"/><circle cx="18" cy="6" r="2"/><circle cx="16" cy="17" r="2.8"/><path d="M8.4 7.6 16 6.4M7.6 9.2l6.6 6.2M18 8v6.2"/></svg>
+    <span id="repo-name">Open repo</span>
+  </button>
+  <div id="search-wrap">
+    <input id="search" type="search" placeholder="Search" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="go" aria-label="Search nodes">
+    <div id="results" hidden></div>
+  </div>
+  <select id="map-type" aria-label="Map type" title="Map type (M)">
+    <option value="code">Code map</option>
+    <option value="files">File map</option>
+  </select>
+  <button id="panel-btn" class="icon" title="Toggle details (P)" aria-label="Toggle details">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M14 4.5v15"/></svg>
+  </button>
+</header>
+<div id="main">
+  <div id="stage" tabindex="0" aria-label="Map">
+    <canvas id="gl"></canvas>
+    <canvas id="labels"></canvas>
+    <div id="peek" hidden></div>
+    <div id="hud">
+      <label for="depth">Depth <b id="depth-val">2</b></label>
+      <input id="depth" type="range" min="1" max="8" step="1" value="2">
+      <span id="counts"></span>
+    </div>
+    <div id="legend" aria-hidden="true">
+      <span class="k-file">file</span><span class="k-class">class</span><span class="k-function">function</span><span class="k-method">method</span><span class="k-variable">variable</span><span class="k-type">type</span><span class="k-lib">library</span><span class="k-dir">folder</span>
+      <span class="edge-key"><i class="arrow"></i>uses</span><span class="edge-key"><i></i>related</span>
+    </div>
+    <div id="status" hidden><div id="status-text"></div><div class="bar"><i id="status-bar"></i></div></div>
+    <div id="toast" hidden></div>
+  </div>
+  <aside id="panel" aria-label="Details"></aside>
+</div>
+<dialog id="src-dialog">
+  <form id="src-form">
+    <button type="button" id="src-close" class="close" aria-label="Close" hidden>×</button>
+    <h1>RepoVisualizer</h1>
+    <p class="lead">Explore a code repository as an interactive map of its files, functions, classes and dependencies.</p>
+    <label for="repo-input">Public GitHub repository</label>
+    <div class="row">
+      <input id="repo-input" placeholder="owner/repo or GitHub link" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="go">
+      <button class="primary" type="submit">Load</button>
+    </div>
+    <div class="examples">Try
+      <button type="button" data-repo="TimothyHoytBSME/RepoVisualizer">this app</button>
+      <button type="button" data-repo="expressjs/express">express</button>
+      <button type="button" data-repo="pallets/flask">flask</button>
+      <button type="button" data-repo="gin-gonic/gin">gin</button>
+    </div>
+    <div class="or"><span>or open from this device</span></div>
+    <div class="row">
+      <button type="button" id="zip-btn">Open .zip</button>
+      <button type="button" id="dir-btn">Open folder</button>
+    </div>
+    <p class="hint">Files stay on your device. You can also drop a folder or .zip anywhere on the page.</p>
+    <p id="src-error" class="error" hidden></p>
+  </form>
+  <input type="file" id="zip-input" accept=".zip,application/zip" hidden>
+  <input type="file" id="dir-input" webkitdirectory multiple hidden>
+</dialog>
+</body>
+</html>

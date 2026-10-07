@@ -1,0 +1,466 @@
+import { parseRepo, loadGitHub, loadLocal, filesFromDrop } from './source.js';
+import { indexGraph, buildView, neighborhood, defaultNode } from './graph.js';
+import { Layout } from './layout.js';
+import { Renderer, readPalette, nodeStyle } from './render.js';
+import { attachControls, makeGamepad } from './controls.js';
+import { Panel } from './panel.js';
+
+const $ = s => document.querySelector(s);
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+};
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const fmt = n => n.toLocaleString();
+const narrow = () => matchMedia('(max-width: 760px)').matches;
+
+const stage = $('#stage'), panelEl = $('#panel'), dlg = $('#src-dialog');
+const MAX_DEPTH = +$('#depth').max;
+const app = {
+  g: null, files: null, meta: null, view: null, lay: null, nb: null, style: null,
+  mapType: store.get('rv:map') === 'files' ? 'files' : 'code',
+  sel: -1, hl: -1, hover: -1, touchPeek: -1,
+  depth: clamp(+store.get('rv:depth') || 2, 1, MAX_DEPTH),
+  cam: { x: 0, y: 0, scale: narrow() ? 0.85 : 1 },
+  follow: false, goto: null, dirty: true, pal: readPalette(),
+};
+const panel = new Panel(panelEl, $('#peek'), app);
+
+let renderer = null;
+try {
+  renderer = new Renderer($('#gl'), $('#labels'));
+} catch (e) {
+  showStatus(e.message || 'Graphics are not available in this browser.');
+}
+
+function fit() {
+  if (!renderer) return;
+  const r = stage.getBoundingClientRect();
+  renderer.resize(r.width, r.height, Math.min(window.devicePixelRatio || 1, 3));
+  app.dirty = true;
+}
+new ResizeObserver(fit).observe(stage);
+fit();
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { app.pal = readPalette(); app.dirty = true; });
+
+function showStatus(text, frac) {
+  $('#status').hidden = false;
+  $('#status-text').textContent = text;
+  const bar = $('#status-bar');
+  bar.parentElement.classList.toggle('busy', frac == null);
+  bar.style.width = frac == null ? '30%' : `${Math.round(frac * 100)}%`;
+}
+const hideStatus = () => { $('#status').hidden = true; };
+const progress = p => showStatus(p.total ? `${p.phase} ${fmt(p.done)} / ${fmt(p.total)}` : `${p.phase}…`, p.total ? p.done / p.total : null);
+
+function analyzeAsync(files, name, onProgress) {
+  const local = () => import('./analyze.js').then(m => m.analyze(files, name, onProgress));
+  return new Promise((resolve, reject) => {
+    let w;
+    try { w = new Worker(new URL('./worker.js', import.meta.url), { type: 'module' }); } catch { local().then(resolve, reject); return; }
+    w.onmessage = e => {
+      const d = e.data;
+      if (d.progress) { onProgress(d.progress); return; }
+      w.terminate();
+      if (d.error) reject(new Error(d.error)); else resolve(d.graph);
+    };
+    w.onerror = e => { e.preventDefault?.(); w.terminate(); local().then(resolve, reject); };
+    w.postMessage({ files, name });
+  });
+}
+
+let loadSeq = 0, abort = null;
+async function load(getSource, nodeKey) {
+  const seq = ++loadSeq;
+  abort?.abort();
+  abort = new AbortController();
+  const signal = abort.signal;
+  const live = p => { if (seq === loadSeq) progress(p); };
+  try {
+    const src = await getSource(live, signal);
+    if (seq !== loadSeq) return;
+    live({ phase: 'Analyzing' });
+    const g = await analyzeAsync(src.files, src.name, live);
+    if (seq !== loadSeq) return;
+    indexGraph(g);
+    Object.assign(app, { g, files: new Map(src.files.map(f => [f.path, f.text])), meta: src.meta, hl: -1, hover: -1, touchPeek: -1 });
+    $('#repo-name').textContent = src.meta.label;
+    document.title = `${src.meta.label} · RepoVisualizer`;
+    hideStatus();
+    if (dlg.open) dlg.close();
+    if (src.meta.kind === 'github') store.set('rv:last', JSON.stringify({ owner: src.meta.owner, repo: src.meta.repo, ref: src.meta.ref === 'HEAD' ? '' : src.meta.ref, sub: src.meta.sub }));
+    const gid = nodeKey ? g.byKey.get(nodeKey) : undefined;
+    setMap(app.mapType, gid ?? -1);
+    const note = src.meta.skipped ? ` · ${fmt(src.meta.skipped)} files skipped (repo too large)` : '';
+    toast(`${fmt(g.stats.files)} files · ${fmt(g.stats.symbols)} symbols · ${fmt(g.stats.libs)} libraries${note}`);
+  } catch (e) {
+    if (seq !== loadSeq || e.name === 'AbortError') return;
+    hideStatus();
+    openSource(e.message || String(e));
+  }
+}
+
+const loadRepo = (spec, nodeKey) => load((p, signal) => loadGitHub(spec, p, signal), nodeKey);
+const loadFiles = list => load(p => loadLocal(list, p));
+
+function mapInto(gid) {
+  const v = app.view, n = app.g.nodes[gid];
+  if (v.local[gid] >= 0) return v.local[gid];
+  if (n.file >= 0 && v.local[n.file] >= 0) return v.local[n.file];
+  return -1;
+}
+
+function setMap(type, gid = -1) {
+  app.mapType = type;
+  $('#map-type').value = type;
+  store.set('rv:map', type);
+  app.view = buildView(app.g, type);
+  app.style = nodeStyle(app.g, app.view);
+  app.lay = new Layout(app.view);
+  app.sel = app.hl = app.hover = app.touchPeek = -1;
+  let i = gid >= 0 ? mapInto(gid) : -1;
+  if (i < 0) i = defaultNode(app.g, app.view);
+  app.cam.x = app.cam.y = 0;
+  select(i, true);
+}
+
+function refresh() {
+  const { cam } = app;
+  app.nb = neighborhood(app.view, app.sel, app.depth);
+  app.lay.set(app.nb, app.sel, cam.x, cam.y);
+  renderer?.setLabelOrder(app.nb, app.style.rad);
+  for (const k of ['hl', 'hover', 'touchPeek']) if (app[k] >= 0 && app.nb.depth[app[k]] < 0) app[k] = -1;
+  $('#counts').textContent = `${fmt(app.nb.nodes.length)} nodes · ${fmt(app.nb.edges.length)} edges`;
+  app.dirty = true;
+}
+
+function select(i, instant) {
+  if (i < 0 || !app.view) return;
+  app.sel = i;
+  app.hl = -1;
+  refresh();
+  if (instant) { app.cam.x = app.lay.x[i]; app.cam.y = app.lay.y[i] - viewOffset() / app.cam.scale; }
+  app.follow = true;
+  app.goto = null;
+  panel.show(app.view.ids[i]);
+  syncURL();
+}
+
+app.selectGlobal = gid => {
+  let i = app.view.local[gid];
+  if (i < 0) {
+    const want = app.g.nodes[gid].kind === 'dir' ? 'files' : 'code';
+    if (want !== app.mapType) { setMap(want, gid); return; }
+    i = mapInto(gid);
+    if (i < 0) return;
+  }
+  if (i !== app.sel) select(i); else app.follow = true;
+  if (narrow()) panelEl.classList.add('collapsed');
+};
+
+function setDepth(d) {
+  d = clamp(d, 1, MAX_DEPTH);
+  if (d === app.depth && app.nb) return;
+  app.depth = d;
+  $('#depth').value = d;
+  $('#depth-val').textContent = d;
+  store.set('rv:depth', d);
+  if (app.view) { refresh(); syncURL(); }
+}
+$('#depth').addEventListener('input', e => setDepth(+e.target.value));
+$('#depth').value = app.depth;
+$('#depth-val').textContent = app.depth;
+$('#map-type').value = app.mapType;
+$('#map-type').addEventListener('change', e => { if (app.g) setMap(e.target.value, app.view.ids[app.sel]); });
+
+function syncURL() {
+  const q = new URLSearchParams();
+  const m = app.meta;
+  if (m && m.kind === 'github') {
+    q.set('repo', `${m.owner}/${m.repo}`);
+    if (m.ref && m.ref !== 'HEAD') q.set('ref', m.ref);
+    if (m.sub) q.set('path', m.sub);
+  }
+  if (app.view && app.sel >= 0) {
+    const key = app.g.nodes[app.view.ids[app.sel]].key;
+    if (m && m.kind === 'github') q.set('node', key);
+    store.set('rv:node', key);
+  }
+  q.set('map', app.mapType);
+  q.set('depth', app.depth);
+  history.replaceState(null, '', `${location.pathname}?${q}`);
+}
+
+function viewOffset() {
+  if (!narrow() || !app.g) return 0;
+  const s = stage.getBoundingClientRect(), p = panelEl.getBoundingClientRect();
+  const top = Math.max(s.top, $('#hud').getBoundingClientRect().bottom);
+  const bottom = Math.min(s.bottom, p.height ? p.top : s.bottom);
+  return (top + bottom) / 2 - (s.top + s.bottom) / 2;
+}
+
+function toScreen(i) {
+  const { cam, lay } = app;
+  return [(lay.x[i] - cam.x) * cam.scale + renderer.W / 2, (lay.y[i] - cam.y) * cam.scale + renderer.H / 2];
+}
+
+function pick(sx, sy, slop) {
+  if (!app.nb || !renderer) return -1;
+  const { cam, lay, style } = app;
+  const wx = (sx - renderer.W / 2) / cam.scale + cam.x, wy = (sy - renderer.H / 2) / cam.scale + cam.y;
+  let best = -1, bd = Infinity;
+  for (const i of app.nb.nodes) {
+    const d = Math.hypot(lay.x[i] - wx, lay.y[i] - wy) * cam.scale;
+    if (d < Math.max(style.rad[i] * cam.scale, 2.5) + slop && d < bd) { bd = d; best = i; }
+  }
+  return best;
+}
+
+function togglePanel(force) {
+  panelEl.classList.toggle('collapsed', force);
+  if (narrow()) app.follow = true;
+  app.dirty = true;
+}
+
+const api = {
+  pan(dx, dy) {
+    app.cam.x -= dx / app.cam.scale;
+    app.cam.y -= dy / app.cam.scale;
+    app.follow = false;
+    app.goto = null;
+    app.dirty = true;
+  },
+  zoomAt(f, sx, sy) {
+    if (!renderer) return;
+    const { cam } = app;
+    const centered = sx === undefined;
+    if (centered) { sx = renderer.W / 2; sy = renderer.H / 2; }
+    const s = clamp(cam.scale * f, 0.03, 8);
+    const ox = sx - renderer.W / 2, oy = sy - renderer.H / 2;
+    const wx = ox / cam.scale + cam.x, wy = oy / cam.scale + cam.y;
+    cam.scale = s;
+    if (!centered) {
+      cam.x = wx - ox / s; cam.y = wy - oy / s;
+      if (Math.abs(ox) + Math.abs(oy) > 40) { app.follow = false; app.goto = null; }
+    }
+    app.dirty = true;
+  },
+  hoverAt(sx, sy) {
+    const i = sx < 0 ? -1 : pick(sx, sy, 5);
+    if (i !== app.hover) { app.hover = i; app.dirty = true; }
+    stage.style.cursor = i >= 0 ? 'pointer' : '';
+  },
+  tapAt(sx, sy, type) {
+    const i = pick(sx, sy, type === 'mouse' ? 5 : 14);
+    if (i < 0) { if (app.hl >= 0) { app.hl = -1; app.dirty = true; } return; }
+    if (i !== app.sel) select(i);
+    else if (narrow()) togglePanel(false);
+    else app.follow = true;
+  },
+  peekAt(sx, sy) { app.touchPeek = pick(sx, sy, 14); app.dirty = true; },
+  peekEnd() { app.touchPeek = -1; app.dirty = true; },
+  move(dx, dy) {
+    if (!app.nb) return;
+    const from = app.hl >= 0 ? app.hl : app.sel;
+    const { x, y } = app.lay;
+    let best = -1, bs = Infinity;
+    for (const i of app.nb.nodes) {
+      if (i === from) continue;
+      const vx = x[i] - x[from], vy = y[i] - y[from];
+      const d = Math.hypot(vx, vy) || 1e-6;
+      const cos = (vx * dx + vy * dy) / d;
+      if (cos < 0.5) continue;
+      const s = d * (1.7 - cos);
+      if (s < bs) { bs = s; best = i; }
+    }
+    if (best < 0) return;
+    app.hl = best;
+    const [sx, sy] = toScreen(best);
+    const m = 70;
+    if (sx < m || sy < m || sx > renderer.W - m || sy > renderer.H - m) { app.follow = false; app.goto = { i: best }; }
+    app.dirty = true;
+  },
+  activate() {
+    if (app.hl >= 0 && app.hl !== app.sel) select(app.hl);
+    else if (narrow()) togglePanel();
+  },
+  depth: d => setDepth(app.depth + d),
+  focusSearch() { $('#search').focus(); },
+  escape() {
+    app.hl = app.touchPeek = -1;
+    closeResults();
+    if (narrow()) togglePanel(true);
+    app.dirty = true;
+  },
+  recenter() { app.follow = true; app.goto = null; app.dirty = true; },
+  togglePanel: () => togglePanel(),
+  cycleMap() { if (app.g) setMap(app.mapType === 'code' ? 'files' : 'code', app.view.ids[app.sel]); },
+  openSource: () => openSource(),
+};
+app.togglePanel = api.togglePanel;
+attachControls(stage, api);
+$('#panel-btn').addEventListener('click', () => togglePanel());
+if (narrow()) togglePanel(true);
+
+let gamepadOn = false;
+const pollPad = makeGamepad(api);
+window.addEventListener('gamepadconnected', () => { gamepadOn = true; toast('Gamepad connected: left stick pans, D-pad moves, A selects, LB/RB depth'); });
+
+function updatePeek() {
+  const i = app.touchPeek >= 0 ? app.touchPeek : app.hl >= 0 ? app.hl : app.hover;
+  if (i < 0 || !app.nb || app.nb.depth[i] < 0) { panel.peek(-1); return; }
+  const [sx, sy] = toScreen(i);
+  panel.peek(app.view.ids[i], sx, sy, renderer.W, renderer.H);
+}
+
+function frame(t) {
+  requestAnimationFrame(frame);
+  if (gamepadOn && app.nb) pollPad(t);
+  if (!app.nb || !renderer) return;
+  if (app.lay.run(9)) app.dirty = true;
+  const { cam, lay } = app;
+  const ti = app.follow ? app.sel : app.goto ? app.goto.i : -1;
+  if (ti >= 0) {
+    const tx = lay.x[ti], ty = lay.y[ti] - viewOffset() / cam.scale;
+    const dx = tx - cam.x, dy = ty - cam.y;
+    if (Math.abs(dx) * cam.scale < 0.4 && Math.abs(dy) * cam.scale < 0.4) {
+      cam.x = tx; cam.y = ty;
+      app.goto = null;
+    } else {
+      cam.x += dx * 0.2; cam.y += dy * 0.2;
+      app.dirty = true;
+    }
+  }
+  if (!app.dirty) return;
+  app.dirty = false;
+  renderer.draw({ g: app.g, view: app.view, nb: app.nb, lay, cam, pal: app.pal, style: app.style, sel: app.sel, hl: app.hl, hover: app.hover });
+  updatePeek();
+}
+requestAnimationFrame(frame);
+
+const search = $('#search'), results = $('#results');
+let hits = [], hitIdx = 0, searchTimer = 0;
+function closeResults() { results.hidden = true; hits = []; }
+function renderResults() {
+  if (!hits.length) { results.innerHTML = '<div class="none">No matches</div>'; results.hidden = false; return; }
+  results.innerHTML = `<ul>${hits.map((id, k) => {
+    const n = app.g.nodes[id];
+    const sub = n.kind === 'lib' ? 'library' : n.kind === 'dir' || n.kind === 'file' ? n.path : `${n.path}:${n.line + 1}`;
+    return `<li class="${k === hitIdx ? 'on' : ''}" data-n="${id}">${panel.chip(n.kind)}<span class="nm">${n.name.replace(/[&<>]/g, c => `&#${c.charCodeAt(0)};`)}</span><span class="sub">${sub.replace(/[&<>]/g, c => `&#${c.charCodeAt(0)};`)}</span></li>`;
+  }).join('')}</ul>`;
+  results.hidden = false;
+  results.querySelector('.on')?.scrollIntoView({ block: 'nearest' });
+}
+function runSearch() {
+  const q = search.value.trim().toLowerCase();
+  if (!q || !app.g) { closeResults(); return; }
+  const found = [];
+  for (const n of app.g.nodes) {
+    const nm = n.name.toLowerCase();
+    const i = nm.indexOf(q);
+    let s;
+    if (i >= 0) s = nm === q ? 0 : i === 0 ? 1 : 2;
+    else if (n.kind === 'file' && n.path.toLowerCase().includes(q)) s = 3;
+    else continue;
+    found.push([s, nm.length, n.id]);
+  }
+  found.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  hits = found.slice(0, 50).map(f => f[2]);
+  hitIdx = 0;
+  renderResults();
+}
+function choose(id) {
+  search.value = '';
+  closeResults();
+  search.blur();
+  app.selectGlobal(id);
+}
+search.addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(runSearch, 70); });
+search.addEventListener('keydown', e => {
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (!hits.length) return;
+    hitIdx = (hitIdx + (e.key === 'ArrowDown' ? 1 : -1) + hits.length) % hits.length;
+    renderResults();
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    clearTimeout(searchTimer);
+    if (!hits.length) runSearch();
+    if (hits.length) choose(hits[hitIdx]);
+  } else if (e.key === 'Escape') { closeResults(); search.blur(); }
+});
+search.addEventListener('blur', () => setTimeout(closeResults, 150));
+results.addEventListener('pointerdown', e => {
+  const li = e.target.closest('[data-n]');
+  if (li) { e.preventDefault(); choose(+li.dataset.n); }
+});
+
+function openSource(err = '') {
+  const el = $('#src-error');
+  el.textContent = err;
+  el.hidden = !err;
+  $('#src-close').hidden = !app.g;
+  if (!dlg.open) dlg.showModal();
+  if (!matchMedia('(pointer: coarse)').matches) $('#repo-input').focus();
+}
+dlg.addEventListener('cancel', e => { if (!app.g) e.preventDefault(); });
+$('#src-btn').addEventListener('click', () => openSource());
+$('#src-close').addEventListener('click', () => dlg.close());
+$('#src-form').addEventListener('submit', e => {
+  e.preventDefault();
+  const spec = parseRepo($('#repo-input').value);
+  if (!spec) { openSource('Enter a GitHub repository like owner/name, or paste its link.'); return; }
+  dlg.close();
+  loadRepo(spec);
+});
+for (const b of document.querySelectorAll('[data-repo]')) {
+  b.addEventListener('click', () => { $('#repo-input').value = b.dataset.repo; dlg.close(); loadRepo(parseRepo(b.dataset.repo)); });
+}
+$('#zip-btn').addEventListener('click', () => $('#zip-input').click());
+$('#dir-btn').addEventListener('click', () => $('#dir-input').click());
+if (!('webkitdirectory' in document.createElement('input')) || matchMedia('(pointer: coarse)').matches) $('#dir-btn').hidden = true;
+for (const id of ['#zip-input', '#dir-input']) {
+  $(id).addEventListener('change', e => {
+    const list = [...e.target.files];
+    e.target.value = '';
+    if (!list.length) return;
+    dlg.close();
+    loadFiles(list);
+  });
+}
+window.addEventListener('dragover', e => { e.preventDefault(); document.body.classList.add('dropping'); });
+window.addEventListener('dragleave', e => { if (!e.relatedTarget) document.body.classList.remove('dropping'); });
+window.addEventListener('drop', async e => {
+  e.preventDefault();
+  document.body.classList.remove('dropping');
+  const list = await filesFromDrop(e.dataTransfer);
+  if (list.length) { if (dlg.open) dlg.close(); loadFiles(list); }
+});
+
+let toastTimer = 0;
+function toast(msg) {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.hidden = true; }, 4500);
+}
+
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+
+const q = new URLSearchParams(location.search);
+if (q.get('map') === 'files' || q.get('map') === 'code') app.mapType = q.get('map');
+if (q.get('depth')) setDepth(+q.get('depth'));
+const r = q.get('repo') && parseRepo(q.get('repo'));
+if (r) {
+  r.ref = q.get('ref') || r.ref;
+  r.sub = q.get('path') || r.sub;
+  $('#repo-input').value = q.get('repo');
+  loadRepo(r, q.get('node'));
+} else {
+  let last = null;
+  try { last = JSON.parse(store.get('rv:last')); } catch {}
+  if (last && last.owner) loadRepo(last, store.get('rv:node'));
+  else openSource();
+}
+window.__rv = { app, loadFiles: files => load(async () => ({ name: 'test', files, meta: { kind: 'local', label: 'test' } })) };

@@ -1,0 +1,204 @@
+const RING = 120;
+const STRENGTH = -60;
+const THETA2 = 0.81;
+
+export class Layout {
+  constructor(view) {
+    const n = view.n;
+    this.view = view;
+    this.x = new Float32Array(n);
+    this.y = new Float32Array(n);
+    this.vx = new Float32Array(n);
+    this.vy = new Float32Array(n);
+    this.placed = new Uint8Array(n);
+    this.vdeg = new Int32Array(n);
+    this.bnext = new Int32Array(n);
+    this.alpha = 0;
+    this.cap = 0;
+    this.stack = new Int32Array(2048);
+  }
+
+  set(nb, sel, hx = 0, hy = 0) {
+    const { x, y, vx, vy, placed, vdeg, view } = this;
+    this.nb = nb;
+    this.sel = sel;
+    if (!placed[sel]) { x[sel] = hx; y[sel] = hy; placed[sel] = 1; }
+    for (const u of nb.nodes) {
+      if (placed[u]) continue;
+      const p = nb.from[u];
+      const a = Math.random() * Math.PI * 2, r = 25 + Math.random() * 35;
+      x[u] = x[p] + Math.cos(a) * r;
+      y[u] = y[p] + Math.sin(a) * r;
+      vx[u] = vy[u] = 0;
+      placed[u] = 1;
+    }
+    const E = nb.edges, m = E.length;
+    for (const u of nb.nodes) vdeg[u] = 0;
+    for (let i = 0; i < m; i++) { vdeg[view.eA[E[i]]]++; vdeg[view.eB[E[i]]]++; }
+    this.la = new Int32Array(m);
+    this.lb = new Int32Array(m);
+    this.ls = new Float32Array(m);
+    this.lbias = new Float32Array(m);
+    this.ld = new Float32Array(m);
+    for (let i = 0; i < m; i++) {
+      const a = view.eA[E[i]], b = view.eB[E[i]];
+      const da = vdeg[a], db = vdeg[b];
+      this.la[i] = a; this.lb[i] = b;
+      this.ls[i] = 1 / Math.min(da, db);
+      this.lbias[i] = da / (da + db);
+      this.ld[i] = 36 + 4 * Math.sqrt(Math.min(da, db));
+    }
+    this.alpha = Math.max(this.alpha, 0.9);
+  }
+
+  run(budget) {
+    if (this.alpha < 0.004 || !this.nb) return false;
+    const t0 = performance.now();
+    do this.tick(); while (this.alpha >= 0.004 && performance.now() - t0 < budget);
+    return true;
+  }
+
+  heat(a = 0.5) { this.alpha = Math.max(this.alpha, a); }
+
+  tick() {
+    const { x, y, vx, vy, la, lb, ls, lbias, ld, sel } = this;
+    const { nodes, depth } = this.nb;
+    const alpha = this.alpha;
+    for (let i = 0; i < la.length; i++) {
+      const a = la[i], b = lb[i];
+      let dx = x[b] + vx[b] - x[a] - vx[a], dy = y[b] + vy[b] - y[a] - vy[a];
+      const l = Math.sqrt(dx * dx + dy * dy) || 1e-3;
+      const f = ((l - ld[i]) / l) * alpha * ls[i];
+      dx *= f; dy *= f;
+      const bb = lbias[i];
+      vx[b] -= dx * bb; vy[b] -= dy * bb;
+      vx[a] += dx * (1 - bb); vy[a] += dy * (1 - bb);
+    }
+    this.charge(alpha);
+    const sx = x[sel], sy = y[sel];
+    for (let k = 0; k < nodes.length; k++) {
+      const i = nodes[k];
+      if (i === sel) continue;
+      const dx = x[i] - sx, dy = y[i] - sy;
+      const d = Math.sqrt(dx * dx + dy * dy) || 1e-3;
+      const f = ((depth[i] * RING - d) / d) * alpha * 0.08;
+      vx[i] += dx * f; vy[i] += dy * f;
+    }
+    for (let k = 0; k < nodes.length; k++) {
+      const i = nodes[k];
+      if (i === sel) { vx[i] = vy[i] = 0; continue; }
+      vx[i] *= 0.6; vy[i] *= 0.6;
+      x[i] += vx[i]; y[i] += vy[i];
+    }
+    this.alpha += -this.alpha * 0.02;
+  }
+
+  charge(alpha) {
+    const { x, y, vx, vy, bnext } = this;
+    const nodes = this.nb.nodes, m = nodes.length;
+    if (m < 2) return;
+    const need = m * 4 + 64;
+    if (this.cap < need) {
+      this.cap = need * 2;
+      const c = this.cap;
+      this.qx = new Float64Array(c); this.qy = new Float64Array(c); this.qm = new Float64Array(c);
+      this.q0x = new Float64Array(c); this.q0y = new Float64Array(c); this.qs = new Float64Array(c);
+      this.qc = new Int32Array(c * 4); this.qb = new Int32Array(c);
+    }
+    const { qx, qy, qm, q0x, q0y, qs, qc, qb } = this;
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (let k = 0; k < m; k++) {
+      const i = nodes[k];
+      if (x[i] < x0) x0 = x[i]; if (x[i] > x1) x1 = x[i];
+      if (y[i] < y0) y0 = y[i]; if (y[i] > y1) y1 = y[i];
+    }
+    let count = 1;
+    q0x[0] = x0; q0y[0] = y0; qs[0] = Math.max(x1 - x0, y1 - y0) + 1; qb[0] = -1;
+    const quad = (nd, px, py) => {
+      const h = qs[nd] / 2;
+      return (px >= q0x[nd] + h ? 1 : 0) + (py >= q0y[nd] + h ? 2 : 0);
+    };
+    const grow = () => {
+      if (count + 4 <= this.cap) return true;
+      return false;
+    };
+    for (let k = 0; k < m; k++) {
+      const i = nodes[k];
+      bnext[i] = -1;
+      let nd = 0, depth = 0;
+      for (;;) {
+        const b = qb[nd];
+        if (b === -1) { qb[nd] = i; break; }
+        if (b >= 0) {
+          if ((x[b] === x[i] && y[b] === y[i]) || depth > 40 || !grow()) { bnext[i] = qb[nd]; qb[nd] = i; break; }
+          const c0 = count;
+          count += 4;
+          const h = qs[nd] / 2;
+          for (let q = 0; q < 4; q++) {
+            const c = c0 + q;
+            q0x[c] = q0x[nd] + (q & 1 ? h : 0);
+            q0y[c] = q0y[nd] + (q & 2 ? h : 0);
+            qs[c] = h;
+            qb[c] = -1;
+            qc[nd * 4 + q] = c;
+          }
+          qb[nd] = -2;
+          qb[c0 + quad(nd, x[b], y[b])] = b;
+          continue;
+        }
+        nd = qc[nd * 4 + quad(nd, x[i], y[i])];
+        depth++;
+      }
+    }
+    for (let nd = count - 1; nd >= 0; nd--) {
+      const b = qb[nd];
+      if (b === -2) {
+        let mm = 0, sx = 0, sy = 0;
+        for (let q = 0; q < 4; q++) {
+          const c = qc[nd * 4 + q];
+          mm += qm[c]; sx += qx[c] * qm[c]; sy += qy[c] * qm[c];
+        }
+        qm[nd] = mm;
+        if (mm) { qx[nd] = sx / mm; qy[nd] = sy / mm; }
+      } else if (b >= 0) {
+        let mm = 0, sx = 0, sy = 0;
+        for (let j = b; j >= 0; j = bnext[j]) { mm++; sx += x[j]; sy += y[j]; }
+        qm[nd] = mm; qx[nd] = sx / mm; qy[nd] = sy / mm;
+      } else qm[nd] = 0;
+    }
+    const st = this.stack;
+    const s = STRENGTH * alpha;
+    for (let k = 0; k < m; k++) {
+      const i = nodes[k];
+      const xi = x[i], yi = y[i];
+      let fx = 0, fy = 0, sp = 0;
+      st[sp++] = 0;
+      while (sp) {
+        const nd = st[--sp];
+        const mass = qm[nd];
+        if (!mass) continue;
+        const b = qb[nd];
+        if (b === -2) {
+          const dx = qx[nd] - xi, dy = qy[nd] - yi;
+          const d2 = dx * dx + dy * dy;
+          if (qs[nd] * qs[nd] < THETA2 * d2) {
+            const w = (s * mass) / Math.max(d2, 1);
+            fx += dx * w; fy += dy * w;
+          } else if (sp < st.length - 4) {
+            for (let q = 0; q < 4; q++) st[sp++] = qc[nd * 4 + q];
+          }
+        } else {
+          for (let j = b; j >= 0; j = bnext[j]) {
+            if (j === i) continue;
+            let dx = x[j] - xi, dy = y[j] - yi;
+            let d2 = dx * dx + dy * dy;
+            if (d2 < 1e-6) { dx = (Math.random() - 0.5) * 1e-2; dy = (Math.random() - 0.5) * 1e-2; d2 = dx * dx + dy * dy; }
+            const w = s / Math.max(d2, 1);
+            fx += dx * w; fy += dy * w;
+          }
+        }
+      }
+      vx[i] += fx; vy[i] += fy;
+    }
+  }
+}
