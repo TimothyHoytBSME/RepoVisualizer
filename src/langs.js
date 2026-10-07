@@ -41,8 +41,9 @@ function cfuncs(t, gnu) {
     while (nl !== -1 && nl < m.index) { ls = nl + 1; nl = t.indexOf('\n', ls); }
     const name = m[1];
     const before = t.slice(Math.max(ls, m.index - 200), m.index).trim();
+    const capsFn = !before && /^[A-Z][A-Z0-9_]{2,}$/.test(name);
     if (!before) {
-      if (!name.includes('::')) {
+      if (!name.includes('::') && !capsFn) {
         if (!gnu || ls === 0) continue;
         const prev = prevLine(t, ls);
         if (!prev || !/[\w*&>]$/.test(prev) || prev[0] === '#' || /[=(@]/.test(prev)) continue;
@@ -78,6 +79,15 @@ function cfuncs(t, gnu) {
     }
     if (k >= lim2 || t.charCodeAt(k) !== 123 || !GAP.test(t.slice(j, k))) continue;
     const q = name.lastIndexOf(':'), ow = q > 1 ? name.slice(0, q - 1).split(':').pop() : '';
+    if (/^[A-Z][A-Z0-9_]{2,}$/.test(name)) {
+      const inner = t.slice(m.index + m[0].length, j - 1), ids = inner.match(/^[ \t]*([A-Za-z_]\w*)(?:[ \t]*,[ \t]*([A-Za-z_]\w*))?[ \t]*$/);
+      if (ids) {
+        const nm = ids[2] || ids[1];
+        out.push({ name: nm, idx: m.index + m[0].length + inner.lastIndexOf(nm), kind: 'function' });
+        continue;
+      }
+      if (capsFn) continue;
+    }
     out.push({ name: name.slice(q + 1), idx: m.index + q + 1, kind: 'function', owner: ow || undefined });
   }
   return out;
