@@ -482,6 +482,8 @@ const api = {
     stage.style.cursor = i >= 0 ? 'pointer' : '';
   },
   tapAt(sx, sy, type, shift) {
+    const m = renderer?.moreHits, pad = type === 'mouse' ? 2 : 10;
+    if (m) for (let k = 0; k < m.length; k += 5) if (sx >= m[k + 1] - pad && sx <= m[k + 3] + pad && sy >= m[k + 2] - pad && sy <= m[k + 4] + pad) { app.expand(m[k]); return; }
     const i = pick(sx, sy, type === 'mouse' ? 5 : 14);
     if (i < 0) { if (app.hl >= 0) { app.hl = -1; app.dirty = true; } return; }
     if (shift && i !== app.sel) app.setPath(app.view.ids[i]);
@@ -562,8 +564,8 @@ function setDir(d) {
 }
 $('#dir').value = app.dir;
 $('#dir').addEventListener('change', e => setDir(e.target.value));
-app.expand = () => {
-  const i = app.hl >= 0 ? app.hl : app.hover >= 0 ? app.hover : app.sel, hid = app.nb?.hidden?.get(i);
+app.expand = (at = -1) => {
+  const i = at >= 0 ? at : app.hl >= 0 ? app.hl : app.hover >= 0 ? app.hover : app.sel, hid = app.nb?.hidden?.get(i);
   if (!hid) { toast('Nothing hidden next to this node'); return; }
   (app.expanded ??= new Set()).add(i);
   refresh();
@@ -909,4 +911,4 @@ if (r) {
   else if (last && last.saved) load(async () => (await loadSaved(last.saved)).src, store.get('rv:node'));
   else openSource();
 }
-window.__rv = { app, flat: !!renderer?.flat, loadFiles: files => load(async () => ({ name: 'test', files, meta: { kind: 'local', label: 'test' } })) };
+window.__rv = { app, get renderer() { return renderer; }, flat: !!renderer?.flat, loadFiles: files => load(async () => ({ name: 'test', files, meta: { kind: 'local', label: 'test' } })) };

@@ -359,6 +359,7 @@ export class Renderer {
       for (let rr = r0; rr <= r1; rr++) grid.fill(2, rr * cols + c0, rr * cols + c1 + 1);
     }
     let count = 0;
+    const more = this.moreHits = [];
     const label = (i, sp) => {
       if (nb.depth[i] < 0) return;
       const r = Math.max(style.rad[i] * cam.scale, 2.5);
@@ -403,6 +404,7 @@ export class Renderer {
         ctx.fillStyle = pal.css.accent;
         ctx.strokeText(suf, lx + w, ly);
         ctx.fillText(suf, lx + w, ly);
+        more.push(i, lx + w, ly - px / 2, lx + w + w2, ly + px / 2);
       }
       count++;
     };

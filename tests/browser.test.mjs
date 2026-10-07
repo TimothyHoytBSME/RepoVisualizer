@@ -141,6 +141,14 @@ const state = page => page.evaluate(() => {
   await page.waitForTimeout(250);
   const ex2 = await page.evaluate(k => { const a = window.__rv.app; return { n: a.nb.nodes.length, still: a.nb.hidden?.get(k) || 0, sel: a.sel }; }, ex.k);
   check('E shows hidden neighbors in place', !ex.none && ex2.n >= ex.n + ex.hid && !ex2.still && ex2.sel === ex.sel, { ex, ex2 });
+  await page.evaluate(() => { const a = window.__rv.app; a.expanded = null; a.hl = -1; a.depth = a.depth; });
+  await page.keyboard.press('[');
+  await page.keyboard.press(']');
+  await page.waitForTimeout(1200);
+  const mh = await page.evaluate(() => { const a = window.__rv.app, m = window.__rv.renderer?.moreHits; if (!m || !m.length) return null; const c = document.querySelector('#gl').getBoundingClientRect(); return { i: m[0], x: c.left + (m[1] + m[3]) / 2, y: c.top + (m[2] + m[4]) / 2, n: a.nb.nodes.length, sel: a.sel }; });
+  if (mh) { await page.mouse.click(mh.x, mh.y); await page.waitForTimeout(300); }
+  const mh2 = mh && await page.evaluate(i => { const a = window.__rv.app; return { n: a.nb.nodes.length, sel: a.sel, exp: !!a.expanded?.has(i) }; }, mh.i);
+  check('clicking a +N label expands it in place', mh && mh2.exp && mh2.n > mh.n && mh2.sel === mh.sel, { mh, mh2 });
   await page.evaluate(() => { const a = window.__rv.app; a.limit = a.prevLimit; a.expanded = null; });
   await page.keyboard.press('[');
   await page.waitForTimeout(250);

@@ -283,7 +283,7 @@ export class Panel {
         if (L && L.syntax) mask(line, L, cls);
         body = `<div class="pk-sub">${esc(n.path)}:${n.line + 1}</div><div class="pk-code">${lineHTML(line, cls, 0, line.length, L, null, n.name)}</div>`;
       }
-      if (hid) body += `<div class="pk-sub pk-more">+${hid} hidden connection${hid === 1 ? '' : 's'} · press E to show</div>`;
+      if (hid) body += `<div class="pk-sub pk-more">+${hid} hidden connection${hid === 1 ? '' : 's'} · tap the +N or press E</div>`;
       this.peekEl.innerHTML = `<div class="pk-t">${this.chip(n.kind)}<b>${esc(n.name)}</b></div>${body}`;
       this.peekEl.hidden = false;
     }
