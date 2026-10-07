@@ -223,6 +223,7 @@ function tyOf(s, n = 0) {
   if (!head || !s.endsWith(s[b] === '<' ? '>' : ']')) return head;
   const args = topSplit(s.slice(b + 1, -1), ',').map(x => x.trim()).filter(x => x && !/^(?:None|null|undefined)$/.test(x));
   if (WRAP.has(head)) return args.length === 1 ? tyOf(args[0], n + 1) : null;
+  if (head === 'Result' && args.length) return tyOf(args[0], n + 1);
   if (COLL.has(head)) { const e = args.length ? tyOf(args[0], n + 1) : null; return e ? '[]' + e : '[]'; }
   if (args.length === 1) { const e = tyOf(args[0], n + 1); return e && !e.includes('[]') ? head + '[]' + e : head; }
   return head;
@@ -712,7 +713,7 @@ export function analyze(files, rootName, progress = () => {}) {
 
   const names = new Map();
   const localsOf = new Map();
-  const aliasOf = new Map(), ownerOf = new Map(), selfOf = new Map(), memberish = new Set(), typesOf = new Map(), fieldTypes = new Map(), retOf = new Map(), basesOf = new Map();
+  const aliasOf = new Map(), retNode = new Map(), ownerOf = new Map(), selfOf = new Map(), memberish = new Set(), typesOf = new Map(), fieldTypes = new Map(), retOf = new Map(), basesOf = new Map();
   const pkgOf = new Map();
   const csNs = new Set();
   let done = 0;
@@ -843,6 +844,9 @@ export function analyze(files, rootName, progress = () => {}) {
           if (!rt && L.group === 'go') { const m = RET_GO.exec(rest); if (m) rt = m[1]; }
         }
         if (!rt && L.paramLast) rt = tyOf(lines[d.line].slice(0, d.idx - starts[d.line]).split(/\s+/).filter(w => !FIELD_MODS.has(w)).join(' '));
+        const cls = p && isClassy(p.kind) ? p.name : ownerName;
+        if (rt && cls && /^(?:self|Self|this|static)$/.test(rt)) retNode.set(d.node, cls);
+        else if (rt && !/^(?:void|Unit|None|Void|[A-Z]\d?)$/.test(rt)) retNode.set(d.node, rt);
         if (rt && !/^(?:void|Unit|None|Void|self|Self|this|[A-Z]\d?)$/.test(rt)) retOf.set(d.name, retOf.has(d.name) && retOf.get(d.name) !== rt ? null : rt);
         else if (retOf.has(d.name)) retOf.set(d.name, null);
       }
@@ -1158,6 +1162,56 @@ export function analyze(files, rootName, progress = () => {}) {
       if (!raw) t = headOf(t);
       return t;
     };
+    const callT = c => typeNames.has(c) ? c : headOf(retOf.get(c)) || null;
+    const retIn = (T, name) => {
+      T = headOf(T);
+      if (!T || T === '[]') return null;
+      const c = new Set(ofType(T, name, fid) || []);
+      for (const k of classes(T, fid)) for (const h of memberIn(k, name) || []) c.add(h);
+      let out = null;
+      for (const h of c) { const r = retNode.get(h); if (!r) continue; if (out && out !== r) return null; out = r; }
+      if (!out && name === 'new' && typeNames.has(T)) return T;
+      return out ? headOf(out) : null;
+    };
+    const fieldIn = (T, w) => { for (const k of classes(headOf(T), fid)) { const f = fieldTypes.get(k)?.get(w); if (f) return headOf(f); } return null; };
+    const recvTypeAt = (e, depth, src) => {
+      const p = masked.charCodeAt(e - 1), p2 = masked.charCodeAt(e - 2);
+      if (p === 46 && p2 !== 46) return exprType(e - 1, depth + 1, src);
+      if ((p === 58 && p2 === 58) || (p === 62 && p2 === 45)) return exprType(e - 2, depth + 1, src);
+      return undefined;
+    };
+    const exprType = (j, depth, src) => {
+      while (j > 0 && masked.charCodeAt(j - 1) <= 32) j--;
+      if (depth > 8 || j <= 0) return null;
+      let c = masked.charCodeAt(j - 1);
+      if (c === 63 || c === 33) c = masked.charCodeAt(--j - 1);
+      if (c === 41) {
+        let d = 0, q = j - 1;
+        for (const lim = Math.max(0, j - 2000); q >= lim; q--) {
+          const ch = masked.charCodeAt(q);
+          if (ch === 41) d++;
+          else if (ch === 40 && --d === 0) break;
+        }
+        if (d) return null;
+        let e = q;
+        while (e > 0 && isW(masked.charCodeAt(e - 1))) e--;
+        if (e === q) return null;
+        const name = masked.slice(e, q), T = recvTypeAt(e, depth, src);
+        if (T === undefined) return callT(name);
+        return T ? retIn(T, name) : null;
+      }
+      if (!isW(c)) return null;
+      let e = j;
+      while (e > 0 && isW(masked.charCodeAt(e - 1))) e--;
+      const w = masked.slice(e, j), T = recvTypeAt(e, depth, src);
+      if (T === undefined) {
+        if (SELF.has(w)) { for (let o = src; o !== fid && o >= 0; o = nodes[o].parent) { if (isClassy(nodes[o].kind)) return nodes[o].name; if (ownerOf.has(o)) return ownerOf.get(o); } return null; }
+        const v = varType(w, src, ln, 0);
+        if (v) return v.startsWith('()') ? callT(v.slice(v[2] === '.' ? 3 : 2)) : v;
+        return typeNames.has(w) ? w : null;
+      }
+      return T ? fieldIn(T, w) : null;
+    };
     let ln = 0, declEnd = -1;
     for (const m of masked.matchAll(L.id)) {
       const name = m[0];
@@ -1172,7 +1226,7 @@ export function analyze(files, rootName, progress = () => {}) {
       if (L.sigil && prev === 36) continue;
       while (ln + 1 < starts.length && starts[ln + 1] <= at) ln++;
       const src = owner[ln];
-      let member = false, recv = '', recvCall = '', recvIdx = '';
+      let member = false, recv = '', recvCall = '', recvIdx = '', chainT = null;
       const p2 = at > 1 ? masked.charCodeAt(at - 2) : 0;
       if ((prev === 46 && p2 !== 46) || (prev === 62 && p2 === 45) || (prev === 58 && p2 === 58)) {
         member = true;
@@ -1203,6 +1257,7 @@ export function analyze(files, rootName, progress = () => {}) {
           while (e2 > 0 && isW(masked.charCodeAt(e2 - 1))) e2--;
           if (d === 0 && e2 < q2) recvIdx = masked.slice(e2, q2);
         }
+        if (!recv && !recvIdx) chainT = exprType(j, 0, src);
       }
       if (L.group === 'c' && !member) {
         if (/(?:goto[ \t]+|^[ \t]*#[ \t]*)$/.test(masked.slice(Math.max(starts[ln], at - 8), at)) || (/^[ \t]*$/.test(masked.slice(starts[ln], at)) && /^[ \t]*:(?!:)/.test(masked.slice(at + name.length, at + name.length + 4)))) continue;
@@ -1235,8 +1290,8 @@ export function analyze(files, rootName, progress = () => {}) {
         targets = [...hit];
       }
       if (member && recv && info.ext && info.ext.has(recv) && !local.has(recv)) continue;
-      if (member && (recv || recvIdx)) {
-        let selfT = recvIdx ? headOf(elemOf(varType(recvIdx, src, ln, 0, true))) : SELF.has(recv) ? null : varType(recv, src, ln, 0);
+      if (member && (recv || recvIdx || chainT)) {
+        let selfT = chainT || (recvIdx ? headOf(elemOf(varType(recvIdx, src, ln, 0, true))) : SELF.has(recv) ? null : varType(recv, src, ln, 0));
         if (!selfT) for (let o = src; o !== fid && o >= 0; o = nodes[o].parent) {
           if (SELF.has(recv)) { if (isClassy(nodes[o].kind)) break; if (ownerOf.has(o)) { selfT = ownerOf.get(o); break; } continue; }
           const sv = selfOf.get(o);
