@@ -1028,7 +1028,7 @@ export function analyze(files, rootName, progress = () => {}) {
     const near = list.filter(c => nodes[c].file === info.id || info.imported.has(nodes[c].file));
     return near.length ? near : list;
   };
-  const byClass = new Map(), byType = new Map();
+  const byClass = new Map(), byType = new Map(), byOwner = new Map();
   const addIdx = (m, k, name, id) => {
     let a = m.get(k);
     if (!a) m.set(k, (a = new Map()));
@@ -1044,7 +1044,7 @@ export function analyze(files, rootName, progress = () => {}) {
       if (dot >= 0) addIdx(byType, cp.name.slice(dot + 1), n.name, n.id);
     }
     const ow = ownerOf.get(n.id);
-    if (ow && !(cp && cp.name === ow)) addIdx(byType, ow, n.name, n.id);
+    if (ow && !(cp && cp.name === ow)) { addIdx(byType, ow, n.name, n.id); addIdx(byOwner, ow, n.name, n.id); }
   }
   const ofType = (t, name, f) => { const l = byType.get(t)?.get(name); return l ? l.filter(c => !fnLocalSet.has(nodes[c].parent) || nodes[c].file === f) : null; };
   const classes = (name, f) => (classByName.get(name) || []).filter(c => !fnLocalSet.has(c) || nodes[c].file === f).slice(0, 4);
@@ -1053,7 +1053,12 @@ export function analyze(files, rootName, progress = () => {}) {
     let level = [cls];
     for (let depth = 0; depth < 6 && level.length; depth++) {
       const hit = [];
-      for (const c of level) { const l = byClass.get(c)?.get(name); if (l) hit.push(...l); }
+      for (const c of level) {
+        const l = byClass.get(c)?.get(name);
+        if (l) hit.push(...l);
+        const o = byOwner.get(nodes[c].name)?.get(name);
+        if (o) for (const x of o) if (!hit.includes(x) && (!fnLocalSet.has(c) || nodes[x].file === nodes[c].file)) hit.push(x);
+      }
       if (hit.length) return hit;
       const next = [];
       for (const k of level) for (const b of basesOf.get(k) || []) for (const c2 of classes(b, nodes[cls].file)) if (!seen.has(c2)) { seen.add(c2); next.push(c2); }
@@ -1124,7 +1129,7 @@ export function analyze(files, rootName, progress = () => {}) {
       if (!raw) t = headOf(t);
       return t;
     };
-    let ln = 0;
+    let ln = 0, declEnd = -1;
     for (const m of masked.matchAll(L.id)) {
       const name = m[0];
       if (name.length < 2) continue;
@@ -1168,6 +1173,18 @@ export function analyze(files, rootName, progress = () => {}) {
           let e2 = q2;
           while (e2 > 0 && isW(masked.charCodeAt(e2 - 1))) e2--;
           if (d === 0 && e2 < q2) recvIdx = masked.slice(e2, q2);
+        }
+      }
+      if (L.group === 'c' && !member) {
+        if (at < declEnd) {
+          if (/^[ \t]*[,)=[]/.test(masked.slice(at + name.length, at + name.length + 8)) && /(?:\w[ \t]+|[*&][ \t]*)$/.test(masked.slice(Math.max(0, at - 40), at))) continue;
+        } else if (src === fid || isClassy(nodes[src].kind) || nodes[src].kind === 'module') {
+          let q = at + name.length;
+          while (masked.charCodeAt(q) === 32 || masked.charCodeAt(q) === 9) q++;
+          if (masked.charCodeAt(q) === 40 && /(?:[\w>][ \t]+|[*&][ \t]*)$/.test(masked.slice(Math.max(0, at - 40), at))) {
+            const e = afterParams(masked, q);
+            if (e > 0 && /^\s*(?:(?:const|override|final|noexcept|volatile|&&?)\s*)*(?:=\s*(?:0|default|delete)\s*)?;/.test(masked.slice(e, e + 80))) declEnd = e;
+          }
         }
       }
       if (!member) {
@@ -1240,10 +1257,10 @@ export function analyze(files, rootName, progress = () => {}) {
       if (!targets && !member && IMPLICIT_THIS.has(L.group)) {
         let cls = src;
         while (cls !== fid && cls >= 0 && !isClassy(nodes[cls].kind)) cls = nodes[cls].parent;
-        if (cls !== fid && cls >= 0 && basesOf.has(cls)) {
+        if (cls !== fid && cls >= 0) {
           const hit = memberIn(cls, name);
           if (hit) targets = hit;
-        } else if (cls === fid || cls < 0) {
+        } else {
           let ow = null;
           for (let o = src; o !== fid && o >= 0 && !ow; o = nodes[o].parent) ow = ownerOf.get(o);
           if (ow && classByName.has(ow)) {

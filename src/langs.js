@@ -77,8 +77,8 @@ function cfuncs(t, gnu) {
       k++;
     }
     if (k >= lim2 || t.charCodeAt(k) !== 123 || !GAP.test(t.slice(j, k))) continue;
-    const q = name.lastIndexOf(':');
-    out.push({ name: name.slice(q + 1), idx: m.index + q + 1, kind: 'function' });
+    const q = name.lastIndexOf(':'), ow = q > 1 ? name.slice(0, q - 1).split(':').pop() : '';
+    out.push({ name: name.slice(q + 1), idx: m.index + q + 1, kind: 'function', owner: ow || undefined });
   }
   return out;
 }

@@ -6,7 +6,7 @@
 set -e
 W=${1:?work dir}; mkdir -p "$W"
 REPOS="expressjs/express pallets/flask gin-gonic/gin square/okio vuejs/core django/django redis/redis BurntSushi/ripgrep
-spring-projects/spring-petclinic google/gson jasontaylordev/CleanArchitecture sinatra/sinatra slimphp/Slim Alamofire/Alamofire felangel/bloc elixir-plug/plug"
+spring-projects/spring-petclinic google/gson jasontaylordev/CleanArchitecture sinatra/sinatra slimphp/Slim Alamofire/Alamofire felangel/bloc elixir-plug/plug google/leveldb"
 cd "$(dirname "$0")/.."
 out="$W/table.now"; : > "$out"
 for r in $REPOS; do
