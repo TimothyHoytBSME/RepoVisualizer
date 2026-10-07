@@ -79,10 +79,13 @@ export class Panel {
     this.peekEl = peek;
     this.app = app;
     this.cur = -1;
+    this.rest = [];
     el.addEventListener('click', e => {
       if (e.target.closest('[data-share]')) { e.stopPropagation(); app.share(); return; }
       if (e.target.closest('[data-path]')) { e.stopPropagation(); app.startPath(); return; }
       if (e.target.closest('[data-path-clear]')) { e.stopPropagation(); app.clearPath(); return; }
+      const mo = e.target.closest('[data-more]');
+      if (mo) { e.stopPropagation(); const f = this.rest[+mo.dataset.more], li = mo.parentElement; if (f) li.outerHTML = f(); return; }
       const nav = e.target.closest('[data-nav]');
       if (nav) { e.stopPropagation(); if (nav.dataset.nav === 'back') history.back(); else history.forward(); return; }
       const t = e.target.closest('[data-n]');
@@ -162,7 +165,8 @@ export class Panel {
     const shown = ids.slice(0, 150);
     const more = ids.length - shown.length;
     const note = i => (weak && weak.has(i) ? '<span class="weak" title="Name match only; the analyzer couldn\'t confirm this link">≈</span>' : '');
-    return `<details class="rel"${open ? ' open' : ''}><summary>${title} <span class="cnt">${ids.length}</span></summary><ul>${shown.map(i => this.item(i, note(i))).join('')}${more > 0 ? `<li class="more">+${more} more</li>` : ''}</ul></details>`;
+    const k = more > 0 ? (this.rest.push(() => ids.slice(150).map(i => this.item(i, note(i))).join('')), this.rest.length - 1) : -1;
+    return `<details class="rel"${open ? ' open' : ''}><summary>${title} <span class="cnt">${ids.length}</span></summary><ul>${shown.map(i => this.item(i, note(i))).join('')}${more > 0 ? `<li class="more"><button type="button" class="linkish" data-more="${k}">Show ${more.toLocaleString()} more</button></li>` : ''}</ul></details>`;
   }
 
   mentions(word, fileIds) {
@@ -183,6 +187,7 @@ export class Panel {
   }
 
   show(id) {
+    this.rest = [];
     const { g, files } = this.app;
     this.cur = id;
     const n = g.nodes[id];
