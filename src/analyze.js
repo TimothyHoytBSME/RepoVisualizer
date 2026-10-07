@@ -767,7 +767,7 @@ export function analyze(files, rootName, progress = () => {}) {
         info.scopeNames = new Set(scopes.flatMap(sc => [...sc.names, ...(sc.types ? sc.types.keys() : [])]));
       }
     }
-    for (const m of masked.matchAll(/\b(?:self|this|@)\.?([A-Za-z_]\w*)[ \t]*=[ \t]*(?:(?:new[ \t]+)?([A-Z]\w*)(?:[ \t]*[({]|\.new\b)|([A-Za-z_]\w*)[ \t]*;?[ \t]*$)/gm)) {
+    for (const m of masked.matchAll(/(?:\b(?:self|this)\.|@)([A-Za-z_]\w*)[ \t]*=[ \t]*(?:(?:new[ \t]+)?([A-Z]\w*)(?:[ \t]*[({]|\.new\b)|([A-Za-z_]\w*)[ \t]*;?[ \t]*$)/gm)) {
       const di = fnAt[lineAt(starts, m.index)];
       if (di < 0) continue;
       let c = defs[di].up;
