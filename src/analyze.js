@@ -937,7 +937,10 @@ export function analyze(files, rootName, progress = () => {}) {
   }
 
   const typeNames = new Set(ownerOf.values()), classByName = new Map();
+  const fnLocal = id => { for (let p = nodes[id].parent; p >= 0 && nodes[p].kind !== 'file'; p = nodes[p].parent) if (isFn(nodes[p].kind)) return true; return false; };
+  const fnLocalSet = new Set();
   for (const n of nodes) if (isClassy(n.kind)) {
+    if (fnLocal(n.id)) fnLocalSet.add(n.id);
     typeNames.add(n.name);
     const a = classByName.get(n.name);
     if (a) a.push(n.id); else classByName.set(n.name, [n.id]);
@@ -947,14 +950,35 @@ export function analyze(files, rootName, progress = () => {}) {
     const near = list.filter(c => nodes[c].file === info.id || info.imported.has(nodes[c].file));
     return near.length ? near : list;
   };
-  const memberIn = (cls, all) => {
+  const byClass = new Map(), byType = new Map();
+  const addIdx = (m, k, name, id) => {
+    let a = m.get(k);
+    if (!a) m.set(k, (a = new Map()));
+    const l = a.get(name);
+    if (l) l.push(id); else a.set(name, [id]);
+  };
+  for (const n of nodes) {
+    const cp = n.parent >= 0 && isClassy(nodes[n.parent].kind) ? nodes[n.parent] : null;
+    if (cp && n.kind !== 'keyword') {
+      addIdx(byClass, cp.id, n.name, n.id);
+      addIdx(byType, cp.name, n.name, n.id);
+      const dot = cp.name.lastIndexOf('.');
+      if (dot >= 0) addIdx(byType, cp.name.slice(dot + 1), n.name, n.id);
+    }
+    const ow = ownerOf.get(n.id);
+    if (ow && !(cp && cp.name === ow)) addIdx(byType, ow, n.name, n.id);
+  }
+  const ofType = (t, name, f) => { const l = byType.get(t)?.get(name); return l ? l.filter(c => !fnLocalSet.has(nodes[c].parent) || nodes[c].file === f) : null; };
+  const classes = (name, f) => (classByName.get(name) || []).filter(c => !fnLocalSet.has(c) || nodes[c].file === f).slice(0, 4);
+  const memberIn = (cls, name) => {
     const seen = new Set([cls]);
     let level = [cls];
     for (let depth = 0; depth < 6 && level.length; depth++) {
-      const hit = all.filter(c => level.includes(nodes[c].parent));
+      const hit = [];
+      for (const c of level) { const l = byClass.get(c)?.get(name); if (l) hit.push(...l); }
       if (hit.length) return hit;
       const next = [];
-      for (const k of level) for (const b of basesOf.get(k) || []) for (const c2 of (classByName.get(b) || []).slice(0, 4)) if (!seen.has(c2)) { seen.add(c2); next.push(c2); }
+      for (const k of level) for (const b of basesOf.get(k) || []) for (const c2 of classes(b, nodes[cls].file)) if (!seen.has(c2)) { seen.add(c2); next.push(c2); }
       level = next;
     }
     return null;
@@ -1020,12 +1044,11 @@ export function analyze(files, rootName, progress = () => {}) {
       let type = 'dep';
       if (info.inits && info.inits.has(at)) {
         const ty = info.inits.get(at), hit = new Set();
-        for (const c of (classByName.get(ty) || []).slice(0, 4)) for (const h of memberIn(c, cands) || []) hit.add(h);
+        for (const c of classes(ty, fid)) for (const h of memberIn(c, name) || []) hit.add(h);
         if (!hit.size) continue;
         targets = [...hit];
       }
       if (member && recv) {
-        const pool = local.get(name) || cands;
         let selfT = null;
         if (!SELF.has(recv) && info.scopes && info.scopeNames.has(recv)) {
           let best = null;
@@ -1054,31 +1077,28 @@ export function analyze(files, rootName, progress = () => {}) {
           selfT = typeNames.has(call) ? call : retOf.get(call) || null;
         }
         if (selfT) {
-          const all = local.get(name) && g.get(name) ? [...new Set(cands.concat(local.get(name)))] : cands;
-          const own = all.filter(c => ownerOf.get(c) === selfT || (nodes[c].parent >= 0 && nodes[nodes[c].parent].name === selfT && isClassy(nodes[nodes[c].parent].kind)));
+          const own = ofType(selfT, name, fid) || [];
           if (own.length) targets = own;
           else if (!typeNames.has(selfT)) continue;
           else if (classByName.has(selfT)) {
             const hit = new Set();
-            for (const c of classByName.get(selfT).slice(0, 4)) for (const h of memberIn(c, all) || []) hit.add(h);
+            for (const c of classes(selfT, fid)) for (const h of memberIn(c, name) || []) hit.add(h);
             if (hit.size) targets = [...hit];
           }
         } else if (SELF.has(recv)) {
           let cls = src;
           while (cls !== fid && cls >= 0 && !isClassy(nodes[cls].kind)) cls = nodes[cls].parent;
           if (cls !== fid && cls >= 0) {
-            const all = local.get(name) && g.get(name) ? [...new Set(cands.concat(local.get(name)))] : pool;
-            const hit = memberIn(cls, all);
+            const hit = memberIn(cls, name);
             if (!hit) continue;
             targets = hit;
           }
         } else if (recv.charCodeAt(0) >= 65 && recv.charCodeAt(0) <= 90) {
-          const all = local.get(name) && g.get(name) ? cands.concat(local.get(name)) : cands;
-          const own = [...new Set(all)].filter(c => nodes[c].parent >= 0 && (nodes[nodes[c].parent].name === recv || nodes[nodes[c].parent].name.endsWith('.' + recv)) && isClassy(nodes[nodes[c].parent].kind));
+          const own = (ofType(recv, name, fid) || []).filter(c => isClassy(nodes[nodes[c].parent].kind));
           if (own.length) targets = own;
           else if (classByName.has(recv)) {
             const hit = new Set();
-            for (const c of classByName.get(recv).slice(0, 4)) for (const h of memberIn(c, [...new Set(all)]) || []) hit.add(h);
+            for (const c of classes(recv, fid)) for (const h of memberIn(c, name) || []) hit.add(h);
             if (!hit.size) continue;
             targets = [...hit];
           } else if (COMMON.has(name)) continue;
@@ -1086,7 +1106,7 @@ export function analyze(files, rootName, progress = () => {}) {
       } else if (member && recvCall) {
         const rt = typeNames.has(recvCall) ? recvCall : retOf.get(recvCall);
         if (rt) {
-          const own = cands.filter(c => ownerOf.get(c) === rt || (nodes[c].parent >= 0 && nodes[nodes[c].parent].name === rt && isClassy(nodes[nodes[c].parent].kind)));
+          const own = ofType(rt, name, fid) || [];
           if (own.length) targets = own;
           else if (!typeNames.has(rt) || COMMON.has(name)) continue;
         } else if (COMMON.has(name)) continue;
@@ -1095,14 +1115,14 @@ export function analyze(files, rootName, progress = () => {}) {
         let cls = src;
         while (cls !== fid && cls >= 0 && !isClassy(nodes[cls].kind)) cls = nodes[cls].parent;
         if (cls !== fid && cls >= 0 && basesOf.has(cls)) {
-          const hit = memberIn(cls, local.get(name) && g.get(name) ? [...new Set(cands.concat(local.get(name)))] : cands);
+          const hit = memberIn(cls, name);
           if (hit) targets = hit;
         } else if (cls === fid || cls < 0) {
           let ow = null;
           for (let o = src; o !== fid && o >= 0 && !ow; o = nodes[o].parent) ow = ownerOf.get(o);
           if (ow && classByName.has(ow)) {
-            const all = local.get(name) && g.get(name) ? [...new Set(cands.concat(local.get(name)))] : cands, hit = new Set();
-            for (const c of classByName.get(ow).slice(0, 4)) for (const h of memberIn(c, all) || []) hit.add(h);
+            const hit = new Set();
+            for (const c of classes(ow, fid)) for (const h of memberIn(c, name) || []) hit.add(h);
             if (hit.size) targets = [...hit];
           }
         }
