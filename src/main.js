@@ -382,6 +382,8 @@ function togglePanel(force) {
   app.dirty = true;
 }
 
+if (window.ResizeObserver) new ResizeObserver(() => { if (narrow() && app.follow) app.dirty = true; }).observe(panelEl);
+
 (function sheetDrag() {
   let start = null;
   panelEl.addEventListener('pointerdown', e => {
