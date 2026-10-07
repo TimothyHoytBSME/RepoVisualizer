@@ -182,7 +182,7 @@ const CTOR = /^(?:constructor|__init__|__construct|init|initialize)$/;
 const MODS = new Set('final const out ref in params this readonly volatile struct unsigned signed static register mut inout var val let'.split(' '));
 const lastSeg = s => { const m = s.match(/[A-Za-z_]\w*/g); return m ? m[m.length - 1] : null; };
 const WRAP = new Set('Option Optional Box Rc Arc RefCell Cell Mutex RwLock Weak Nullable Lazy Ref RefMut Cow NonNull Pin ManuallyDrop AtomicReference WeakReference Readonly Partial Required NonNullable Union'.split(' '));
-const COLL = new Set('List Array ArrayList LinkedList Set HashSet TreeSet LinkedHashSet SortedSet NavigableSet Collection Iterable Iterator ListIterator Sequence MutableList MutableSet MutableCollection MutableIterable MutableSequence ReadonlyArray ReadonlySet Vec VecDeque BTreeSet IEnumerable IList ICollection IReadOnlyList IReadOnlyCollection ISet IAsyncEnumerable IEnumerator Stream Flow Deque ArrayDeque Queue PriorityQueue BinaryHeap list set frozenset FrozenSet AbstractSet Generator AsyncIterator AsyncIterable AsyncGenerator Iter IntoIter ImmutableList ImmutableSet Slice IterableIterator ArrayLike NodeListOf HTMLCollectionOf'.split(' '));
+const COLL = new Set('List Array ArrayList LinkedList Set HashSet TreeSet LinkedHashSet SortedSet NavigableSet Collection Iterable Iterator ListIterator Sequence MutableList MutableSet MutableCollection MutableIterable MutableSequence ReadonlyArray ReadonlySet Vec VecDeque BTreeSet IEnumerable IList ICollection IReadOnlyList IReadOnlyCollection ISet IAsyncEnumerable IEnumerator Stream Flow Deque ArrayDeque Queue PriorityQueue BinaryHeap list set frozenset FrozenSet AbstractSet Generator AsyncIterator AsyncIterable AsyncGenerator Iter IntoIter vector deque forward_list unordered_set multiset span initializer_list array ImmutableList ImmutableSet Slice IterableIterator ArrayLike NodeListOf HTMLCollectionOf'.split(' '));
 
 const headOf = t => { if (!t) return t; const k = t.indexOf('[]'); return k < 0 ? t : k ? t.slice(0, k) : '[]'; };
 
@@ -712,7 +712,7 @@ export function analyze(files, rootName, progress = () => {}) {
 
   const names = new Map();
   const localsOf = new Map();
-  const ownerOf = new Map(), selfOf = new Map(), memberish = new Set(), typesOf = new Map(), fieldTypes = new Map(), retOf = new Map(), basesOf = new Map();
+  const aliasOf = new Map(), ownerOf = new Map(), selfOf = new Map(), memberish = new Set(), typesOf = new Map(), fieldTypes = new Map(), retOf = new Map(), basesOf = new Map();
   const pkgOf = new Map();
   const csNs = new Set();
   let done = 0;
@@ -869,6 +869,11 @@ export function analyze(files, rootName, progress = () => {}) {
         }
       }
       if (ownerName) ownerOf.set(d.node, ownerName);
+      if (L.group === 'c' && d.kind === 'type') {
+        const ln = lines[d.line], m = /\btypedef\s+(?:const\s+)?(?:struct|union|enum)?\s*(\w+)\s*\**\s*(\w+)\s*;/.exec(ln);
+        if (m && m[2] === d.name && m[1] !== d.name) aliasOf.set(d.name, m[1]);
+        else if (/^\}/.test(ln)) for (const c of defs) if (isClassy(c.kind) && c.node != null && c.name !== d.name && (c.end === d.line || c.end === d.line - 1)) aliasOf.set(d.name, c.name);
+      }
       if (L.group === 'js' && isFn(d.kind) && PROP_FN.test(lines[d.line].slice(Math.max(0, d.idx - starts[d.line] - 120), d.idx - starts[d.line]))) memberish.add(d.node);
       if (d.self) selfOf.set(d.node, d.self);
       if (isClassy(d.kind) && !d.ext && !types.has(d.name)) types.set(d.name, d);
@@ -1046,8 +1051,9 @@ export function analyze(files, rootName, progress = () => {}) {
     const ow = ownerOf.get(n.id);
     if (ow && !(cp && cp.name === ow)) { addIdx(byType, ow, n.name, n.id); addIdx(byOwner, ow, n.name, n.id); }
   }
-  const ofType = (t, name, f) => { const l = byType.get(t)?.get(name); return l ? l.filter(c => !fnLocalSet.has(nodes[c].parent) || nodes[c].file === f) : null; };
-  const classes = (name, f) => (classByName.get(name) || []).filter(c => !fnLocalSet.has(c) || nodes[c].file === f).slice(0, 4);
+  const ofType = (t, name, f) => { const l = byType.get(t)?.get(name) || (aliasOf.has(t) ? byType.get(aliasOf.get(t))?.get(name) : null); return l ? l.filter(c => !fnLocalSet.has(nodes[c].parent) || nodes[c].file === f) : null; };
+  const classes = (name, f) => (aliasOf.has(name) && classByName.get(aliasOf.get(name)) || classByName.get(name) || []).filter(c => !fnLocalSet.has(c) || nodes[c].file === f).slice(0, 4);
+  const notField = c => !(nodes[c].kind === 'variable' && nodes[c].parent >= 0 && isClassy(nodes[nodes[c].parent].kind));
   const memberIn = (cls, name) => {
     const seen = new Set([cls]);
     let level = [cls];
@@ -1074,6 +1080,7 @@ export function analyze(files, rootName, progress = () => {}) {
     const { L, masked, starts, owner, defPos, local, id: fid } = info;
     const g = names.get(L.group);
     const fdir = nodes[fid].parent;
+    const nf = L.group === 'c' || L.group === 'py' ? notField : () => true;
     const out = new Map();
     const idc = new Map();
     const countWords = !TEST_PATH.test(info.f.path);
@@ -1176,6 +1183,7 @@ export function analyze(files, rootName, progress = () => {}) {
         }
       }
       if (L.group === 'c' && !member) {
+        if (/(?:goto[ \t]+|^[ \t]*#[ \t]*)$/.test(masked.slice(Math.max(starts[ln], at - 8), at)) || (/^[ \t]*$/.test(masked.slice(starts[ln], at)) && /^[ \t]*:(?!:)/.test(masked.slice(at + name.length, at + name.length + 4)))) continue;
         if (at < declEnd) {
           if (/^[ \t]*[,)=[]/.test(masked.slice(at + name.length, at + name.length + 8)) && /(?:\w[ \t]+|[*&][ \t]*)$/.test(masked.slice(Math.max(0, at - 40), at))) continue;
         } else if (src === fid || isClassy(nodes[src].kind) || nodes[src].kind === 'module') {
@@ -1274,20 +1282,20 @@ export function analyze(files, rootName, progress = () => {}) {
         targets = local.get(name);
         if (!targets) {
           if (cands.length > 200) continue;
-          targets = cands.filter(c => info.imported.has(nodes[c].file));
+          targets = cands.filter(c => info.imported.has(nodes[c].file) && (!member || nf(c)));
           const viaImport = targets.length > 0;
           if (!targets.length && L.pkgDir) {
             const pk = info.pkg, uses = info.uses;
             const nsOk = ns => ns != null && (ns === pk || (uses != null && uses.has(ns)) || (L.group === 'cs' && pk != null && pk.startsWith(ns + '.')));
             targets = pk != null || uses
-              ? cands.filter(c => nsOk(pkgOf.get(nodes[c].file)) && (member || nodes[c].parent === nodes[c].file))
-              : cands.filter(c => nodes[nodes[c].file].parent === fdir);
+              ? cands.filter(c => nsOk(pkgOf.get(nodes[c].file)) && (member ? nf(c) : nodes[c].parent === nodes[c].file))
+              : cands.filter(c => nodes[nodes[c].file].parent === fdir && (!member || nf(c)));
           }
           if (!targets.length) {
             if (cands.length > MAXC) continue;
-            targets = L.group === 'c' ? cands.filter(c => isFn(nodes[c].kind))
+            targets = L.group === 'c' ? cands.filter(c => isFn(nodes[c].kind) && (!member || prev === 58 || nodes[c].kind === 'method'))
               : !info.module || (L.pkgDir && info.pkg != null) ? cands
-              : member ? preferImported(cands.filter(c => memberish.has(c) || (nodes[c].parent >= 0 && isClassy(nodes[nodes[c].parent].kind))), info)
+              : member ? preferImported(cands.filter(c => (memberish.has(c) || (nodes[c].parent >= 0 && isClassy(nodes[nodes[c].parent].kind))) && nf(c)), info)
               : masked.charCodeAt(at + name.length) === 33 ? cands : cands.filter(c => AMBIENT.test(nodes[c].path));
             if (!targets.length) continue;
             if (cands.length > 1 || L.explicit || member) type = 'ref';
@@ -1295,7 +1303,11 @@ export function analyze(files, rootName, progress = () => {}) {
             const top = viaImport ? targets.filter(c => nodes[c].parent === nodes[c].file) : [];
             if (top.length) targets = top; else type = 'ref';
           }
-        } else if (member && targets.length > 1) type = 'ref';
+        } else if (member && targets.length > 1) {
+          targets = targets.filter(nf);
+          if (!targets.length) continue;
+          type = 'ref';
+        }
       }
       if (targets.length > MAXC) continue;
       for (const t of targets) {
