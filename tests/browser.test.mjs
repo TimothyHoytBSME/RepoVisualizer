@@ -124,6 +124,14 @@ const state = page => page.evaluate(() => {
   await page.waitForTimeout(200);
   const cb = await page.evaluate(() => ({ mode: window.__rv.app.colorBy, legend: !document.querySelector('#folder-legend').hidden && document.querySelectorAll('#folder-legend span').length }));
   check('color by folder', cb.mode === 'folder' && cb.legend > 1, cb);
+  await page.evaluate(() => window.__rv.app.selectGlobal(window.__rv.app.g.byKey.get('s:src/graph.js#neighborhood')));
+  await page.waitForTimeout(400);
+  const ub = await page.evaluate(() => { const a = [...document.querySelectorAll('#panel details.rel')].find(d => d.querySelector('summary').textContent.startsWith('Used by'))?.querySelector('a[data-line]'); if (!a) return null; const line = +a.dataset.line; a.click(); return line; });
+  await page.waitForTimeout(500);
+  const mkd = await page.evaluate(() => { const m = document.querySelector('#panel .ln.mk'); return m ? { ln: +m.dataset.ln, text: m.textContent } : null; });
+  check('Used by entries jump to the line that uses the node', ub != null && mkd && mkd.ln === ub && mkd.text.includes('neighborhood'), { ub, mkd });
+  await page.evaluate(() => window.__rv.app.selectGlobal(window.__rv.app.g.byKey.get('s:src/graph.js#neighborhood')));
+  await page.waitForTimeout(400);
   const dl = page.waitForEvent('download', { timeout: 8000 }).catch(() => null);
   await page.evaluate(() => document.querySelector('#img-btn').click());
   const file = await dl;

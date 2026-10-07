@@ -44,7 +44,7 @@ function lineHTML(text, cls, start, end, L, links, defName) {
   return html;
 }
 
-export function codeHTML(path, text, from, to, hiFrom, hiTo, links, defName) {
+export function codeHTML(path, text, from, to, hiFrom, hiTo, links, defName, mark = -1) {
   const L = langOf(path);
   const cls = classes(path, text);
   const starts = [0];
@@ -55,7 +55,7 @@ export function codeHTML(path, text, from, to, hiFrom, hiTo, links, defName) {
     let e = ln + 1 < starts.length ? starts[ln + 1] - 1 : text.length;
     if (text[e - 1] === '\r') e--;
     const hi = ln >= hiFrom && ln <= hiTo;
-    html += `<div class="ln${hi ? ' hl' : ''}" data-ln="${ln}"><span class="no">${ln + 1}</span><span class="tx">${lineHTML(text, cls, s, e, L, links, hi ? defName : null) || ' '}</span></div>`;
+    html += `<div class="ln${hi ? ' hl' : ''}${ln === mark ? ' mk' : ''}" data-ln="${ln}"><span class="no">${ln + 1}</span><span class="tx">${lineHTML(text, cls, s, e, L, links, hi ? defName : null) || ' '}</span></div>`;
   }
   return html;
 }
@@ -89,7 +89,7 @@ export class Panel {
       const nav = e.target.closest('[data-nav]');
       if (nav) { e.stopPropagation(); if (nav.dataset.nav === 'back') history.back(); else history.forward(); return; }
       const t = e.target.closest('[data-n]');
-      if (t) { e.preventDefault(); app.selectGlobal(+t.dataset.n); return; }
+      if (t) { e.preventDefault(); this.focusLine = t.dataset.line != null ? +t.dataset.line : null; app.selectGlobal(+t.dataset.n); this.focusLine = null; return; }
       const ln = e.target.closest('[data-ln]');
       if (ln && !String(getSelection?.() || '')) this.lineClick(+ln.dataset.ln);
     });
@@ -172,19 +172,35 @@ export class Panel {
     return `https://github.com/${m.owner}/${m.repo}/blob/${m.ref.split('/').map(encodeURIComponent).join('/')}/${n.path.split('/').map(encodeURIComponent).join('/')}${L}`;
   }
 
-  item(id, note = '') {
+  item(id, note = '', at = -1) {
     const n = this.app.g.nodes[id];
-    const sub = n.kind === 'lib' ? '' : n.kind === 'file' || n.kind === 'dir' ? n.path.slice(0, n.path.length - n.name.length).replace(/\/$/, '') : `${n.path}:${n.line + 1}`;
-    return `<li><a href="#" data-n="${id}">${this.chip(n.kind)}<span class="nm">${esc(n.name)}</span>${note}<span class="sub">${esc(sub)}</span></a></li>`;
+    const sub = n.kind === 'lib' ? '' : at >= 0 ? `${n.path}:${at + 1}` : n.kind === 'file' || n.kind === 'dir' ? n.path.slice(0, n.path.length - n.name.length).replace(/\/$/, '') : `${n.path}:${n.line + 1}`;
+    return `<li><a href="#" data-n="${id}"${at >= 0 ? ` data-line="${at}" title="Used on line ${at + 1}"` : ''}>${this.chip(n.kind)}<span class="nm">${esc(n.name)}</span>${note}<span class="sub">${esc(sub)}</span></a></li>`;
   }
 
-  list(title, ids, open = true, weak) {
+  mentionLine(id, word) {
+    const n = this.app.g.nodes[id], text = n.path && this.app.files.get(n.path);
+    if (!text || !word || n.kind === 'dir' || n.kind === 'lib') return -1;
+    const re = new RegExp(`(^|[^\\w$])${word.replace(/\W/g, '\\$&')}(?![\\w$])`);
+    let ln = 0, i = 0;
+    const from = n.kind === 'file' ? 0 : n.line, to = n.kind === 'file' ? Infinity : n.end;
+    while (ln < from && i >= 0) { i = text.indexOf('\n', i) + 1 || -1; ln++; }
+    for (; i >= 0 && ln <= to; ln++) {
+      const e = text.indexOf('\n', i), line = text.slice(i, e < 0 ? text.length : e);
+      if (ln !== from || n.kind === 'file' ? re.test(line) : re.test(line.slice(line.indexOf(n.name) + n.name.length))) return ln;
+      i = e < 0 ? -1 : e + 1;
+    }
+    return -1;
+  }
+
+  list(title, ids, open = true, weak, word) {
     if (!ids.length) return '';
     const shown = ids.slice(0, 150);
     const more = ids.length - shown.length;
     const note = i => (weak && weak.has(i) ? '<span class="weak" title="Name match only; the analyzer couldn\'t confirm this link">≈</span>' : '');
-    const k = more > 0 ? (this.rest.push(() => ids.slice(150).map(i => this.item(i, note(i))).join('')), this.rest.length - 1) : -1;
-    return `<details class="rel"${open ? ' open' : ''}><summary>${title} <span class="cnt">${ids.length}</span></summary><ul>${shown.map(i => this.item(i, note(i))).join('')}${more > 0 ? `<li class="more"><button type="button" class="linkish" data-more="${k}">Show ${more.toLocaleString()} more</button></li>` : ''}</ul></details>`;
+    const it = i => this.item(i, note(i), word ? this.mentionLine(i, word) : -1);
+    const k = more > 0 ? (this.rest.push(() => ids.slice(150).map(it).join('')), this.rest.length - 1) : -1;
+    return `<details class="rel"${open ? ' open' : ''}><summary>${title} <span class="cnt">${ids.length}</span></summary><ul>${shown.map(it).join('')}${more > 0 ? `<li class="more"><button type="button" class="linkish" data-more="${k}">Show ${more.toLocaleString()} more</button></li>` : ''}</ul></details>`;
   }
 
   mentions(word, fileIds) {
@@ -259,7 +275,8 @@ export class Panel {
         hf = n.line; ht = n.end;
       }
       const trunc = n.kind === 'file' && n.end >= MAX_LINES ? `<div class="trunc">Showing the first ${MAX_LINES} of ${n.end + 1} lines${url ? ` · <a href="${url}" target="_blank" rel="noopener">open on GitHub</a>` : ''}</div>` : '';
-      html += `<div class="code">${codeHTML(n.path, text, from, to, hf, ht, links, n.kind === 'file' ? null : n.name)}</div>${trunc}`;
+      const mark = this.focusLine != null && this.focusLine >= from && this.focusLine <= to ? this.focusLine : -1;
+      html += `<div class="code">${codeHTML(n.path, text, from, to, hf, ht, links, n.kind === 'file' ? null : n.name, mark)}</div>${trunc}`;
     }
     if (n.parent >= 0 && n.kind !== 'dir') html += `<div class="rel in">in ${this.item(n.parent).replace(/^<li>|<\/li>$/g, '')}</div>`;
     if (kws.length) html += `<div class="kws">${kws.map(k => `<a href="#" data-n="${k}" class="kw">${esc(g.nodes[k].name)}</a>`).join('')}</div>`;
@@ -268,11 +285,11 @@ export class Panel {
     html += this.list(n.kind === 'dir' ? 'Contents' : 'Defines', children, n.kind !== 'file' || children.length < 40);
     if (n.kind !== 'keyword') {
       html += this.list(n.kind === 'lib' ? 'Used by' : 'Uses', n.kind === 'lib' ? usedBy : uses, true, weak);
-      if (n.kind !== 'lib') html += this.list('Used by', usedBy, true, weak);
+      if (n.kind !== 'lib') html += this.list('Used by', usedBy, true, weak, n.kind === 'file' ? null : n.name);
     }
     html += '</div>';
     this.el.innerHTML = html;
-    const hl = this.el.querySelector('.ln.hl');
+    const hl = this.el.querySelector('.ln.mk') || this.el.querySelector('.ln.hl');
     const code = this.el.querySelector('.code');
     if (code) code.scrollTop = hl ? Math.max(0, hl.offsetTop - code.offsetTop - 60) : 0;
     this.el.querySelector('.pbody').scrollTop = 0;

@@ -7,7 +7,7 @@ Explore a code repository as an interactive map of its files, functions, classes
 ![RepoVisualizer showing the code map of its own source](preview.png)
 
 - Load any public GitHub repository (`owner/repo` or a link), or open a `.zip` / folder from your device. Local files never leave your device.
-- Select a node to see its code in context; hover or long-press to peek.
+- Select a node to see its code in context; hover or long-press to peek. "Used by" entries show the line that uses it and open right at that line.
 - Search by name (substring or fuzzy) or qualified name (`Flask.route`); results rank exact matches and the most used definitions first, and matching nodes light up on the map while you type.
 - The depth slider controls how many steps away from the selected node are shown.
 - Find how two things connect: Shift+click a node, or use the route button in the details panel (or G), to see the shortest path from the selected node.

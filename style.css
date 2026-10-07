@@ -134,6 +134,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .ln { cursor: pointer; }
 .ln:hover { background: var(--raise); }
 .ln.hl:hover { background: var(--hl); }
+.ln.mk, .ln.mk:hover { box-shadow: inset 3px 0 0 var(--accent); background: var(--hl); }
 .ln .no { flex: none; width: 4.2em; padding-right: 1.2em; text-align: right; color: var(--muted); opacity: .55; user-select: none; -webkit-user-select: none; }
 .tc { color: var(--t-com); font-style: italic; } .ts { color: var(--t-str); } .tk { color: var(--t-kw); } .tn { color: var(--t-num); }
 .td { font-weight: 700; text-decoration: underline; text-decoration-color: var(--accent); text-underline-offset: 3px; }
