@@ -59,7 +59,7 @@ const IMPLICIT_THIS = new Set(['jvm', 'cs', 'swift', 'dart', 'c', 'rb']);
 const AMBIENT = /\.d\.[mc]?ts$/;
 const isFn = k => k === 'function' || k === 'method';
 const SELF = new Set(['this', 'self', 'Self', 'static', 'me']);
-const COMMON = new Set(`each map filter reduce forEach get set put add remove delete has contains size length count keys values entries items push pop shift unshift append insert extend clear close open read write flush call apply bind toString equals hashCode compareTo next hasNext iterator then catch finally emit on off once parse format join split replace trim match test exec find first last sort reverse slice copy clone merge reset cancel value name type id data message error list log debug info warn trace dispose description key path url status result index text constructor prototype String Error Get Set Write Read Close Len Open Value Type Status ToString Equals GetHashCode Add Remove Count Contains Clear Dispose Any Select Where First FirstOrDefault ToList ToArray Single Max Min Sum OrderBy Include unwrap expect as_bytes as_str as_ref as_mut is_none is_some is_ok is_err is_empty iter iter_mut into_iter to_string to_owned unwrap_or map_err ok err lines bytes chars len borrow kind start end to_s to_str to_a to_h to_i to_sym inspect respond_to? include? empty? nil? is_a? kind_of? dup freeze tap merge! fetch __toString __get __set __call`.split(/\s+/));
+const COMMON = new Set(`each map filter reduce forEach some every indexOf lastIndexOf findIndex includes concat splice flatMap get set put add remove delete has contains size length count keys values entries items push pop shift unshift append insert extend clear close open read write flush call apply bind toString equals hashCode compareTo next hasNext iterator then catch finally emit on off once parse format join split replace trim match test exec find first last sort reverse slice copy clone merge reset cancel value name type id data message error list log debug info warn trace dispose description key path url status result index text constructor prototype String Error Get Set Write Read Close Len Open Value Type Status ToString Equals GetHashCode Add Remove Count Contains Clear Dispose Any Select Where First FirstOrDefault ToList ToArray Single Max Min Sum OrderBy Include unwrap expect as_bytes as_str as_ref as_mut is_none is_some is_ok is_err is_empty iter iter_mut into_iter to_string to_owned unwrap_or map_err ok err lines bytes chars len borrow kind start end to_s to_str to_a to_h to_i to_sym inspect respond_to? include? empty? nil? is_a? kind_of? dup freeze tap merge! fetch __toString __get __set __call`.split(/\s+/));
 const NOT_TYPE = new Set('return throw new else case yield await goto in is as out ref package import using namespace extends implements throws delete sizeof typeof echo print'.split(' '));
 const isW = c => (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95;
 const isClassy = k => k === 'class' || k === 'type';
@@ -263,7 +263,7 @@ const LOOPS = {
   cs: [/\bforeach\s*\(\s*var\s+(\w+)\s+in\s+(?:this\.)?(\w+)\s*\)/g],
 };
 const VAR_TYPES = [
-  /\b(?:const|let|var|val|auto)[ \t]+([A-Za-z_$][\w$]*)[ \t]*(?::[ \t]*([A-Za-z_][\w.]*))?[ \t]*(?:=[ \t]*(?:new[ \t]+([A-Za-z_][\w.]*)|([A-Z]\w*)[ \t]*[({]))?/g,
+  /\b(?:const|let|var|val|auto)[ \t]+([A-Za-z_$][\w$]*)[ \t]*(?::[ \t]*([A-Za-z_][\w.]*(?:<[^=;\n]*>)?(?:\[\])*\??))?[ \t]*(?:=[ \t]*(?:new[ \t]+([A-Za-z_][\w.]*)|([A-Z]\w*)[ \t]*[({]))?/g,
   /\b([A-Za-z_]\w*)[ \t]*:=[ \t]*&?(?:[a-z]\w*\.)?([A-Z]\w*)[ \t]*\{/g,
 ];
 
@@ -791,8 +791,10 @@ export function analyze(files, rootName, progress = () => {}) {
         const ty = m[2] || m[3] || m[4];
         if (!ty) continue;
         const ln = lineAt(starts, m.index), di = fnAt[ln];
-        if (di >= 0) (defs[di].types ??= new Map()).set(m[1], lastSeg(ty));
-        else if (indentOf(lines[ln]) === 0) (info.types ??= new Map()).set(m[1], lastSeg(ty));
+        const tn = tyOf(ty);
+        if (!tn) continue;
+        if (di >= 0) (defs[di].types ??= new Map()).set(m[1], tn);
+        else if (indentOf(lines[ln]) === 0) (info.types ??= new Map()).set(m[1], tn);
       }
     }
     const owner = new Int32Array(lines.length).fill(info.id);
@@ -1258,6 +1260,7 @@ export function analyze(files, rootName, progress = () => {}) {
               if (sub.length) { targets = sub; if (sub.length > 1) type = 'ref'; }
             }
           }
+          if (!targets && COMMON.has(name)) continue;
         } else if (SELF.has(recv)) {
           let cls = src;
           while (cls !== fid && cls >= 0 && !isClassy(nodes[cls].kind)) cls = nodes[cls].parent;
@@ -1322,7 +1325,8 @@ export function analyze(files, rootName, progress = () => {}) {
               : member ? preferImported(cands.filter(c => (memberish.has(c) || (nodes[c].parent >= 0 && isClassy(nodes[nodes[c].parent].kind))) && nf(c)), info)
               : masked.charCodeAt(at + name.length) === 33 ? cands : cands.filter(c => AMBIENT.test(nodes[c].path));
             if (!targets.length) continue;
-            if (cands.length > 1 || L.explicit || member) type = 'ref';
+            const t0 = targets.length === 1 && !member ? nodes[targets[0]].path : null, ad = t0 && AMBIENT.test(t0) ? t0.slice(0, t0.lastIndexOf('/') + 1) : null;
+            if (!(ad != null && nodes[fid].path.startsWith(ad)) && (cands.length > 1 || L.explicit || member)) type = 'ref';
           } else if (member && targets.length > 1) {
             const top = viaImport ? targets.filter(c => nodes[c].parent === nodes[c].file) : [];
             if (top.length) targets = top; else type = 'ref';
