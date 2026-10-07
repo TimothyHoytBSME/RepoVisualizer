@@ -1351,6 +1351,10 @@ export function analyze(files, rootName, progress = () => {}) {
           if (d === 0 && e2 < q2) recvIdx = masked.slice(e2, q2);
         }
         if (!recv && !recvIdx) chainT = exprType(j, 0, src);
+        else if (recv && !SELF.has(recv)) {
+          const b1 = masked.charCodeAt(k - 1), b2 = masked.charCodeAt(k - 2);
+          if ((b1 === 46 && b2 !== 46) || (b1 === 62 && b2 === 45) || (b1 === 58 && b2 === 58)) chainT = exprType(j, 0, src);
+        }
       }
       if (L.bareVars && !member && name.charCodeAt(0) >= 95) {
         const nx = masked.slice(at + name.length, at + name.length + 12);
