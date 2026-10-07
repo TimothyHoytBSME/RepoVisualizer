@@ -1390,6 +1390,7 @@ export function analyze(files, rootName, progress = () => {}) {
             targets = pk != null || uses
               ? cands.filter(c => nsOk(pkgOf.get(nodes[c].file)) && (member ? nf(c) : nodes[c].parent === nodes[c].file))
               : cands.filter(c => nodes[nodes[c].file].parent === fdir && (!member || nf(c)));
+            if (!srcTest && targets.length) targets = targets.filter(c => !TEST_PATH.test(nodes[c].path));
           }
           if (!targets.length) {
             if (cands.length > MAXC) continue;
