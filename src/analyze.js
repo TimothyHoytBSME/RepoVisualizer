@@ -123,6 +123,8 @@ function blockEnd(lines, d, skip, cont) {
   return end;
 }
 
+const skipOf = L => SKIP_SAME[L.group];
+
 function extractDefs(masked, L, starts, lines) {
   const found = [], seen = new Set();
   let pdepth = null;
@@ -548,6 +550,7 @@ export function analyze(files, rootName, progress = () => {}) {
     const text = L.prep ? L.prep(f.path, f.text) : f.text;
     let masked = L.syntax ? mask(text, L) : null;
     info.specs = L.imports ? L.imports(text, masked) : [];
+    if (L.binds) info.binds = L.binds(text);
     if (L.pkg && masked) {
       const pm = L.pkg.exec(masked);
       if (pm) info.pkg = pm[1];
@@ -636,6 +639,20 @@ export function analyze(files, rootName, progress = () => {}) {
       const b = local.get(d.name);
       if (b) b.push(d.node); else local.set(d.name, [d.node]);
     }
+    if (L.anon) {
+      const scopes = [];
+      for (const re of L.anon) {
+        for (const m of masked.matchAll(re)) {
+          let ns;
+          if (m[1] === undefined) ns = params(masked, m.index, L);
+          else ns = (m[1].replace(/:[^,]*/g, '').match(L.idAll) || []).filter(w => !L.kw.has(w));
+          if (!ns.length) continue;
+          const a = lineAt(starts, m.index);
+          scopes.push({ a, b: blockEnd(lines, a, skipOf(L)), names: new Set(ns) });
+        }
+      }
+      if (scopes.length) info.scopes = scopes;
+    }
     Object.assign(info, { starts, owner, defPos, local });
     if (info.pkg != null) pkgOf.set(info.id, info.pkg);
   }
@@ -669,6 +686,16 @@ export function analyze(files, rootName, progress = () => {}) {
     }
   }
 
+  for (const info of infos) {
+    if (!info.binds) continue;
+    for (const [n, sp] of info.binds) {
+      if (!info.specs.includes(sp)) continue;
+      let r;
+      try { r = resolve(info.L.resolve, sp.trim(), info); } catch { r = null; }
+      if (typeof r === 'string' || r == null) (info.ext ??= new Set()).add(n);
+    }
+    info.binds = null;
+  }
   const infoOf = new Map(infos.map(i => [i.id, i]));
   const FACADE = /^(?:__init__\.pyi?|index\.[mc]?[jt]sx?|mod\.rs|lib\.rs)$/;
   for (const info of infos) {
@@ -717,6 +744,7 @@ export function analyze(files, rootName, progress = () => {}) {
       }
       if (!member) {
         let shadow = false;
+        if (info.scopes) for (const sc of info.scopes) if (sc.a <= ln && ln <= sc.b && sc.names.has(name)) { shadow = true; break; }
         for (let o = src; o !== fid && o >= 0; o = nodes[o].parent) {
           const ls = localsOf.get(o);
           if (ls && ls.has(name)) { shadow = true; break; }

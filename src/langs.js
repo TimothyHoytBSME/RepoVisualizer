@@ -163,6 +163,23 @@ function sfc(path, text) {
 
 const LOCAL_DECL = /(?:^|[;{}(,])[ \t]*(?:(?:final|const|out|using|ref|in|readonly|let|var|struct|enum|union|unsigned|signed|static|volatile|register|long|short|auto)[ \t]+)*([A-Za-z_][\w.]*(?:<[^;={}()\n]*>)?(?:\[[^\]\n]*\])*[?*&]*)[ \t]+[*&]*([A-Za-z_]\w*)[ \t]*(?=[=;:,)]|in\b)/gm;
 
+function jsBinds(raw) {
+  const out = [];
+  const names = list => list.split(',').map(p => p.trim().split(/\s+as\s+|\s*:\s*/).pop().trim()).filter(n => /^[A-Za-z_$][\w$]*$/.test(n));
+  for (const m of raw.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*require\s*\(\s*['"]([^'"]+)['"]\s*\)/g)) out.push([m[1], m[2]]);
+  for (const m of raw.matchAll(/\b(?:const|let|var)\s*\{([^}]*)\}\s*=\s*require\s*\(\s*['"]([^'"]+)['"]\s*\)/g)) for (const n of names(m[1])) out.push([n, m[2]]);
+  for (const m of raw.matchAll(/\bimport\s+(?:type\s+)?([\w$*{},\s]+?)\s+from\s*['"]([^'"]+)['"]/g)) {
+    const c = m[1], b = /\{([^}]*)\}/.exec(c);
+    if (b) for (const n of names(b[1])) out.push([n, m[2]]);
+    const rest = c.replace(/\{[^}]*\}/, '');
+    const star = /\*\s*as\s+([A-Za-z_$][\w$]*)/.exec(rest);
+    if (star) out.push([star[1], m[2]]);
+    const def = /^\s*([A-Za-z_$][\w$]*)/.exec(rest);
+    if (def && def[1] !== 'type') out.push([def[1], m[2]]);
+  }
+  return out;
+}
+
 const C_SYN = { line: ['//'], block: [['/*', '*/']], quotes: '"', charQuote: true };
 
 const BASE_KW = kw(`if else for while do switch case break continue return function class def fn func let var const new this self true false null nil none None True False import from export package public private protected static void int string bool in of and or not is end then`);
@@ -187,6 +204,8 @@ const JS = {
   clean: s => s.replace(/^#/, ''),
   prep: sfc,
   imports: (raw, m) => grab([], /(?:\bfrom|\bimport|\brequire\s*\(|\bimport\s*\()\s*(['"`])([^'"`\n]+)\1/g, raw, m, 2),
+  binds: jsBinds,
+  anon: [/\bfunction\b\s*\*?\s*(?=\()/g, /\((?=[^()]*(?:\([^()]*\)[^()]*)*\)\s*(?::[^=;{}\n]*)?=>)/g, /(?:^|[^\w$.])([A-Za-z_$][\w$]*)\s*=>/g],
   resolve: 'js',
 };
 
@@ -267,6 +286,7 @@ const JVM = {
     [R`^[ \t]*(?:(?:public|private|protected|static|final|volatile|transient)[ \t]+)+(?!class\b|interface\b|enum\b|record\b|abstract\b|void\b)[\w<>\[\],.? ]+?[ \t]+(${N})[ \t]*(?:=|;)`, 'variable'],
   ],
   extra: cfuncs, localDecl: LOCAL_DECL,
+  anon: [/\{[ \t]*\(?([A-Za-z_]\w*(?:[ \t]*:[ \t]*[\w.<>?]+)?(?:[ \t]*,[ \t]*[A-Za-z_]\w*(?:[ \t]*:[ \t]*[\w.<>?]+)?)*)\)?[ \t]*->/g],
   imports: (raw, m) => grab([], /^[ \t]*import[ \t]+(?:static[ \t]+)?([\w.]+(?:\.\*)?)/gm, m),
   resolve: 'jvm',
 };
@@ -297,6 +317,7 @@ const SWIFT = {
     [R`\btypealias[ \t]+(${N})`, 'type'],
   ],
   imports: (raw, m) => grab([], /^[ \t]*(?:@\w+[ \t]+)*import[ \t]+(?:(?:class|struct|enum|protocol|func|var|let|typealias)[ \t]+)?([\w.]+)/gm, m),
+  anon: [/\{[ \t]*(?:\[[^\]\n]*\][ \t]*)?\(?((?:[A-Za-z_]\w*|_)(?:[ \t]*:[ \t]*[\w.<>?]+)?(?:[ \t]*,[ \t]*(?:[A-Za-z_]\w*|_)(?:[ \t]*:[ \t]*[\w.<>?]+)?)*)\)?(?:[ \t]+(?:async[ \t]+)?(?:throws[ \t]+)?(?:->[ \t]*[\w.<>?]+[ \t]+)?)?[ \t]+in\b/g],
   resolve: 'swift',
 };
 
@@ -325,6 +346,7 @@ const RB = {
     [R`^[ \t]*([A-Z][A-Z0-9_]*)[ \t]*=(?!=)`, 'variable'],
   ],
   clean: s => s.replace(/=$/, ''),
+  anon: [/(?:\bdo|\{)[ \t]*\|([^|\n]*)\|/g],
   imports: (raw, m) => grab([], /\b(require_relative|require|load)[ \t(]+['"]([^'"]+)['"]/g, raw, m, 2, x => (x[1] === 'require_relative' ? 'rel:' : '') + x[2]),
   resolve: 'rb',
 };
