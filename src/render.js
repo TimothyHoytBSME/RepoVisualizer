@@ -12,22 +12,30 @@ layout(location=1) in vec2 aPos;
 layout(location=2) in float aRad;
 layout(location=3) in vec4 aCol;
 layout(location=4) in float aRing;
-out vec2 vP; out vec4 vCol; out float vR; out float vRing;
+out vec2 vP; out vec4 vCol; out float vR; out float vRing; out float vShape;
 void main() {
+  float shape = floor(aRing / 4.0);
+  float ring = aRing - shape * 4.0;
   float r = max(aRad * uScale, 2.5 * uDpr);
-  float h = r + (aRing > 0.0 ? 6.0 * uDpr : 0.0) + 1.5;
+  float h = r * 1.4 + (ring > 0.0 ? 6.0 * uDpr : 0.0) + 1.5;
   vec2 px = (aPos - uCenter) * uScale + aCorner * h;
-  vP = aCorner * h; vR = r; vCol = aCol; vRing = aRing;
+  vP = aCorner * h; vR = r; vCol = aCol; vRing = ring; vShape = shape;
   gl_Position = vec4(px.x / uHalf.x, -px.y / uHalf.y, 0.0, 1.0);
 }`;
 const NODE_FS = `#version 300 es
 precision highp float;
-in vec2 vP; in vec4 vCol; in float vR; in float vRing;
+in vec2 vP; in vec4 vCol; in float vR; in float vRing; in float vShape;
 uniform vec4 uSelCol; uniform vec4 uHlCol; uniform float uDpr;
 out vec4 o;
 void main() {
-  float d = length(vP);
-  float fa = clamp(vR - d + 0.5, 0.0, 1.0) * vCol.a;
+  vec2 q = abs(vP);
+  float d;
+  if (vShape > 1.5 && vShape < 2.5) d = (q.x + q.y) * 0.78;
+  else if (vShape > 0.5 && vShape < 1.5) { vec2 q2 = q * q; d = sqrt(sqrt(q2.x * q2.x + q2.y * q2.y)) * 1.04; }
+  else d = length(vP);
+  float fa = clamp(vR - d + 0.5, 0.0, 1.0);
+  if (vShape > 2.5) fa *= clamp(d - vR * 0.5 + 0.5, 0.0, 1.0);
+  fa *= vCol.a;
   vec3 c = vCol.rgb * fa;
   float a = fa;
   if (vRing > 0.0) {
@@ -135,15 +143,18 @@ export function readPalette() {
   return p;
 }
 
+const SHAPE = { file: 1, dir: 1, lib: 2, keyword: 3 };
+
 export function nodeStyle(g, view) {
-  const kind = new Uint8Array(view.n), rad = new Float32Array(view.n);
+  const kind = new Uint8Array(view.n), rad = new Float32Array(view.n), shape = new Uint8Array(view.n);
   for (let i = 0; i < view.n; i++) {
     const n = g.nodes[view.ids[i]];
     const k = KINDS.indexOf(n.kind);
     kind[i] = k < 0 ? 6 : k;
     rad[i] = (BASE_R[n.kind] || 3.3) + Math.min(5, 0.8 * Math.log2(1 + view.deg[i]));
+    shape[i] = SHAPE[n.kind] || 0;
   }
-  return { kind, rad };
+  return { kind, rad, shape };
 }
 
 export class Renderer {
@@ -278,7 +289,7 @@ export class Renderer {
       const o = j * 8;
       nd[o] = x[i]; nd[o + 1] = y[i]; nd[o + 2] = rad[i];
       nd[o + 3] = c[0]; nd[o + 4] = c[1]; nd[o + 5] = c[2]; nd[o + 6] = fade(depth[i]);
-      nd[o + 7] = i === sel ? 1 : i === hl || i === hover ? 2 : 0;
+      nd[o + 7] = (i === sel ? 1 : i === hl || i === hover ? 2 : 0) + style.shape[i] * 4;
     }
 
     this.counts = { edge: E.length, arrow: ai, node: nodes.length };

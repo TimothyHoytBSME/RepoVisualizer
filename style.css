@@ -77,6 +77,9 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 #legend span::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: currentColor; margin-right: 5px; vertical-align: 1px; }
 #legend span { color: var(--muted); }
 #legend span[class^="k-"]::before { background: var(--c); }
+#legend .k-file::before, #legend .k-dir::before { border-radius: 2px; }
+#legend .k-lib::before { border-radius: 1px; transform: rotate(45deg) scale(.85); }
+#legend span.k-keyword::before { background: none; box-shadow: inset 0 0 0 2px var(--c); }
 #legend .edge-key::before { display: none; }
 #legend .edge-key i { display: inline-block; width: 16px; height: 1px; background: var(--muted); vertical-align: 3px; margin-right: 5px; position: relative; }
 #legend .edge-key i.arrow::after { content: ""; position: absolute; right: -1px; top: -3px; border: 3.5px solid transparent; border-left: 6px solid var(--muted); border-right: 0; }
