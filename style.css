@@ -82,6 +82,8 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 #legend .edge-key i.arrow::after { content: ""; position: absolute; right: -1px; top: -3px; border: 3.5px solid transparent; border-left: 6px solid var(--muted); border-right: 0; }
 
 #status { position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); width: min(80%, 340px); text-align: center; padding: 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; }
+#cancel-load { margin-top: 12px; height: 32px; padding: 0 16px; border-radius: 8px; border: 1px solid var(--line); background: var(--raise); }
+#cancel-load:hover { border-color: var(--muted); }
 #status .bar { margin-top: 10px; height: 4px; border-radius: 2px; background: var(--raise); overflow: hidden; }
 #status .bar i { display: block; height: 100%; background: var(--accent); border-radius: 2px; transition: width .2s; }
 #status .bar.busy i { animation: busy 1.1s ease-in-out infinite; }

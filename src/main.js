@@ -63,15 +63,16 @@ applyTheme(store.get('rv:theme'));
 $('#theme').value = store.get('rv:theme') || 'auto';
 $('#theme').addEventListener('change', e => { store.set('rv:theme', e.target.value); applyTheme(e.target.value); });
 
-function showStatus(text, frac) {
+function showStatus(text, frac, cancellable = false) {
   $('#status').hidden = false;
+  $('#cancel-load').hidden = !cancellable;
   $('#status-text').textContent = text;
   const bar = $('#status-bar');
   bar.parentElement.classList.toggle('busy', frac == null);
   bar.style.width = frac == null ? '30%' : `${Math.round(frac * 100)}%`;
 }
 const hideStatus = () => { $('#status').hidden = true; };
-const progress = p => showStatus(p.total ? `${p.phase} ${fmt(p.done)} / ${fmt(p.total)}` : `${p.phase}…`, p.total ? p.done / p.total : null);
+const progress = p => showStatus(p.total ? `${p.phase} ${fmt(p.done)} / ${fmt(p.total)}` : `${p.phase}…`, p.total ? p.done / p.total : null, true);
 
 function analyzeAsync(files, name, onProgress, signal) {
   const local = () => import('./analyze.js').then(m => m.analyze(files, name, onProgress));
@@ -91,6 +92,12 @@ function analyzeAsync(files, name, onProgress, signal) {
 }
 
 let loadSeq = 0, abort = null;
+$('#cancel-load').addEventListener('click', () => {
+  loadSeq++;
+  abort?.abort();
+  hideStatus();
+  if (!app.g) openSource();
+});
 async function load(getSource, nodeKey) {
   const seq = ++loadSeq;
   abort?.abort();
