@@ -26,7 +26,7 @@ Share a view with a link like `?repo=pallets/flask&node=f:src/flask/app.py&depth
 
 The root folder's details show the language mix and the most used files and symbols (by how many other non-test files use them).
 
-The funnel button shows or hides tests, variables, libraries and uncertain links, sets the direction and the node limit, switches node colors between kind and folder (to see module boundaries), saves the map as an image, and holds the color legend. When the limit trims a big neighborhood, labels show "+N" where nodes were hidden; click the +N (or press E on a highlighted node) to show them in place. Press ? for all controls.
+The funnel button shows or hides tests, variables, libraries and uncertain links, sets the direction and the node limit, switches node colors between kind and folder (to see module boundaries), saves the map as an image, and holds the color legend. When the limit trims a big neighborhood, labels show "+N" where nodes were hidden; click the +N (or press E on a highlighted node, or A on a gamepad when the selected node shows one) to show them in place. Press ? for all controls.
 
 ## Controls
 
@@ -41,7 +41,7 @@ The funnel button shows or hides tests, variables, libraries and uncertain links
 | Depth | slider | [ / ] | LB / RB |
 | Fit to screen | ⛶ button | F | Back/Select |
 | Recenter | click the selected node | C | left stick press |
-| Show hidden (+N) links in place | click / tap the +N | E (highlighted node) | — |
+| Show hidden (+N) links in place | click / tap the +N | E (highlighted node) | A on the selected node |
 | Color by kind / folder | filter menu | K | — |
 | Links followed (both / uses / used by) | filter menu | U | — |
 | Show/hide tests | funnel button | T | — |

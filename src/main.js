@@ -535,6 +535,7 @@ const api = {
   },
   activate() {
     if (app.hl >= 0 && app.hl !== app.sel) select(app.hl);
+    else if (app.nb?.hidden?.get(app.sel)) app.expand(app.sel);
     else if (narrow()) togglePanel();
   },
   depth: d => setDepth(app.depth + d),
