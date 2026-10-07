@@ -767,6 +767,21 @@ export function analyze(files, rootName, progress = () => {}) {
         info.scopeNames = new Set(scopes.flatMap(sc => [...sc.names, ...(sc.types ? sc.types.keys() : [])]));
       }
     }
+    if (L.group === 'cs') {
+      for (const m of masked.matchAll(/\bnew[ \t]+([A-Za-z_][\w.]*)(?:<[^>\n]*>)?[ \t]*(?:\([^()]*\))?\s*\{/g)) {
+        let d = 1, k = m.index + m[0].length;
+        const lim = Math.min(masked.length, k + 4000), ty = lastSeg(m[1]);
+        for (let q = k; q < lim && d; q++) {
+          const c = masked.charCodeAt(q);
+          if (c === 123) d++;
+          else if (c === 125) d--;
+          else if (d === 1 && (c === 123 || c === 44 || q === k)) {
+            const a = /^[\s,]*([A-Za-z_]\w*)\s*=(?!=)/.exec(masked.slice(q, q + 120));
+            if (a) (info.inits ??= new Map()).set(q + a[0].indexOf(a[1]), ty);
+          }
+        }
+      }
+    }
     Object.assign(info, { starts, owner, defPos, local });
     if (info.pkg != null) pkgOf.set(info.id, info.pkg);
   }
@@ -912,6 +927,12 @@ export function analyze(files, rootName, progress = () => {}) {
       }
       let targets = null;
       let type = 'dep';
+      if (info.inits && info.inits.has(at)) {
+        const ty = info.inits.get(at), hit = new Set();
+        for (const c of (classByName.get(ty) || []).slice(0, 4)) for (const h of memberIn(c, cands) || []) hit.add(h);
+        if (!hit.size) continue;
+        targets = [...hit];
+      }
       if (member && recv) {
         const pool = local.get(name) || cands;
         let selfT = null;
