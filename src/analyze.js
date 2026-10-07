@@ -187,6 +187,7 @@ const CALL_VARS = [
 ];
 const PHP_CALL = /\$(\w+)[ \t]*=[ \t]*(?:\$?\w+[ \t]*(?:->|::)[ \t]*)*(\w+)[ \t]*\(/g;
 const PHP_NEW = /\$(\w+)[ \t]*=[ \t]*new[ \t]+\\?(?:\w+\\)*([A-Z]\w*)()()/g;
+const RB_NEW = /^[ \t]*@?(\w+)[ \t]*=[ \t]*(?:\w+::)*([A-Z]\w*)\.new\b()()/gm;
 const CALL_VARS_PLAIN = /^[ \t]*([A-Za-z_]\w*)[ \t]*=[ \t]*(?:await[ \t]+)?(?:[\w]+\.)*([A-Za-z_]\w*)[ \t]*\(/gm;
 const RET = [
   /^\s*(?:async\s+)?(?:throws\s+|rethrows\s+)?->\s*&?(?:mut\s+)?(?:impl\s+|dyn\s+)?(?:[a-z]\w*(?:::|\.))*([A-Za-z_]\w*)/,
@@ -741,7 +742,7 @@ export function analyze(files, rootName, progress = () => {}) {
         if (di >= 0 && m[1] !== m[2]) (defs[di].types ??= new Map()).set(m[1], '@' + m[2]);
       }
     }
-    for (const re of L.group === 'go' ? VAR_TYPES : L.group === 'php' ? [PHP_NEW] : L.group === 'py' || L.group === 'rb' ? [] : VAR_TYPES.slice(0, 1)) {
+    for (const re of L.group === 'go' ? VAR_TYPES : L.group === 'php' ? [PHP_NEW] : L.group === 'rb' ? [RB_NEW] : L.group === 'py' ? [] : VAR_TYPES.slice(0, 1)) {
       for (const m of masked.matchAll(re)) {
         const ty = m[2] || m[3] || m[4];
         if (!ty) continue;
