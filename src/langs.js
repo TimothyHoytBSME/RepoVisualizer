@@ -278,7 +278,7 @@ const RS = {
 
 const C = {
   paramLast: true, group: 'c', exts: 'c h cc cpp cxx c++ hpp hh hxx h++ ino cu cuh m mm glsl vert frag comp geom hlsl metal',
-  syntax: C_SYN,
+  syntax: { ...C_SYN, rawCpp: true },
   kw: kw(`auto break case char const continue default do double else enum extern float for goto if inline int long register restrict return short signed sizeof static struct switch typedef union unsigned void volatile while bool true false NULL nullptr class namespace template typename public private protected virtual override final new delete this using operator friend explicit const_cast static_cast dynamic_cast reinterpret_cast try catch throw std include define ifdef ifndef endif elif pragma size_t uint8_t uint16_t uint32_t uint64_t int8_t int16_t int32_t int64_t string vector self nil YES NO id`),
   defs: [
     [R`^[ \t]*#[ \t]*define[ \t]+(${N})`, 'variable'],
@@ -320,7 +320,7 @@ const JVM = {
 
 const CS = {
   paramLast: true, group: 'cs', pkgDir: true, exts: 'cs', priv: /\bprivate\b/, strip: /^[ \t]*(?:using|namespace)\b[^\n{]*/gm, pkg: /^[ \t]*namespace[ \t]+([\w.]+)/m, localDecl: LOCAL_DECL,
-  syntax: C_SYN,
+  syntax: { ...C_SYN, triple: true, verbatim: true },
   kw: kw(`abstract as base bool break byte case catch char checked class const continue decimal default delegate do double else enum event explicit extern false finally fixed float for foreach goto if implicit in int interface internal is lock long namespace new null object operator out override params private protected public readonly ref return sbyte sealed short sizeof stackalloc static string struct switch this throw true try typeof uint ulong unchecked unsafe ushort using virtual void volatile while var get set init value async await record required yield nameof dynamic List Task`),
   defs: [
     [R`\b(?:class|interface|enum|struct|record)[ \t]+(${N})`, 'class'],
@@ -334,7 +334,7 @@ const CS = {
 
 const SWIFT = {
   group: 'swift', pkgDir: true, exts: 'swift', priv: /\b(?:private|fileprivate)\b/, strip: /^[ \t]*(?:@\w+[ \t]+)*import\b[^\n]*/gm,
-  syntax: { line: ['//'], block: [['/*', '*/']], quotes: '"', triple: true },
+  syntax: { line: ['//'], block: [['/*', '*/']], quotes: '"', triple: true, hashRaw: true },
   kw: kw(`associatedtype class deinit enum extension fileprivate func import init inout internal let open operator private protocol public rethrows static struct subscript typealias var break case continue default defer do else fallthrough for guard if in repeat return switch where while as false is nil self Self super throw throws true try async await some any String Int Double Bool Array Dictionary`),
   defs: [
     [R`\b(?:class|struct|enum|protocol|actor)[ \t]+(${N})`, 'class'],
@@ -571,6 +571,27 @@ export function mask(text, L, cls) {
       if (S.triple && text.startsWith(ch + ch + ch, i)) {
         const j = text.indexOf(ch + ch + ch, i + 3);
         const e = j < 0 ? n : j + 3;
+        blank(i, e, 2); i = e; continue;
+      }
+      if (ch === '"' && S.verbatim && (text[i - 1] === '@' || (text[i - 1] === '$' && text[i - 2] === '@'))) {
+        let j = i + 1;
+        while (j < n) { if (out[j] === 34) { if (out[j + 1] === 34) { j += 2; continue; } j++; break; } j++; }
+        blank(i, j, 2); i = j; continue;
+      }
+      if (ch === '"' && S.rawCpp && /(?:^|[^\w])(?:u8|u|U|L)?R$/.test(text.slice(Math.max(0, i - 4), i))) {
+        const p = text.indexOf('(', i);
+        const delim = p > i && p - i <= 17 ? text.slice(i + 1, p) : null;
+        if (delim != null && !/[\s\\)]/.test(delim)) {
+          const j = text.indexOf(')' + delim + '"', p);
+          const e = j < 0 ? n : j + delim.length + 2;
+          blank(i, e, 2); i = e; continue;
+        }
+      }
+      if (ch === '"' && S.hashRaw && text[i - 1] === '#') {
+        let k = i - 1, h = 0;
+        while (k >= 0 && text[k] === '#') { h++; k--; }
+        const j = text.indexOf('"' + '#'.repeat(h), text.startsWith('"""', i) ? i + 3 : i + 1);
+        const e = j < 0 ? n : j + 1 + h;
         blank(i, e, 2); i = e; continue;
       }
       if (S.rawHash && ch === '"') {
