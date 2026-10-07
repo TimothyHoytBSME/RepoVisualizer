@@ -642,13 +642,13 @@ export function analyze(files, rootName, progress = () => {}) {
         if (tn && !MODS.has(tn) && tn !== 'auto') (defs[di].types ??= new Map()).set(m[2], tn);
       }
     }
-    for (const re of L.group === 'py' || L.group === 'rb' ? [CALL_VARS_PLAIN] : CALL_VARS) {
+    for (const re of L.group === 'py' || L.group === 'rb' ? [CALL_VARS_PLAIN] : L.group === 'go' ? CALL_VARS : CALL_VARS.slice(0, 1)) {
       for (const m of masked.matchAll(re)) {
         const di = fnAt[lineAt(starts, m.index + m[0].length - 1)];
         if (di >= 0) (defs[di].types ??= new Map()).set(m[1], '()' + m[2]);
       }
     }
-    for (const re of VAR_TYPES) {
+    for (const re of L.group === 'go' ? VAR_TYPES : L.group === 'py' || L.group === 'rb' ? [] : VAR_TYPES.slice(0, 1)) {
       for (const m of masked.matchAll(re)) {
         const ty = m[2] || m[3] || m[4];
         if (!ty) continue;
