@@ -369,7 +369,8 @@ export class Renderer {
     if (hl >= 0 && hl !== sel) label(hl, true);
     if (hover >= 0 && hover !== sel && hover !== hl) label(hover, true);
     const order = this.labelOrder;
-    for (let k = 0; k < order.length && count <= 220; k++) {
+    const cap = Math.max(60, Math.min(220, (W * H) / 4000));
+    for (let k = 0; k < order.length && count <= cap; k++) {
       const i = order[k];
       if (i !== sel && i !== hl && i !== hover) label(i, false);
     }
