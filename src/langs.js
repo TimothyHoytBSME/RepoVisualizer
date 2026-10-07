@@ -194,7 +194,7 @@ const JS = {
   exts: 'js mjs cjs jsx ts tsx mts cts vue svelte astro',
   syntax: { line: ['//'], block: [['/*', '*/']], quotes: '\'"`', template: '`', regex: true },
   id: /[A-Za-z_$][\w$]*/g,
-  kw: kw(`break case catch class const continue debugger default delete do else export extends finally for function if import in instanceof let new return super switch this throw try typeof var void while with yield async await static of null true false undefined interface type enum implements package private protected public readonly abstract declare namespace module as from any number string boolean never unknown object symbol bigint keyof infer is satisfies override constructor require exports console window document Math JSON Object Array String Number Boolean Promise Error Map Set Date RegExp Symbol`),
+  kw: kw(`break case catch class const continue debugger default delete do else export extends finally for function if import in instanceof let new return super switch this throw try typeof var void while with yield async await static of null true false undefined interface type enum implements package private protected public readonly abstract declare namespace module as from any number string boolean never unknown object symbol bigint keyof infer is satisfies override require exports console window document Math JSON Object Array String Number Boolean Promise Error Map Set Date RegExp Symbol`),
   defs: [
     [R`\bfunction\b\s*\*?\s*(${W})`, 'function'],
     [R`\bclass\s+(${W})`, 'class'],

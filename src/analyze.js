@@ -58,7 +58,7 @@ const IMPLICIT_THIS = new Set(['jvm', 'cs', 'swift', 'dart', 'c', 'rb']);
 const AMBIENT = /\.d\.[mc]?ts$/;
 const isFn = k => k === 'function' || k === 'method';
 const SELF = new Set(['this', 'self', 'Self', 'static', 'me']);
-const COMMON = new Set(`each map filter reduce forEach get set put add remove delete has contains size length count keys values entries items push pop shift unshift append insert extend clear close open read write flush call apply bind toString equals hashCode compareTo next hasNext iterator then catch finally emit on off once parse format join split replace trim match test exec find first last sort reverse slice copy clone merge reset cancel value name type id data message error list log debug info warn trace dispose description key path url status result index text String Error Get Set Write Read Close Len Open Value Type Status ToString Equals GetHashCode Add Remove Count Contains Clear Dispose Any Select Where First FirstOrDefault ToList ToArray Single Max Min Sum OrderBy Include unwrap expect as_bytes as_str as_ref as_mut is_none is_some is_ok is_err is_empty iter iter_mut into_iter to_string to_owned unwrap_or map_err ok err lines bytes chars len borrow kind start end`.split(/\s+/));
+const COMMON = new Set(`each map filter reduce forEach get set put add remove delete has contains size length count keys values entries items push pop shift unshift append insert extend clear close open read write flush call apply bind toString equals hashCode compareTo next hasNext iterator then catch finally emit on off once parse format join split replace trim match test exec find first last sort reverse slice copy clone merge reset cancel value name type id data message error list log debug info warn trace dispose description key path url status result index text constructor prototype String Error Get Set Write Read Close Len Open Value Type Status ToString Equals GetHashCode Add Remove Count Contains Clear Dispose Any Select Where First FirstOrDefault ToList ToArray Single Max Min Sum OrderBy Include unwrap expect as_bytes as_str as_ref as_mut is_none is_some is_ok is_err is_empty iter iter_mut into_iter to_string to_owned unwrap_or map_err ok err lines bytes chars len borrow kind start end`.split(/\s+/));
 const NOT_TYPE = new Set('return throw new else case yield await goto in is as out ref package import using namespace extends implements throws delete sizeof typeof echo print'.split(' '));
 const isW = c => (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95;
 const isClassy = k => k === 'class' || k === 'type';
@@ -766,6 +766,18 @@ export function analyze(files, rootName, progress = () => {}) {
         info.scopes = scopes;
         info.scopeNames = new Set(scopes.flatMap(sc => [...sc.names, ...(sc.types ? sc.types.keys() : [])]));
       }
+    }
+    for (const m of masked.matchAll(/\b(?:self|this|@)\.?([A-Za-z_]\w*)[ \t]*=[ \t]*(?:(?:new[ \t]+)?([A-Z]\w*)[ \t]*[({]|([A-Za-z_]\w*)[ \t]*;?[ \t]*$)/gm)) {
+      const di = fnAt[lineAt(starts, m.index)];
+      if (di < 0) continue;
+      let c = defs[di].up;
+      while (c && !(isClassy(c.kind) && c.node != null)) c = c.up;
+      if (!c) continue;
+      const ty = m[2] || (defs[di].types && defs[di].types.get(m[3]));
+      if (!ty || ty.startsWith('()')) continue;
+      let ft = fieldTypes.get(c.node);
+      if (!ft) fieldTypes.set(c.node, (ft = new Map()));
+      if (!ft.has(m[1])) ft.set(m[1], ty);
     }
     if (L.group === 'cs') {
       for (const m of masked.matchAll(/\bnew[ \t]+([A-Za-z_][\w.]*)(?:<[^>\n]*>)?[ \t]*(?:\([^()]*\))?\s*\{/g)) {
