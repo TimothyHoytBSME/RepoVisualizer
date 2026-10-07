@@ -273,7 +273,7 @@ export class Renderer {
       const onPath = nb.pathE ? nb.pathE.has(e) : false;
       const hot = onPath || a === sel || b === sel || a === hl || b === hl || a === hover || b === hover;
       const c = onPath ? pal.accent : t === DEP ? pal.fg : pal.muted;
-      let al = (t === DEP ? 0.34 : t === REF ? 0.3 : 0.2) * fade(Math.max(depth[a], depth[b]));
+      let al = (t === DEP ? 0.34 : t === REF ? 0.3 : 0.2) * fade(Math.max(depth[a], depth[b])) * (depth[a] === depth[b] && depth[a] > 0 ? 0.45 : 1);
       if (hot) al = onPath ? 0.95 : Math.min(0.95, al * 2.6 + 0.15);
       const o = i * 12;
       ed[o] = x[a]; ed[o + 1] = y[a]; ed[o + 2] = x[b]; ed[o + 3] = y[b];
