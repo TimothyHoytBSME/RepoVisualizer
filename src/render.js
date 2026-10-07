@@ -146,15 +146,18 @@ export function readPalette() {
 const SHAPE = { file: 1, dir: 1, lib: 2, keyword: 3 };
 
 export function nodeStyle(g, view) {
-  const kind = new Uint8Array(view.n), rad = new Float32Array(view.n), shape = new Uint8Array(view.n);
+  const kind = new Uint8Array(view.n), rad = new Float32Array(view.n), shape = new Uint8Array(view.n), label = new Array(view.n);
+  const seen = new Map();
+  for (const n of g.nodes) if (n.kind === 'file') seen.set(n.name, (seen.get(n.name) || 0) + 1);
   for (let i = 0; i < view.n; i++) {
     const n = g.nodes[view.ids[i]];
     const k = KINDS.indexOf(n.kind);
     kind[i] = k < 0 ? 6 : k;
     rad[i] = (BASE_R[n.kind] || 3.3) + Math.min(5, 0.8 * Math.log2(1 + view.deg[i]));
     shape[i] = SHAPE[n.kind] || 0;
+    label[i] = n.kind === 'file' && seen.get(n.name) > 1 && n.parent > 0 ? g.nodes[n.parent].name + '/' + n.name : n.name;
   }
-  return { kind, rad, shape };
+  return { kind, rad, shape, label };
 }
 
 export class Renderer {
@@ -364,7 +367,7 @@ export class Renderer {
       const sy = (lay.y[i] - cam.y) * cam.scale + H / 2;
       if (sx < -200 || sx > W + 20 || sy < -20 || sy > H + 20) return;
       const gid = view.ids[i];
-      const name = g.nodes[gid].name;
+      const name = style.label[i];
       const px = i === sel ? 13 : nb.depth[i] <= 1 ? 12 : 11;
       const font = `${sp ? 600 : 500} ${px}px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
       const key = gid * 64 + px * 2 + (sp ? 1 : 0);
