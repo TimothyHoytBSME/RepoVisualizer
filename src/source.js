@@ -141,7 +141,7 @@ export async function loadGitHub(spec, progress, signal) {
       progress({ phase: 'Downloading', done: ++done, total: items.length });
     }
   };
-  await Promise.all(Array.from({ length: Math.min(16, items.length) }, work));
+  await Promise.all(Array.from({ length: Math.min(24, items.length) }, work));
   if (signal?.aborted) throw aborted();
   if (!files.length) {
     if (limited) throw new Error('GitHub is limiting downloads right now. Wait a few minutes and try again.');

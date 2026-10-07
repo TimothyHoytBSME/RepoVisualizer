@@ -173,6 +173,8 @@ function select(i, instant, push = !instant) {
   app.follow = true;
   app.goto = null;
   panel.show(app.view.ids[i]);
+  const sn = app.g.nodes[app.view.ids[i]];
+  $('#live').textContent = `Selected ${sn.kind} ${sn.name}${sn.path && sn.kind !== 'dir' ? ' in ' + sn.path : ''}. ${app.nb.nodes.length} nodes in view.`;
   syncURL(push);
 }
 

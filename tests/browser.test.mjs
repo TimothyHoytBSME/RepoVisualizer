@@ -111,6 +111,13 @@ const state = page => page.evaluate(() => {
   await page.waitForTimeout(400);
   check('search selects match', (await state(page)).sel.includes('neighborhood'));
 
+  await page.evaluate(() => window.__rv.app.selectGlobal(window.__rv.app.g.byKey.get('f:src/graph.js')));
+  await page.waitForTimeout(300);
+  const ln = await page.evaluate(() => [...document.querySelectorAll('.code .ln')].findIndex(l => l.textContent.includes('export function buildView')));
+  await page.click(`.code .ln >> nth=${ln}`, { position: { x: 20, y: 5 } });
+  await page.waitForTimeout(300);
+  check('clicking a code line selects its function', (await state(page)).sel === 's:src/graph.js#buildView', await state(page));
+
   await page.selectOption('#map-type', 'words');
   await page.waitForTimeout(500);
   const w = await state(page);

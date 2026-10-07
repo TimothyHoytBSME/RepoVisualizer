@@ -22,6 +22,7 @@ button, input, select { font: inherit; color: inherit; }
 button { cursor: pointer; }
 svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
 [hidden] { display: none !important; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 #bar { display: flex; gap: 8px; align-items: center; padding: 8px 12px; padding-top: max(8px, env(safe-area-inset-top)); padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); background: var(--panel); border-bottom: 1px solid var(--line); z-index: 5; }
 #bar .repo { display: flex; align-items: center; gap: 8px; background: none; border: 0; padding: 6px 8px; border-radius: 8px; min-width: 0; max-width: 40%; font-weight: 600; }
@@ -112,6 +113,9 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .code { font: 12.5px/1.55 var(--mono); padding: 8px 0; overflow: auto; max-height: 62vh; border-bottom: 1px solid var(--line); tab-size: 4; }
 .ln { display: flex; white-space: pre; padding-right: 14px; min-width: max-content; }
 .ln.hl { background: var(--hl); }
+.ln { cursor: pointer; }
+.ln:hover { background: var(--raise); }
+.ln.hl:hover { background: var(--hl); }
 .ln .no { flex: none; width: 4.2em; padding-right: 1.2em; text-align: right; color: var(--muted); opacity: .55; user-select: none; -webkit-user-select: none; }
 .tc { color: var(--t-com); font-style: italic; } .ts { color: var(--t-str); } .tk { color: var(--t-kw); } .tn { color: var(--t-num); }
 .td { font-weight: 700; text-decoration: underline; text-decoration-color: var(--accent); text-underline-offset: 3px; }

@@ -55,7 +55,7 @@ export function codeHTML(path, text, from, to, hiFrom, hiTo, links, defName) {
     let e = ln + 1 < starts.length ? starts[ln + 1] - 1 : text.length;
     if (text[e - 1] === '\r') e--;
     const hi = ln >= hiFrom && ln <= hiTo;
-    html += `<div class="ln${hi ? ' hl' : ''}"><span class="no">${ln + 1}</span><span class="tx">${lineHTML(text, cls, s, e, L, links, hi ? defName : null) || ' '}</span></div>`;
+    html += `<div class="ln${hi ? ' hl' : ''}" data-ln="${ln}"><span class="no">${ln + 1}</span><span class="tx">${lineHTML(text, cls, s, e, L, links, hi ? defName : null) || ' '}</span></div>`;
   }
   return html;
 }
@@ -83,7 +83,28 @@ export class Panel {
       if (nav) { e.stopPropagation(); if (nav.dataset.nav === 'back') history.back(); else history.forward(); return; }
       const t = e.target.closest('[data-n]');
       if (t) { e.preventDefault(); app.selectGlobal(+t.dataset.n); return; }
+      const ln = e.target.closest('[data-ln]');
+      if (ln && !String(getSelection?.() || '')) this.lineClick(+ln.dataset.ln);
     });
+  }
+
+  lineClick(line) {
+    const { g } = this.app;
+    const cur = g.nodes[this.cur];
+    if (!cur || !cur.path || cur.kind === 'dir' || cur.kind === 'lib' || cur.kind === 'keyword') return;
+    const fid = cur.kind === 'file' ? cur.id : cur.file;
+    let best = fid, span = Infinity;
+    for (const e of edgesOf(g, fid, 'out')) this.walk(e, line, n => { const s = n.end - n.line; if (s < span) { span = s; best = n.id; } });
+    if (best !== this.cur) this.app.selectGlobal(best);
+  }
+
+  walk(e, line, hit) {
+    const { g } = this.app;
+    if (e.type !== 'contain') return;
+    const n = g.nodes[e.t];
+    if (line < n.line || line > n.end) return;
+    hit(n);
+    for (const c of edgesOf(g, n.id, 'out')) this.walk(c, line, hit);
   }
 
   nav(back, fwd) {
