@@ -123,8 +123,28 @@ function goImports(raw) {
   return grab(out, /^import[ \t]+(?:[\w.]+[ \t]+)?"([^"]+)"/gm, raw);
 }
 
+function rsExpand(s, out, depth = 0) {
+  const i = s.indexOf('{');
+  if (i < 0 || depth > 4) {
+    const p = s.replace(/\s+as\s+\w+$/, '').replace(/::(?:self|\*)$/, '').replace(/::$/, '').trim();
+    if (p && p !== 'self') out.push(p);
+    return;
+  }
+  let d = 0, j = i;
+  for (; j < s.length; j++) { if (s[j] === '{') d++; else if (s[j] === '}' && --d === 0) break; }
+  const inner = s.slice(i + 1, j), pre = s.slice(0, i);
+  let k = 0, start = 0;
+  d = 0;
+  for (; k <= inner.length; k++) {
+    const c = inner[k];
+    if (c === '{') d++; else if (c === '}') d--;
+    else if ((c === ',' || k === inner.length) && d === 0) { const part = inner.slice(start, k).trim(); if (part) rsExpand(part === 'self' ? pre : pre + part, out, depth + 1); start = k + 1; }
+  }
+}
+
 function rsImports(raw, m) {
-  const out = grab([], /^[ \t]*(?:pub(?:\([^)]*\))?[ \t]+)?use[ \t]+(?:::)?([\w:]+)/gm, m, null, 1, x => x[1].replace(/::$/, ''));
+  const out = [];
+  for (const x of m.matchAll(/^[ \t]*(?:pub(?:\([^)]*\))?[ \t]+)?use[ \t]+(?:::)?([^;]*);/gm)) rsExpand(x[1].replace(/\s+/g, ' '), out);
   grab(out, /^[ \t]*(?:pub(?:\([^)]*\))?[ \t]+)?mod[ \t]+(\w+)[ \t]*;/gm, m, null, 1, x => 'mod:' + x[1]);
   return grab(out, /^[ \t]*extern[ \t]+crate[ \t]+(\w+)/gm, m, null, 1, x => 'extern:' + x[1]);
 }
@@ -241,8 +261,8 @@ const GO = {
 };
 
 const RS = {
-  group: 'rs', explicit: true, exts: 'rs',
-  syntax: { ...C_SYN, multi: '"' },
+  group: 'rs', explicit: true, shadowExt: true, exts: 'rs', strip: /^[ \t]*(?:pub(?:\([^)]*\))?[ \t]+)?use[ \t][^;]*;/gm,
+  syntax: { ...C_SYN, multi: '"', rawHash: true },
   kw: kw(`as async await break const continue crate dyn else enum extern false fn for if impl in let loop match mod move mut pub ref return self Self static struct super trait true type unsafe use where while Some None Ok Err Box Vec String Option Result i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 usize isize f32 f64 bool str char println format vec assert assert_eq`),
   defs: [
     [R`\bfn[ \t]+(${N})`, 'function'],
@@ -552,6 +572,15 @@ export function mask(text, L, cls) {
         const j = text.indexOf(ch + ch + ch, i + 3);
         const e = j < 0 ? n : j + 3;
         blank(i, e, 2); i = e; continue;
+      }
+      if (S.rawHash && ch === '"') {
+        let k = i - 1, h = 0;
+        while (k >= 0 && text[k] === '#') { h++; k--; }
+        if (k >= 0 && text[k] === 'r' && (k === 0 || !/\w/.test(text[k - 1]) || (text[k - 1] === 'b' && (k < 2 || !/\w/.test(text[k - 2]))))) {
+          const j = text.indexOf('"' + '#'.repeat(h), i + 1);
+          const e = j < 0 ? n : j + 1 + h;
+          blank(i, e, 2); i = e; continue;
+        }
       }
       if (ch === "'" && S.charQuote) {
         CHAR.lastIndex = i;

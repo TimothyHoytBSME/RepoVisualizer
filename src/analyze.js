@@ -277,7 +277,7 @@ function suffixMap(entries) {
   return map;
 }
 
-function makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, goMods, names, swiftMods }) {
+function makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, goMods, names, swiftMods, crates }) {
   const suffix = suffixMap(fileIds);
   const csFirst = new Set([...csNs].map(n => n.split('.')[0]));
   const dirSuffix = suffixMap([...dirs.keys()].map(d => [d, d]));
@@ -419,7 +419,14 @@ function makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, goMods, names, swi
       }
       const root = crateRoot(info.dir);
       const r = root == null ? null : rsFind(root, segs);
-      return r ?? head;
+      if (r != null) return r;
+      const cd = crates.get(head);
+      if (cd != null) {
+        const src = join(cd, 'src');
+        if (segs.length === 1) return exact(join(src, 'lib.rs')) ?? exact(join(src, 'main.rs'));
+        return rsFind(src, segs.slice(1)) ?? exact(join(src, 'lib.rs'));
+      }
+      return /^[A-Z]/.test(head) ? null : head;
     },
     c(spec, info) {
       const sys = spec[0] === '<';
@@ -563,6 +570,7 @@ export function analyze(files, rootName, progress = () => {}) {
   const infos = [];
   const goMods = [];
   const swiftMods = new Set();
+  const crates = new Map();
   for (const f of sorted) {
     if (fileIds.has(f.path)) continue;
     const i = f.path.lastIndexOf('/');
@@ -576,6 +584,10 @@ export function analyze(files, rootName, progress = () => {}) {
     edges.push({ s: parent, t: id, type: 'contain' });
     if (L) infos.push({ id, f, L, dir });
     if (f.path === 'Package.swift' || f.path.endsWith('/Package.swift')) for (const m of f.text.matchAll(/\.(?:target|library|executableTarget|testTarget)\s*\(\s*name:\s*"([^"]+)"/g)) swiftMods.add(m[1]);
+    if (/(?:^|\/)Cargo\.toml$/.test(f.path)) {
+      const m = /^\[package\][^[]*?^name\s*=\s*"([^"]+)"/m.exec(f.text);
+      if (m) crates.set(m[1].replace(/-/g, '_'), dir);
+    }
     if (f.path === 'go.mod' || f.path.endsWith('/go.mod')) {
       const m = /^module\s+"?([^\s"]+)/m.exec(f.text);
       if (m) goMods.push({ dir, mod: m[1] });
@@ -798,7 +810,7 @@ export function analyze(files, rootName, progress = () => {}) {
     if (info.pkg != null) pkgOf.set(info.id, info.pkg);
   }
 
-  const resolve = makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, goMods, names, swiftMods });
+  const resolve = makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, goMods, names, swiftMods, crates });
   const libs = new Map();
   for (const info of infos) {
     info.imported = new Set();
