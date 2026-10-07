@@ -1109,6 +1109,7 @@ export function analyze(files, rootName, progress = () => {}) {
           else if (COMMON.has(name)) continue;
         } else if (COMMON.has(name)) continue;
       } else if (member && recvCall) {
+        if (!typeNames.has(recvCall) && !retOf.has(recvCall) && !g.has(recvCall) && !local.has(recvCall)) continue;
         const rt = typeNames.has(recvCall) ? recvCall : retOf.get(recvCall);
         if (rt) {
           const own = ofType(rt, name, fid) || [];
