@@ -204,6 +204,15 @@ function afterParams(t, from) {
   return depth ? -1 : j;
 }
 
+const LOOPS = {
+  js: [/\bfor\s*\(\s*(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s+of\s+(?:this\.)?([A-Za-z_$][\w$]*)\s*\)/g],
+  py: [/^[ \t]*(?:async[ \t]+)?for[ \t]+(\w+)[ \t]+in[ \t]+(?:self\.)?(\w+)[ \t]*:/gm],
+  jvm: [/\bfor\s*\(\s*(?:val\s+|var\s+)?(\w+)\s+in\s+(?:this\.)?(\w+)\s*\)/g],
+  swift: [/\bfor\s+(\w+)\s+in\s+(?:self\.)?(\w+)\s*\{/g],
+  go: [/\bfor\s+\w+\s*,\s*(\w+)\s*:=\s*range\s+(?:\w+\.)?(\w+)/g],
+  rs: [/\bfor\s+(\w+)\s+in\s+&?(?:mut\s+)?(?:self\.)?(\w+)/g],
+  cs: [/\bforeach\s*\(\s*var\s+(\w+)\s+in\s+(?:this\.)?(\w+)\s*\)/g],
+};
 const VAR_TYPES = [
   /\b(?:const|let|var|val|auto)[ \t]+([A-Za-z_$][\w$]*)[ \t]*(?::[ \t]*([A-Za-z_][\w.]*))?[ \t]*(?:=[ \t]*(?:new[ \t]+([A-Za-z_][\w.]*)|([A-Z]\w*)[ \t]*[({]))?/g,
   /\b([A-Za-z_]\w*)[ \t]*:=[ \t]*&?(?:[a-z]\w*\.)?([A-Z]\w*)[ \t]*\{/g,
@@ -724,6 +733,12 @@ export function analyze(files, rootName, progress = () => {}) {
         else if (indentOf(lines[ln]) === 0) (info.types ??= new Map()).set(m[1], '()' + m[2]);
       }
     }
+    for (const re of LOOPS[L.group] || []) {
+      for (const m of masked.matchAll(re)) {
+        const di = fnAt[lineAt(starts, m.index)];
+        if (di >= 0 && m[1] !== m[2]) (defs[di].types ??= new Map()).set(m[1], '@' + m[2]);
+      }
+    }
     for (const re of L.group === 'go' ? VAR_TYPES : L.group === 'py' || L.group === 'rb' ? [] : VAR_TYPES.slice(0, 1)) {
       for (const m of masked.matchAll(re)) {
         const ty = m[2] || m[3] || m[4];
@@ -997,6 +1012,28 @@ export function analyze(files, rootName, progress = () => {}) {
     const idc = new Map();
     const countWords = !TEST_PATH.test(info.f.path);
     if (countWords) info.idc = idc;
+    const varType = (v, src, ln, depth) => {
+      let t = null;
+      if (info.scopes && info.scopeNames.has(v)) {
+        let best = null;
+        for (const sc of info.scopes) if (sc.types && sc.a <= ln && ln <= sc.b && sc.types.has(v) && (!best || sc.a >= best.a)) best = sc;
+        if (best) t = best.types.get(v);
+      }
+      if (!t) for (let o = src; o !== fid && o >= 0; o = nodes[o].parent) {
+        const tm = typesOf.get(o), ty = tm && tm.get(v);
+        if (ty) { t = ty; break; }
+        if (selfOf.get(o) === v) break;
+        const ft = fieldTypes.get(o), fy = ft && ft.get(v);
+        if (fy) { t = fy; break; }
+      }
+      if (!t && info.types && info.types.has(v) && !(info.scopes && info.scopeNames.has(v))) {
+        let shadowed = false;
+        for (let o = src; o !== fid && o >= 0 && !shadowed; o = nodes[o].parent) shadowed = !!(localsOf.get(o)?.has(v) || typesOf.get(o)?.has(v));
+        if (!shadowed) t = info.types.get(v);
+      }
+      if (t && t[0] === '@') t = depth < 3 && t.slice(1) !== v ? varType(t.slice(1), src, ln, depth + 1) : null;
+      return t;
+    };
     let ln = 0;
     for (const m of masked.matchAll(L.id)) {
       const name = m[0];
@@ -1052,24 +1089,7 @@ export function analyze(files, rootName, progress = () => {}) {
       }
       if (member && recv && info.ext && info.ext.has(recv) && !local.has(recv)) continue;
       if (member && recv) {
-        let selfT = null;
-        if (!SELF.has(recv) && info.scopes && info.scopeNames.has(recv)) {
-          let best = null;
-          for (const sc of info.scopes) if (sc.types && sc.a <= ln && ln <= sc.b && sc.types.has(recv) && (!best || sc.a >= best.a)) best = sc;
-          if (best) selfT = best.types.get(recv);
-        }
-        if (!SELF.has(recv) && !selfT) for (let o = src; o !== fid && o >= 0; o = nodes[o].parent) {
-          const tm = typesOf.get(o), ty = tm && tm.get(recv);
-          if (ty) { selfT = ty; break; }
-          if (selfOf.get(o) === recv) break;
-          const ft = fieldTypes.get(o), fy = ft && ft.get(recv);
-          if (fy) { selfT = fy; break; }
-        }
-        if (!selfT && info.types && info.types.has(recv) && !(info.scopes && info.scopeNames.has(recv))) {
-          let shadowed = false;
-          for (let o = src; o !== fid && o >= 0 && !shadowed; o = nodes[o].parent) shadowed = !!(localsOf.get(o)?.has(recv) || typesOf.get(o)?.has(recv));
-          if (!shadowed) selfT = info.types.get(recv);
-        }
+        let selfT = SELF.has(recv) ? null : varType(recv, src, ln, 0);
         if (!selfT) for (let o = src; o !== fid && o >= 0; o = nodes[o].parent) {
           if (SELF.has(recv)) { if (isClassy(nodes[o].kind)) break; if (ownerOf.has(o)) { selfT = ownerOf.get(o); break; } continue; }
           const sv = selfOf.get(o);
