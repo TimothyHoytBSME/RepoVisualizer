@@ -181,6 +181,52 @@ const FIELD_MODS = new Set('public private protected internal static final reado
 const CTOR = /^(?:constructor|__init__|__construct|init|initialize)$/;
 const MODS = new Set('final const out ref in params this readonly volatile struct unsigned signed static register mut inout var val let'.split(' '));
 const lastSeg = s => { const m = s.match(/[A-Za-z_]\w*/g); return m ? m[m.length - 1] : null; };
+const WRAP = new Set('Option Optional Box Rc Arc RefCell Cell Mutex RwLock Weak Nullable Lazy Ref RefMut Cow NonNull Pin ManuallyDrop AtomicReference WeakReference Readonly Partial Required NonNullable Union'.split(' '));
+const COLL = new Set('List Array ArrayList LinkedList Set HashSet TreeSet LinkedHashSet SortedSet NavigableSet Collection Iterable Iterator ListIterator Sequence MutableList MutableSet MutableCollection MutableIterable MutableSequence ReadonlyArray ReadonlySet Vec VecDeque BTreeSet IEnumerable IList ICollection IReadOnlyList IReadOnlyCollection ISet IAsyncEnumerable IEnumerator Stream Flow Deque ArrayDeque Queue PriorityQueue BinaryHeap list set frozenset FrozenSet AbstractSet Generator AsyncIterator AsyncIterable AsyncGenerator Iter IntoIter ImmutableList ImmutableSet Slice IterableIterator ArrayLike NodeListOf HTMLCollectionOf'.split(' '));
+
+const headOf = t => { if (!t) return t; const k = t.indexOf('[]'); return k < 0 ? t : k ? t.slice(0, k) : '[]'; };
+
+function topSplit(s, ch) {
+  const out = [];
+  let d = 0, a = 0;
+  for (let k = 0; k < s.length; k++) {
+    const c = s[k];
+    if (OPEN.includes(c)) d++;
+    else if (CLOSE.includes(c) && !(c === '>' && s[k - 1] === '=')) d--;
+    else if (c === ch && d === 0) { out.push(s.slice(a, k)); a = k + 1; }
+  }
+  out.push(s.slice(a));
+  return out;
+}
+
+function tyOf(s, n = 0) {
+  if (!s || n > 4) return null;
+  s = s.replace(/@[\w.]+(?:\([^()]*\))?/g, ' ').replace(/'[a-z_]\w*\b/g, ' ')
+    .replace(/\s*\|\s*(?:null|undefined|None)\b|\b(?:null|undefined|None)\s*\|\s*/g, '')
+    .replace(/\b(?:mut|const|readonly|inout|dyn|impl|final|volatile|struct|class|enum|union|unsigned|signed|register|static|in|out|ref|params|var|val|let|keyof|typeof|unique)\b|[&*?!^]/g, ' ')
+    .trim().replace(/\.\.\.$/, '[]').replace(/^<[^<>]*(?:<[^<>]*>[^<>]*)*>\s*/, '');
+  if (!s) return null;
+  if (s.startsWith('[]')) { const e = tyOf(s.slice(2), n + 1); return e && '[]' + e; }
+  const mp = /^map\[[^\]]*\](.+)$/.exec(s);
+  if (mp) { const e = tyOf(mp[1], n + 1); return e ? 'map[]' + e : 'map'; }
+  if (s[0] === '[') {
+    if (!s.endsWith(']')) return null;
+    if (topSplit(s.slice(1, -1), ':').length > 1) return 'Dictionary';
+    const e = tyOf(s.slice(1, -1), n + 1);
+    return e && '[]' + e;
+  }
+  if (s.endsWith('[]')) { const e = tyOf(s.slice(0, -2), n + 1); return e && '[]' + e; }
+  if (s[0] === '(' || topSplit(s, '|').length > 1) return null;
+  const b = s.search(/[<[]/);
+  if (b < 0) return lastSeg(s);
+  const head = lastSeg(s.slice(0, b));
+  if (!head || !s.endsWith(s[b] === '<' ? '>' : ']')) return head;
+  const args = topSplit(s.slice(b + 1, -1), ',').map(x => x.trim()).filter(x => x && !/^(?:None|null|undefined)$/.test(x));
+  if (WRAP.has(head)) return args.length === 1 ? tyOf(args[0], n + 1) : null;
+  if (COLL.has(head)) { const e = args.length ? tyOf(args[0], n + 1) : null; return e ? '[]' + e : '[]'; }
+  if (args.length === 1) { const e = tyOf(args[0], n + 1); return e && !e.includes('[]') ? head + '[]' + e : head; }
+  return head;
+}
 const CALL_VARS = [
   /\b(?:let|var|val|const|auto)[ \t]+([A-Za-z_$][\w$]*)[ \t]*=[ \t]*(?:try[!?]?[ \t]+|await[ \t]+)*(?:[\w$]+[ \t]*\.[ \t]*)*([A-Za-z_$][\w$]*)[ \t]*\(/g,
   /\b([A-Za-z_]\w*)(?:[ \t]*,[ \t]*\w+)?[ \t]*:=[ \t]*(?:\w+\.)*([A-Za-z_]\w*)[ \t]*\(/g,
@@ -190,8 +236,8 @@ const PHP_NEW = /\$(\w+)[ \t]*=[ \t]*new[ \t]+\\?(?:\w+\\)*([A-Z]\w*)()()/g;
 const RB_NEW = /^[ \t]*@?(\w+)[ \t]*=[ \t]*(?:\w+::)*([A-Z]\w*)\.new\b()()/gm;
 const CALL_VARS_PLAIN = /^[ \t]*([A-Za-z_]\w*)[ \t]*=[ \t]*(?:await[ \t]+)?(?:[\w]+\.)*([A-Za-z_]\w*)[ \t]*\(/gm;
 const RET = [
-  /^\s*(?:async\s+)?(?:throws\s+|rethrows\s+)?->\s*&?(?:mut\s+)?(?:impl\s+|dyn\s+)?(?:[a-z]\w*(?:::|\.))*([A-Za-z_]\w*)/,
-  /^\s*:\s*(?:Promise<\s*)?(?:[a-z]\w*\.)*([A-Za-z_]\w*)/,
+  /^\s*(?:async\s+)?(?:throws\s+|rethrows\s+)?->\s*([^{:=;\n]+)/,
+  /^[ \t]*:[ \t]*([^{=;\n]+)/,
 ];
 const RET_GO = /^\s*\(?\s*\*?(?:[a-z]\w*\.)?([A-Z]\w*)/;
 
@@ -255,12 +301,9 @@ function params(t, from, L, types) {
     out.push(name);
     if (!types) continue;
     let ty = null;
-    if (colon >= 0) ty = lastSeg(head.slice(colon + 1).replace(/<[^]*$/, '').replace(/\b(?:mut|const|readonly|inout|dyn|impl)\b/g, ''));
-    else {
-      const all = (pre.replace(/<[^]*?>/g, ' ').match(L.idAll) || []).filter(w => !MODS.has(w));
-      if (L.paramLast) ty = all.length > 1 ? all[all.length - 2] : null;
-      else if (L.group === 'go') ty = all.length > 1 ? all[all.length - 1] : null;
-    }
+    if (colon >= 0) ty = tyOf(head.slice(colon + 1));
+    else if (L.paramLast) { const k = pre.lastIndexOf(name); ty = k > 0 ? tyOf(pre.slice(0, k)) : null; }
+    else if (L.group === 'go') { const k = pre.indexOf(name); ty = tyOf(pre.slice(k + name.length)); }
     if (ty && ty !== name) types.set(name, ty);
   }
   return out;
@@ -724,7 +767,7 @@ export function analyze(files, rootName, progress = () => {}) {
         const ty = /(\w+)\W*$/.exec(m[1]);
         if (ty && NOT_TYPE.has(ty[1])) continue;
         (defs[di].locals ??= new Set()).add(m[2]);
-        const tn = lastSeg(m[1].replace(/<[^]*$/, ''));
+        const tn = tyOf(m[1]);
         if (tn && !MODS.has(tn) && tn !== 'auto') (defs[di].types ??= new Map()).set(m[2], tn);
       }
     }
@@ -732,8 +775,9 @@ export function analyze(files, rootName, progress = () => {}) {
       for (const m of masked.matchAll(re)) {
         if (m[2] === 'require' || m[2] === 'import') continue;
         const ln = lineAt(starts, m.index + m[0].length - 1), di = fnAt[ln];
-        if (di >= 0) (defs[di].types ??= new Map()).set(m[1], '()' + m[2]);
-        else if (indentOf(lines[ln]) === 0) (info.types ??= new Map()).set(m[1], '()' + m[2]);
+        const q = /[.>:][ \t]*$/.test(m[0].slice(0, m[0].lastIndexOf(m[2]))) ? '().' : '()';
+        if (di >= 0) (defs[di].types ??= new Map()).set(m[1], q + m[2]);
+        else if (indentOf(lines[ln]) === 0) (info.types ??= new Map()).set(m[1], q + m[2]);
       }
     }
     for (const re of LOOPS[L.group] || []) {
@@ -792,13 +836,10 @@ export function analyze(files, rootName, progress = () => {}) {
         const e = afterParams(masked, d.idx + d.name.length);
         if (e > 0) {
           const rest = masked.slice(e, e + 200);
-          for (const re of RET) { const m = re.exec(rest); if (m) { rt = m[1]; break; } }
+          for (const re of L.group === 'py' ? RET.slice(0, 1) : RET) { const m = re.exec(rest); if (m) { rt = tyOf(m[1].replace(/\bwhere\b[^]*$/, '').replace(/^\s*Promise<([^]*)>\s*$/, '$1')); break; } }
           if (!rt && L.group === 'go') { const m = RET_GO.exec(rest); if (m) rt = m[1]; }
         }
-        if (!rt && L.paramLast) {
-          const ids = (lines[d.line].slice(0, d.idx - starts[d.line]).replace(/<[^<>]*(?:<[^<>]*>[^<>]*)*>/g, ' ').match(L.idAll) || []).filter(w => !MODS.has(w) && !FIELD_MODS.has(w));
-          rt = ids.length ? ids[ids.length - 1] : null;
-        }
+        if (!rt && L.paramLast) rt = tyOf(lines[d.line].slice(0, d.idx - starts[d.line]).split(/\s+/).filter(w => !FIELD_MODS.has(w)).join(' '));
         if (rt && !/^(?:void|Unit|None|Void|self|Self|this|[A-Z]\d?)$/.test(rt)) retOf.set(d.name, retOf.has(d.name) && retOf.get(d.name) !== rt ? null : rt);
         else if (retOf.has(d.name)) retOf.set(d.name, null);
       }
@@ -818,12 +859,9 @@ export function analyze(files, rootName, progress = () => {}) {
         let ft = fieldTypes.get(p.node);
         if (d.kind === 'variable') {
           const ln = lines[d.line], col = d.idx - starts[d.line];
-          const after = /^[ \t]*[?!]?[ \t]*:[ \t]*([A-Za-z_][\w.]*)/.exec(ln.slice(col + d.name.length));
-          let ty = after ? lastSeg(after[1]) : null;
-          if (!ty && L.paramLast) {
-            const ids = (ln.slice(0, col).replace(/<[^<>]*(?:<[^<>]*>[^<>]*)*>/g, ' ').match(L.idAll) || []).filter(w => !MODS.has(w) && !FIELD_MODS.has(w));
-            ty = ids.length ? ids[ids.length - 1] : null;
-          }
+          const after = /^[ \t]*[?!]?[ \t]*:[ \t]*([^=;\n{]+)/.exec(ln.slice(col + d.name.length));
+          let ty = after ? tyOf(after[1]) : null;
+          if (!ty && L.paramLast) ty = tyOf(ln.slice(0, col).split(/\s+/).filter(w => !FIELD_MODS.has(w)).join(' '));
           if (ty) { if (!ft) fieldTypes.set(p.node, (ft = new Map())); ft.set(d.name, ty); }
         } else if (d.types && (CTOR.test(d.name) || d.name === p.name)) {
           if (!ft) fieldTypes.set(p.node, (ft = new Map()));
@@ -883,10 +921,10 @@ export function analyze(files, rootName, progress = () => {}) {
         for (; k < lim && d; k++) { const c = masked.charCodeAt(k); if (c === 123) d++; else if (c === 125) d--; }
         const body = masked.slice(body0, k - 1);
         let ft = fieldTypes.get(t.node);
-        for (const f of body.matchAll(/^[ \t]*(?:pub(?:\([^)]*\))?[ \t]+)?(?:(?:let|var)[ \t]+)?([A-Za-z_]\w*)[ \t]*:?[ \t]*[*&]?(?:\[\])?(?:mut[ \t]+)?(?:\w+(?:\.|::))*([A-Z]\w*)/gm)) {
-          if (f[1] === f[2]) continue;
+        for (const f of body.matchAll(/^[ \t]*(?:pub(?:\([^)]*\))?[ \t]+)?(?:(?:let|var)[ \t]+)?([A-Za-z_]\w*)[ \t]*:?[ \t]*[*&]?(\[\])?(?:mut[ \t]+)?(?:\w+(?:\.|::))*([A-Z]\w*)/gm)) {
+          if (f[1] === f[3]) continue;
           if (!ft) fieldTypes.set(t.node, (ft = new Map()));
-          if (!ft.has(f[1])) ft.set(f[1], f[2]);
+          if (!ft.has(f[1])) ft.set(f[1], (f[2] || '') + f[3]);
         }
       }
     }
@@ -920,7 +958,10 @@ export function analyze(files, rootName, progress = () => {}) {
       try { r = resolve(info.L.resolve, spec.trim(), info); } catch { r = null; }
       if (r == null || r === '') continue;
       if (typeof r === 'string') {
-        if (info.L.shadowExt && !spec.endsWith('*')) (info.ext ??= new Set()).add(spec.trim().split(/[.:/]/).pop());
+        if (info.L.shadowExt && !spec.endsWith('*')) {
+          const sp = spec.trim(), last = sp.split(/[.:/]/).pop();
+          if (!(info.binds && info.binds.some(([n, t]) => t === sp && n !== last))) (info.ext ??= new Set()).add(last);
+        }
         let id = libs.get(r);
         if (id === undefined) {
           id = add({ kind: 'lib', key: 'l:' + r, name: r, path: '', parent: -1, file: -1, line: 0, end: 0, group: info.L.group });
@@ -1032,7 +1073,7 @@ export function analyze(files, rootName, progress = () => {}) {
     const idc = new Map();
     const countWords = !TEST_PATH.test(info.f.path);
     if (countWords) info.idc = idc;
-    const varType = (v, src, ln, depth) => {
+    const varType = (v, src, ln, depth, raw) => {
       let t = null;
       if (info.scopes && info.scopeNames.has(v)) {
         let best = null;
@@ -1074,7 +1115,13 @@ export function analyze(files, rootName, progress = () => {}) {
         for (let o = src; o !== fid && o >= 0 && !shadowed; o = nodes[o].parent) shadowed = !!(localsOf.get(o)?.has(v) || typesOf.get(o)?.has(v));
         if (!shadowed) t = info.types.get(v);
       }
-      if (t && t[0] === '@') t = depth < 3 && t.slice(1) !== v ? varType(t.slice(1), src, ln, depth + 1) : null;
+      if (t && t[0] === '@') {
+        let it = depth < 3 && t.slice(1) !== v ? varType(t.slice(1), src, ln, depth + 1, true) : null;
+        if (it && it.startsWith('()')) { const c = it.slice(it[2] === '.' ? 3 : 2); it = typeNames.has(c) ? null : retOf.get(c) || null; }
+        const k = it ? it.indexOf('[]') : -1;
+        t = k >= 0 && it.length > k + 2 ? it.slice(k + 2) : null;
+      }
+      if (!raw) t = headOf(t);
       return t;
     };
     let ln = 0;
@@ -1139,9 +1186,9 @@ export function analyze(files, rootName, progress = () => {}) {
           if (sv) { if (sv === recv) selfT = ownerOf.get(o); break; }
         }
         if (selfT && selfT.startsWith('()')) {
-          const call = selfT.slice(2);
-          if (!typeNames.has(call) && !retOf.has(call) && !g.has(call) && !local.has(call)) continue;
-          selfT = typeNames.has(call) ? call : retOf.get(call) || null;
+          const q = selfT[2] === '.', call = selfT.slice(q ? 3 : 2);
+          if (!typeNames.has(call) && !retOf.has(call) && !g.has(call) && !local.has(call) || !q && info.ext && info.ext.has(call) && !local.has(call)) continue;
+          selfT = typeNames.has(call) ? call : headOf(retOf.get(call)) || null;
         }
         if (selfT) {
           const own = ofType(selfT, name, fid) || [];
@@ -1173,7 +1220,7 @@ export function analyze(files, rootName, progress = () => {}) {
         } else if (COMMON.has(name)) continue;
       } else if (member && recvCall) {
         if (!typeNames.has(recvCall) && !retOf.has(recvCall) && !g.has(recvCall) && !local.has(recvCall)) continue;
-        const rt = typeNames.has(recvCall) ? recvCall : retOf.get(recvCall);
+        const rt = typeNames.has(recvCall) ? recvCall : headOf(retOf.get(recvCall));
         if (rt) {
           const own = ofType(rt, name, fid) || [];
           if (own.length) targets = own;
