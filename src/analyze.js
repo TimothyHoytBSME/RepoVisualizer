@@ -1,6 +1,56 @@
 import { langOf, mask } from './langs.js';
+import { TEST_PATH } from './graph.js';
 
 const MAXC = 6;
+const WORD = /[A-Z]+(?![a-z])|[A-Z]?[a-z]+/g;
+const STOP = new Set(`the and for with from that this these those not are was were has have had but can will would should could into onto over under than then else when what which who why how all any each every some such own same other only also just very too more most less least out off its our your their there here where
+self cls this that args kwargs arg argv param params def func fn var let const return returns true false none null nil undefined new get set put has len str int bool float double char byte void obj val vals tmp res err ret ptr ref refs num idx cnt buf src dst msg ctx cfg opts opt env impl util utils misc foo bar baz qux test tests spec mock todo fixme xxx main init assert equal expect should describe require testing value data index add remove type default create dict list key code next end name item log join console length format result output input check call run make update count first last size string number object array function method module export import`.split(/\s+/));
+const stem = w => (w.length > 4 && w.endsWith('ies') ? w.slice(0, -3) + 'y' : w.length > 4 && w.endsWith('s') && !/(ss|us|is|os)$/.test(w) ? w.slice(0, -1) : w);
+
+function keywords(infos, nodes, edges, add) {
+  const cache = new Map();
+  const split = id => {
+    let w = cache.get(id);
+    if (!w) {
+      w = [];
+      for (const p of id.match(WORD) || []) {
+        const x = stem(p.toLowerCase());
+        if (x.length >= 3 && !STOP.has(x)) w.push(x);
+      }
+      cache.set(id, w);
+    }
+    return w;
+  };
+  const tfs = [], df = new Map();
+  for (const info of infos) {
+    if (!info.idc) continue;
+    const tf = new Map();
+    for (const [id, c] of info.idc) for (const w of split(id)) tf.set(w, (tf.get(w) || 0) + c);
+    for (const w of tf.keys()) df.set(w, (df.get(w) || 0) + 1);
+    tfs.push([info.id, tf]);
+    info.idc = null;
+  }
+  const N = tfs.length;
+  if (N < 3) return;
+  const maxDf = Math.max(3, Math.floor(N * 0.4)), minDf = N > 60 ? 3 : 2;
+  const chosen = new Set([...df].filter(([, d]) => d >= minDf && d <= maxDf)
+    .map(([w, d]) => [w, d * Math.log(N / d)]).sort((a, b) => b[1] - a[1])
+    .slice(0, Math.max(30, Math.min(500, Math.round(N / 3)))).map(([w]) => w));
+  const ids = new Map();
+  for (const [fid, tf] of tfs) {
+    const top = [];
+    for (const [w, c] of tf) if (chosen.has(w)) top.push([w, c * Math.log(N / df.get(w))]);
+    top.sort((a, b) => b[1] - a[1]);
+    for (const [w] of top.slice(0, 8)) {
+      let k = ids.get(w);
+      if (k === undefined) {
+        k = add({ kind: 'keyword', key: 'k:' + w, name: w, path: '', parent: -1, file: -1, line: 0, end: 0, group: '' });
+        ids.set(w, k);
+      }
+      edges.push({ s: fid, t: k, type: 'ref' });
+    }
+  }
+}
 const EDGE_CODE = { ref: 1, contain: 2, dep: 3 };
 export const EDGE_NAMES = ['', 'ref', 'contain', 'dep'];
 const isFn = k => k === 'function' || k === 'method';
@@ -575,10 +625,14 @@ export function analyze(files, rootName, progress = () => {}) {
     const g = names.get(L.group);
     const fdir = nodes[fid].parent;
     const out = new Map();
+    const idc = new Map();
+    const countWords = !TEST_PATH.test(info.f.path);
+    if (countWords) info.idc = idc;
     let ln = 0;
     for (const m of masked.matchAll(L.id)) {
       const name = m[0];
       if (name.length < 2) continue;
+      if (countWords && !L.kw.has(name)) idc.set(name, (idc.get(name) || 0) + 1);
       const cands = g.get(name);
       if (!cands) continue;
       const at = m.index;
@@ -617,12 +671,17 @@ export function analyze(files, rootName, progress = () => {}) {
     }
   }
 
-  let symbols = 0;
-  for (const n of nodes) if (n.kind !== 'dir' && n.kind !== 'file' && n.kind !== 'lib') symbols++;
+  keywords(infos, nodes, edges, add);
+
+  let symbols = 0, kws = 0;
+  for (const n of nodes) {
+    if (n.kind === 'keyword') kws++;
+    else if (n.kind !== 'dir' && n.kind !== 'file' && n.kind !== 'lib') symbols++;
+  }
   const E = edges.length, es = new Int32Array(E), et = new Int32Array(E), ty = new Uint8Array(E);
   for (let i = 0; i < E; i++) {
     const e = edges[i];
     es[i] = e.s; et[i] = e.t; ty[i] = EDGE_CODE[e.type];
   }
-  return { nodes, edges: { s: es, t: et, type: ty }, stats: { files: fileIds.size, symbols, libs: libs.size } };
+  return { nodes, edges: { s: es, t: et, type: ty }, stats: { files: fileIds.size, symbols, libs: libs.size, keywords: kws } };
 }

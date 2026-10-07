@@ -1,7 +1,7 @@
 :root {
   --bg: #0f1115; --panel: #151821; --raise: #1c2030; --line: #262b38; --fg: #e6e8eb; --muted: #8b93a1; --accent: #6aa9ff;
   --k-dir: #8b93a1; --k-file: #6aa9ff; --k-lib: #ff7a90; --k-class: #b48cff; --k-type: #8f86ff; --k-module: #ff9f5a;
-  --k-function: #3fd2b5; --k-method: #74dc8f; --k-variable: #ffc65c;
+  --k-function: #3fd2b5; --k-method: #74dc8f; --k-variable: #ffc65c; --k-keyword: #f08bd6;
   --t-str: #a8d38a; --t-kw: #c79bff; --t-num: #ffab70; --t-com: #6b7385; --hl: rgba(106, 169, 255, .13);
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   color-scheme: dark;
@@ -10,7 +10,7 @@
   :root {
     --bg: #f5f6f8; --panel: #ffffff; --raise: #f0f2f5; --line: #e2e5ea; --fg: #1b1f24; --muted: #687180; --accent: #2f6fe0;
     --k-dir: #7b8494; --k-file: #2f6fe0; --k-lib: #d6335a; --k-class: #7a4fd6; --k-type: #5b54d6; --k-module: #d4691f;
-    --k-function: #0d9c84; --k-method: #2e9b4f; --k-variable: #b7830a;
+    --k-function: #0d9c84; --k-method: #2e9b4f; --k-variable: #b7830a; --k-keyword: #b8389e;
     --t-str: #2f7d32; --t-kw: #8a3fd1; --t-num: #c2561a; --t-com: #8a93a3; --hl: rgba(47, 111, 224, .1);
     color-scheme: light;
   }
@@ -85,6 +85,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .chip { font-size: 10.5px; line-height: 1; padding: 3px 6px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; flex: none; opacity: .95; }
 .k-dir { color: var(--k-dir); --c: var(--k-dir); } .k-file { color: var(--k-file); --c: var(--k-file); } .k-lib { color: var(--k-lib); --c: var(--k-lib); }
 .k-class { color: var(--k-class); --c: var(--k-class); } .k-type { color: var(--k-type); --c: var(--k-type); } .k-module { color: var(--k-module); --c: var(--k-module); }
+.k-keyword { color: var(--k-keyword); --c: var(--k-keyword); }
 .k-function { color: var(--k-function); --c: var(--k-function); } .k-method { color: var(--k-method); --c: var(--k-method); } .k-variable { color: var(--k-variable); --c: var(--k-variable); }
 
 #panel { width: min(44%, 600px); background: var(--panel); border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
@@ -112,6 +113,10 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .rel ul { list-style: none; margin: 0; padding: 0 6px 8px; }
 .rel li a { display: flex; gap: 8px; align-items: center; padding: 6px 8px; border-radius: 7px; color: inherit; text-decoration: none; min-width: 0; }
 .rel li a:hover { background: var(--raise); }
+.rel .snip { font: 11.5px/1.4 var(--mono); color: var(--muted); padding: 0 8px 6px 38px; white-space: pre; overflow: hidden; text-overflow: ellipsis; }
+.kws { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.kws .kw { font-size: 12px; padding: 3px 9px; border-radius: 999px; background: var(--raise); color: var(--k-keyword); text-decoration: none; }
+.kws .kw:hover { background: var(--line); }
 .rel li.more { color: var(--muted); padding: 6px 8px; font-size: 12px; }
 .rel.in { padding: 6px 14px; display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
 .rel.in a { display: inline-flex; gap: 6px; align-items: center; color: var(--fg); text-decoration: none; min-width: 0; flex: 1; }

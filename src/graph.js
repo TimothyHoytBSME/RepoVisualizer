@@ -37,8 +37,8 @@ export function isTest(n) {
 }
 
 export function buildView(g, type, filters = {}) {
-  const files = type === 'files';
-  const keep = files ? k => STRUCT.has(k) : k => k !== 'dir';
+  const files = type === 'files', words = type === 'words';
+  const keep = files ? k => STRUCT.has(k) : words ? k => k === 'file' || k === 'keyword' : k => k !== 'dir' && k !== 'keyword';
   const shown = n => keep(n.kind)
     && !(filters.tests === false && isTest(n))
     && !(filters.vars === false && n.kind === 'variable')
@@ -55,6 +55,7 @@ export function buildView(g, type, filters = {}) {
   for (let k = 0; k < ES.length; k++) {
     let s = ES[k], t = ET[k];
     const ty = TY[k];
+    if (words && g.nodes[t].kind !== 'keyword') continue;
     if (files && ty !== CONTAIN) { s = lift(s); t = lift(t); }
     const a = local[s], b = local[t];
     if (a < 0 || b < 0 || a === b) continue;
@@ -99,6 +100,11 @@ export function neighborhood(v, sel, depth) {
 
 export function defaultNode(g, v) {
   if (v.type === 'files') return v.local[0] >= 0 ? v.local[0] : 0;
+  if (v.type === 'words') {
+    let best = 0, bd = -1;
+    for (let i = 0; i < v.n; i++) if (g.nodes[v.ids[i]].kind === 'keyword' && v.deg[i] > bd) { bd = v.deg[i]; best = i; }
+    return best;
+  }
   const minor = /(^|\/)(tests?|__tests__|spec|specs|examples?|docs?|benchmarks?|fixtures?|scripts?)\/|[._-](test|spec)s?\.|^test_|\.(md|json|ya?ml|toml|txt|html?|css)$/i;
   let best = 0, bd = -1;
   for (let i = 0; i < v.n; i++) {

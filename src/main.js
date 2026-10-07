@@ -13,12 +13,13 @@ const store = {
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const fmt = n => n.toLocaleString();
 const narrow = () => matchMedia('(max-width: 760px)').matches;
+const MAPS = ['code', 'files', 'words'];
 
 const stage = $('#stage'), panelEl = $('#panel'), dlg = $('#src-dialog');
 const MAX_DEPTH = +$('#depth').max;
 const app = {
   g: null, files: null, meta: null, view: null, lay: null, nb: null, style: null,
-  mapType: store.get('rv:map') === 'files' ? 'files' : 'code',
+  mapType: ['files', 'words'].includes(store.get('rv:map')) ? store.get('rv:map') : 'code',
   sel: -1, hl: -1, hover: -1, touchPeek: -1,
   depth: clamp(+store.get('rv:depth') || 2, 1, MAX_DEPTH),
   cam: { x: 0, y: 0, scale: narrow() ? 0.85 : 1 },
@@ -170,7 +171,8 @@ function select(i, instant) {
 app.selectGlobal = gid => {
   let i = app.view.local[gid];
   if (i < 0) {
-    const want = app.g.nodes[gid].kind === 'dir' ? 'files' : 'code';
+    const k = app.g.nodes[gid].kind;
+    const want = k === 'dir' ? 'files' : k === 'keyword' ? 'words' : 'code';
     if (want !== app.mapType) { setMap(want, gid); return; }
     i = mapInto(gid);
     if (i < 0) return;
@@ -344,7 +346,7 @@ const api = {
   fit: () => fitView(),
   toggleTests() { setFilter('tests', !app.filters.tests); },
   togglePanel: () => togglePanel(),
-  cycleMap() { if (app.g) setMap(app.mapType === 'code' ? 'files' : 'code', app.view.ids[app.sel]); },
+  cycleMap() { if (app.g) setMap(MAPS[(MAPS.indexOf(app.mapType) + 1) % MAPS.length], app.view.ids[app.sel]); },
   openSource: () => openSource(),
 };
 app.togglePanel = api.togglePanel;
@@ -540,7 +542,7 @@ function toast(msg) {
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 
 const q = new URLSearchParams(location.search);
-if (q.get('map') === 'files' || q.get('map') === 'code') app.mapType = q.get('map');
+if (MAPS.includes(q.get('map'))) app.mapType = q.get('map');
 if (q.get('depth')) setDepth(+q.get('depth'));
 const r = q.get('repo') && parseRepo(q.get('repo'));
 if (r) {

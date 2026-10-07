@@ -2,7 +2,7 @@ import { langOf, mask } from './langs.js';
 import { edgesOf } from './graph.js';
 
 const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
-const KIND_LABEL = { dir: 'folder', file: 'file', lib: 'library', class: 'class', type: 'type', module: 'module', function: 'function', method: 'method', variable: 'variable' };
+const KIND_LABEL = { dir: 'folder', file: 'file', lib: 'library', class: 'class', type: 'type', module: 'module', function: 'function', method: 'method', variable: 'variable', keyword: 'keyword' };
 const MAX_LINES = 400;
 
 const clsCache = new Map();
@@ -106,13 +106,31 @@ export class Panel {
     return `<details class="rel"${open ? ' open' : ''}><summary>${title} <span class="cnt">${ids.length}</span></summary><ul>${shown.map(i => this.item(i)).join('')}${more > 0 ? `<li class="more">+${more} more</li>` : ''}</ul></details>`;
   }
 
+  mentions(word, fileIds) {
+    const { g, files } = this.app;
+    const re = new RegExp(word.replace(/[^a-z0-9]/gi, ''), 'i');
+    const rows = fileIds.slice(0, 80).map(fid => {
+      const f = g.nodes[fid], text = files.get(f.path) || '';
+      const m = re.exec(text);
+      let line = 0, snippet = '';
+      if (m) {
+        for (let i = text.indexOf('\n'); i >= 0 && i < m.index; i = text.indexOf('\n', i + 1)) line++;
+        snippet = lineOf(text, line).trim().slice(0, 140);
+      }
+      return `<li><a href="#" data-n="${fid}">${this.chip('file')}<span class="nm">${esc(f.name)}</span><span class="sub">${esc(f.path)}${m ? ':' + (line + 1) : ''}</span></a>${snippet ? `<div class="snip">${esc(snippet)}</div>` : ''}</li>`;
+    });
+    const more = fileIds.length - rows.length;
+    return `<details class="rel" open><summary>Found in <span class="cnt">${fileIds.length}</span></summary><ul>${rows.join('')}${more > 0 ? `<li class="more">+${more} more</li>` : ''}</ul></details>`;
+  }
+
   show(id) {
     const { g, files } = this.app;
     this.cur = id;
     const n = g.nodes[id];
     const out = edgesOf(g, id, 'out'), inc = edgesOf(g, id, 'in');
     const uses = [], usedBy = [], children = [];
-    for (const e of out) (e.type === 'contain' ? children : uses).push(e.t);
+    const kws = [];
+    for (const e of out) (e.type === 'contain' ? children : g.nodes[e.t].kind === 'keyword' ? kws : uses).push(e.t);
     for (const e of inc) if (e.type !== 'contain') usedBy.push(e.s);
     const byName = (a, b) => g.nodes[a].name.localeCompare(g.nodes[b].name);
     uses.sort(byName); usedBy.sort(byName);
@@ -120,7 +138,7 @@ export class Panel {
     else children.sort((a, b) => g.nodes[a].line - g.nodes[b].line);
 
     const url = this.link(n);
-    const loc = n.kind === 'lib' ? 'external library' : n.kind === 'dir' ? n.path || '/' : n.kind === 'file' ? n.path : `${n.path}:${n.line + 1}`;
+    const loc = n.kind === 'keyword' ? `found in ${usedBy.length} files` : n.kind === 'lib' ? 'external library' : n.kind === 'dir' ? n.path || '/' : n.kind === 'file' ? n.path : `${n.path}:${n.line + 1}`;
     let html = `<div class="ph"><div class="grip"></div><div class="pt">${this.chip(n.kind)}<span class="pname">${esc(n.name)}</span></div>
       <div class="ppath">${url ? `<a href="${url}" target="_blank" rel="noopener">${esc(loc)} ↗</a>` : esc(loc)}</div></div><div class="pbody">`;
 
@@ -141,9 +159,13 @@ export class Panel {
       html += `<div class="code">${codeHTML(n.path, text, from, to, hf, ht, links, n.kind === 'file' ? null : n.name)}</div>${trunc}`;
     }
     if (n.parent >= 0 && n.kind !== 'dir') html += `<div class="rel in">in ${this.item(n.parent).replace(/^<li>|<\/li>$/g, '')}</div>`;
+    if (kws.length) html += `<div class="kws">${kws.map(k => `<a href="#" data-n="${k}" class="kw">${esc(g.nodes[k].name)}</a>`).join('')}</div>`;
+    if (n.kind === 'keyword') html += this.mentions(n.name, usedBy);
     html += this.list(n.kind === 'dir' ? 'Contents' : 'Defines', children, n.kind !== 'file' || children.length < 40);
-    html += this.list(n.kind === 'lib' ? 'Used by' : 'Uses', n.kind === 'lib' ? usedBy : uses);
-    if (n.kind !== 'lib') html += this.list('Used by', usedBy);
+    if (n.kind !== 'keyword') {
+      html += this.list(n.kind === 'lib' ? 'Used by' : 'Uses', n.kind === 'lib' ? usedBy : uses);
+      if (n.kind !== 'lib') html += this.list('Used by', usedBy);
+    }
     html += '</div>';
     this.el.innerHTML = html;
     const hl = this.el.querySelector('.ln.hl');
@@ -159,7 +181,8 @@ export class Panel {
     if (this.peekId !== id) {
       this.peekId = id;
       let body = '';
-      if (n.kind === 'lib') body = `<div class="pk-sub">external library · used by ${edgesOf(g, id, 'in').length} files</div>`;
+      if (n.kind === 'keyword') body = `<div class="pk-sub">keyword · found in ${edgesOf(g, id, 'in').length} files</div>`;
+      else if (n.kind === 'lib') body = `<div class="pk-sub">external library · used by ${edgesOf(g, id, 'in').length} files</div>`;
       else if (n.kind === 'dir') body = `<div class="pk-sub">${n.path || '/'} · ${edgesOf(g, id, 'out').length} items</div>`;
       else if (n.kind === 'file') {
         const defs = edgesOf(g, id, 'out').filter(e => e.type === 'contain').length;
