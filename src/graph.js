@@ -182,13 +182,22 @@ export function withPath(v, nb, path) {
 }
 
 export function defaultNode(g, v) {
-  if (v.type === 'files' || v.type === 'dirs') return v.local[0] >= 0 ? v.local[0] : 0;
+  if (v.type === 'files') return v.local[0] >= 0 ? v.local[0] : 0;
+  const minor = /(^|\/)(tests?|__tests__|spec|specs|examples?|docs?|benchmarks?|fixtures?|scripts?|\.github)(\/|$)|[._-](test|spec)s?\.|^test_|\.(md|json|ya?ml|toml|txt|html?|css)$/i;
+  if (v.type === 'dirs') {
+    let best = v.local[0] >= 0 ? v.local[0] : 0, bd = -1;
+    for (let i = 0; i < v.n; i++) {
+      const n = g.nodes[v.ids[i]];
+      if (n.kind !== 'dir' || !n.path || minor.test(n.path)) continue;
+      if (v.deg[i] > bd) { bd = v.deg[i]; best = i; }
+    }
+    return best;
+  }
   if (v.type === 'words') {
     let best = 0, bd = -1;
     for (let i = 0; i < v.n; i++) if (g.nodes[v.ids[i]].kind === 'keyword' && v.deg[i] > bd) { bd = v.deg[i]; best = i; }
     return best;
   }
-  const minor = /(^|\/)(tests?|__tests__|spec|specs|examples?|docs?|benchmarks?|fixtures?|scripts?)\/|[._-](test|spec)s?\.|^test_|\.(md|json|ya?ml|toml|txt|html?|css)$/i;
   let best = 0, bd = -1;
   for (let i = 0; i < v.n; i++) {
     const n = g.nodes[v.ids[i]];
