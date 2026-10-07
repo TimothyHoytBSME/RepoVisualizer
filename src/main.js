@@ -367,7 +367,7 @@ function fitView(min = 0.03) {
     if (x[i] < x0) x0 = x[i]; if (x[i] > x1) x1 = x[i];
     if (y[i] < y0) y0 = y[i]; if (y[i] > y1) y1 = y[i];
   }
-  const pad = 50, H = renderer.H - Math.abs(viewOffset()) * 2;
+  const pad = Math.min(80, renderer.W * 0.12), H = renderer.H - Math.abs(viewOffset()) * 2;
   const s = clamp(Math.min((renderer.W - pad * 2) / Math.max(1, x1 - x0), (H - pad * 2) / Math.max(1, y1 - y0)), min, 2.5);
   app.follow = false;
   app.goto = { x: (x0 + x1) / 2, y: (y0 + y1) / 2, scale: s };
@@ -605,7 +605,7 @@ function frame(t) {
       if (before !== cam.x + ',' + cam.y + ',' + cam.scale) dirtyFlag = true;
     }
     if (app.pendingFit) {
-      if (app.lay.alpha < 0.08) { const p = app.pendingFit; app.pendingFit = false; if (p === 'in') zoomToSel(); else fitView(0.35); }
+      if (app.lay.alpha < (app.pendingFit === 'in' ? 0.08 : 0.025)) { const p = app.pendingFit; app.pendingFit = false; if (p === 'in') zoomToSel(); else fitView(0.35); }
       busy = true;
     }
     if (dirtyFlag) paint();

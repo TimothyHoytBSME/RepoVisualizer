@@ -344,6 +344,17 @@ export class Renderer {
     ctx.lineJoin = 'round';
     ctx.strokeStyle = pal.css.bg;
     ctx.lineWidth = 3;
+    const keep = nb.pathN ? [sel, hl, hover, ...nb.pathN] : [sel, hl, hover];
+    for (const i of keep) {
+      if (i < 0 || nb.depth[i] < 0) continue;
+      const r = style.rad[i] * cam.scale;
+      const sx = (lay.x[i] - cam.x) * cam.scale + W / 2, sy = (lay.y[i] - cam.y) * cam.scale + H / 2;
+      if (sx < -20 || sy < -20 || sx > W + 20 || sy > H + 20) continue;
+      const q = Math.max(r, 4) * 0.8;
+      const c0 = Math.max(0, Math.floor((sx - q) / CELL)), c1 = Math.min(cols - 1, Math.floor((sx + q) / CELL));
+      const r0 = Math.max(0, Math.floor((sy - q) / CELL)), r1 = Math.min(rows - 1, Math.floor((sy + q) / CELL));
+      for (let rr = r0; rr <= r1; rr++) grid.fill(2, rr * cols + c0, rr * cols + c1 + 1);
+    }
     let count = 0;
     const label = (i, sp) => {
       if (nb.depth[i] < 0) return;
