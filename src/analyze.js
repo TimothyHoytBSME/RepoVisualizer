@@ -54,6 +54,7 @@ function keywords(infos, nodes, edges, add) {
 const EDGE_CODE = { ref: 1, contain: 2, dep: 3 };
 export const EDGE_NAMES = ['', 'ref', 'contain', 'dep'];
 const PROP_FN = /(?:\.[\w$]+\s*=|[\w$]+\s*:)\s*(?:async\s+)?function\s*\*?\s*$|\.prototype\.$/;
+const CAP_TYPES = new Set(['jvm', 'cs', 'swift', 'dart', 'py', 'rs', 'rb', 'php']);
 const IMPLICIT_THIS = new Set(['jvm', 'cs', 'swift', 'dart', 'c', 'rb']);
 const AMBIENT = /\.d\.[mc]?ts$/;
 const isFn = k => k === 'function' || k === 'method';
@@ -1101,7 +1102,8 @@ export function analyze(files, rootName, progress = () => {}) {
             for (const c of classes(recv, fid)) for (const h of memberIn(c, name) || []) hit.add(h);
             if (!hit.size) continue;
             targets = [...hit];
-          } else if (COMMON.has(name)) continue;
+          } else if (CAP_TYPES.has(L.group) && !typeNames.has(recv)) continue;
+          else if (COMMON.has(name)) continue;
         } else if (COMMON.has(name)) continue;
       } else if (member && recvCall) {
         const rt = typeNames.has(recvCall) ? recvCall : retOf.get(recvCall);
