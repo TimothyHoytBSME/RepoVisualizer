@@ -940,14 +940,14 @@ export function analyze(files, rootName, progress = () => {}) {
         info.scopeNames = new Set(scopes.flatMap(sc => [...sc.names, ...(sc.types ? sc.types.keys() : [])]));
       }
     }
-    for (const m of masked.matchAll(/(?:\b(?:self|this)\.|@)([A-Za-z_]\w*)[ \t]*=[ \t]*(?:(?:new[ \t]+)?([A-Z]\w*)(?:[ \t]*[({]|\.new\b)|([A-Za-z_]\w*)[ \t]*;?[ \t]*$)/gm)) {
+    for (const m of masked.matchAll(/(?:\b(?:self|this)\.|@)([A-Za-z_]\w*)[ \t]*=[ \t]*(?:(?:new[ \t]+)?([A-Z]\w*)(?:[ \t]*[({]|\.new\b)|([A-Za-z_]\w*)[ \t]*;?[ \t]*$|(?:await[ \t]+)?((?:[A-Za-z_]\w*\.)*)([a-z_]\w*)[ \t]*\()/gm)) {
       const di = fnAt[lineAt(starts, m.index)];
       if (di < 0) continue;
       let c = defs[di].up;
       while (c && !(isClassy(c.kind) && c.node != null)) c = c.up;
       if (!c) continue;
-      const ty = m[2] || (defs[di].types && defs[di].types.get(m[3]));
-      if (!ty || ty.startsWith('()')) continue;
+      const ty = m[2] || (m[5] ? (m[4] ? '().' : '()') + m[5] : defs[di].types && defs[di].types.get(m[3]));
+      if (!ty || (!m[5] && ty.startsWith('()'))) continue;
       let ft = fieldTypes.get(c.node);
       if (!ft) fieldTypes.set(c.node, (ft = new Map()));
       if (!ft.has(m[1])) ft.set(m[1], ty);
@@ -1243,7 +1243,7 @@ export function analyze(files, rootName, progress = () => {}) {
       if (!out && name === 'new' && typeNames.has(T)) return T;
       return out ? headOf(out) : null;
     };
-    const fieldIn = (T, w) => { for (const k of classes(headOf(T), fid)) { const f = fieldTypes.get(k)?.get(w); if (f) return headOf(f); } return null; };
+    const fieldIn = (T, w) => { for (const k of classes(headOf(T), fid)) { const f = fieldTypes.get(k)?.get(w); if (f) return f.startsWith('()') ? callT(f.slice(f[2] === '.' ? 3 : 2)) : headOf(f); } return null; };
     const recvTypeAt = (e, depth, src) => {
       const p = masked.charCodeAt(e - 1), p2 = masked.charCodeAt(e - 2);
       if (p === 46 && p2 !== 46) return exprType(e - 1, depth + 1, src);
