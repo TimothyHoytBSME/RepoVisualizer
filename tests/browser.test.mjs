@@ -124,6 +124,15 @@ const state = page => page.evaluate(() => {
   await page.click('#panel [data-path-clear]');
   await page.waitForTimeout(200);
   check('path clears', await page.evaluate(() => window.__rv.app.pathNodes === null && !document.querySelector('#panel .rel.path') && !location.search.includes('to=')));
+  const both = await page.evaluate(() => window.__rv.app.nb.nodes.length);
+  await page.keyboard.press('u');
+  await page.waitForTimeout(200);
+  const dirOut = await page.evaluate(() => { const a = window.__rv.app, v = a.view, sel = a.sel; return { dir: a.dir, n: a.nb.nodes.length, tag: !!document.querySelector('#counts .dirtag'), url: location.search.includes('dir=out'), firstHop: [...a.nb.nodes].filter(i => a.nb.depth[i] === 1).every(i => { for (let k = v.start[sel]; k < v.start[sel + 1]; k++) { const e = v.adj[k]; if (v.eA[e] === sel && v.eB[e] === i) return true; } return false; }) }; });
+  check('direction filter: uses only', dirOut.dir === 'out' && dirOut.n <= both && dirOut.tag && dirOut.url && dirOut.firstHop, dirOut);
+  await page.keyboard.press('u');
+  await page.keyboard.press('u');
+  await page.waitForTimeout(200);
+  check('direction filter cycles back', await page.evaluate(() => window.__rv.app.dir === 'both' && !document.querySelector('#counts .dirtag')));
 
   await page.evaluate(() => window.__rv.app.selectGlobal(window.__rv.app.g.byKey.get('f:src/graph.js')));
   await page.waitForTimeout(300);

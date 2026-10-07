@@ -86,7 +86,8 @@ function inducedEdges(v, order, d) {
   return edges;
 }
 
-export function neighborhood(v, sel, depth, limit = Infinity) {
+export function neighborhood(v, sel, depth, limit = Infinity, dir = 'both') {
+  const pass = dir === 'out' ? (e, u) => v.eA[e] === u : dir === 'in' ? (e, u) => (v.eT[e] === CONTAIN ? v.eA[e] === u : v.eB[e] === u) : null;
   const d = new Int32Array(v.n).fill(-1);
   const from = new Int32Array(v.n).fill(-1);
   const order = [sel];
@@ -96,6 +97,7 @@ export function neighborhood(v, sel, depth, limit = Infinity) {
     if (d[u] >= depth) continue;
     for (let k = v.start[u]; k < v.start[u + 1]; k++) {
       const e = v.adj[k];
+      if (pass && !pass(e, u)) continue;
       const w = v.eA[e] === u ? v.eB[e] : v.eA[e];
       if (d[w] < 0) { d[w] = d[u] + 1; from[w] = u; order.push(w); }
     }
@@ -111,6 +113,7 @@ export function neighborhood(v, sel, depth, limit = Infinity) {
     for (const u of level) {
       for (let k = v.start[u]; k < v.start[u + 1]; k++) {
         const e = v.adj[k];
+        if (pass && !pass(e, u)) continue;
         const w = v.eA[e] === u ? v.eB[e] : v.eA[e];
         if (d[w] !== dd || keep[w]) continue;
         const s = score.get(w);

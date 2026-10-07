@@ -34,6 +34,7 @@ The funnel button shows or hides tests, variables and libraries, and holds the c
 | Depth | slider | [ / ] | LB / RB |
 | Fit to screen | ⛶ button | F | Back/Select |
 | Recenter | click the selected node | C | stick press |
+| Links followed (both / uses / used by) | filter menu | U | — |
 | Show/hide tests | funnel button | T | — |
 | Details panel | tap the sheet | P | X |
 | Switch map | menu | M | Y |

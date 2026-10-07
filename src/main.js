@@ -25,6 +25,7 @@ const app = {
   depth: clamp(+store.get('rv:depth') || 2, 1, MAX_DEPTH),
   cam: { x: 0, y: 0, scale: narrow() ? 0.85 : 1 },
   follow: false, goto: null, dirty: true, pal: readPalette(), ver: 0,
+  dir: ['out', 'in'].includes(store.get('rv:dir')) ? store.get('rv:dir') : 'both',
   limit: (() => { const v = store.get('rv:limit'); return v === null ? (narrow() ? 500 : 1200) : +v; })(),
   filters: Object.assign({ tests: false, vars: true, libs: true, refs: true }, (() => { try { return JSON.parse(store.get('rv:filters')) || {}; } catch { return {}; } })()),
 };
@@ -188,7 +189,7 @@ function setMap(type, gid = -1, push = false) {
 
 function refresh() {
   const { cam } = app;
-  app.nb = neighborhood(app.view, app.sel, app.depth, app.limit || Infinity);
+  app.nb = neighborhood(app.view, app.sel, app.depth, app.limit || Infinity, app.dir);
   app.pathNodes = null;
   if (app.path != null) {
     const p = shortestPath(app.view, app.sel, app.path);
@@ -199,7 +200,7 @@ function refresh() {
   for (const k of ['hl', 'hover', 'touchPeek']) if (app[k] >= 0 && app.nb.depth[app[k]] < 0) app[k] = -1;
   const { nodes, edges, total } = app.nb;
   const part = (shown, all, word) => (all > shown ? `${fmt(shown)} of ${fmt(all)} ${word}` : `${fmt(shown)} ${word}`);
-  $('#counts').innerHTML = `<span>${part(nodes.length, total.nodes, 'nodes')}</span><span class="sep"> · </span><span>${part(edges.length, total.edges, 'edges')}</span>`;
+  $('#counts').innerHTML = `${app.dir === 'both' ? '' : `<span class="dirtag">${app.dir === 'out' ? 'uses' : 'used by'}</span><span class="sep"> · </span>`}<span>${part(nodes.length, total.nodes, 'nodes')}</span><span class="sep"> · </span><span>${part(edges.length, total.edges, 'edges')}</span>`;
   $('#counts').title = total.nodes > nodes.length ? `Showing the ${fmt(nodes.length)} most connected of ${fmt(total.nodes)} nodes in range. Change the limit in the filter menu.` : '';
   app.dirty = true;
 }
@@ -286,6 +287,7 @@ function syncURL(push = false) {
   if (app.path != null && app.view) q.set('to', app.g.nodes[app.view.ids[app.path]].key);
   q.set('map', app.mapType);
   q.set('depth', app.depth);
+  if (app.dir !== 'both') q.set('dir', app.dir);
   const url = `${location.pathname}?${q}`;
   if (push && url !== location.pathname + location.search) {
     navMax = ++navCur;
@@ -388,7 +390,7 @@ function setFilter(k, v) {
 
 function syncFilters() {
   for (const box of document.querySelectorAll('#filters input[data-f]')) box.checked = app.filters[box.dataset.f] !== false;
-  $('#filter-btn').classList.toggle('on', Object.values(app.filters).some(v => v === false));
+  $('#filter-btn').classList.toggle('on', Object.values(app.filters).some(v => v === false) || app.dir !== 'both');
 }
 
 function togglePanel(force) {
@@ -511,6 +513,7 @@ const api = {
   focusSearch() { $('#search').focus(); },
   path() { app.startPath(); },
   help() { openHelp(); },
+  cycleDir() { app.cycleDir(); },
   escape() {
     app.clearPath();
     app.hl = app.touchPeek = -1;
@@ -540,6 +543,16 @@ document.addEventListener('pointerdown', e => {
   if (!$('#filters').hidden && !e.target.closest('#filters, #filter-btn')) { $('#filters').hidden = true; $('#filter-btn').setAttribute('aria-expanded', 'false'); }
 });
 for (const box of document.querySelectorAll('#filters input[data-f]')) box.addEventListener('change', () => setFilter(box.dataset.f, box.checked));
+function setDir(d) {
+  app.dir = d;
+  $('#dir').value = d;
+  store.set('rv:dir', d);
+  syncFilters();
+  if (app.view) { refresh(); syncURL(false); }
+}
+$('#dir').value = app.dir;
+$('#dir').addEventListener('change', e => setDir(e.target.value));
+app.cycleDir = () => { setDir(app.dir === 'both' ? 'out' : app.dir === 'out' ? 'in' : 'both'); toast(app.dir === 'both' ? 'Following links both ways' : app.dir === 'out' ? 'Following only what it uses' : 'Following only what uses it'); };
 $('#limit').value = String(app.limit);
 $('#limit').addEventListener('change', e => {
   app.limit = +e.target.value;
@@ -843,6 +856,7 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.se
 const q = new URLSearchParams(location.search);
 if (MAPS.includes(q.get('map'))) app.mapType = q.get('map');
 if (q.get('depth')) setDepth(+q.get('depth'));
+if (['out', 'in', 'both'].includes(q.get('dir'))) { app.dir = q.get('dir'); $('#dir').value = app.dir; syncFilters(); }
 pendingTo = q.get('to');
 const r = q.get('repo') && parseRepo(q.get('repo'));
 if (r) {
