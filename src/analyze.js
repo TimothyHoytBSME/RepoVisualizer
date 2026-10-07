@@ -1202,12 +1202,17 @@ export function analyze(files, rootName, progress = () => {}) {
           else if (ch === 40 && --d === 0) break;
         }
         if (d) return null;
-        let e = q;
+        let targ = null, ne = q;
+        if (masked.charCodeAt(q - 1) === 62) {
+          const lt = masked.lastIndexOf('<', q - 1);
+          if (lt > 0 && q - lt < 80) { targ = tyOf(masked.slice(lt + 1, q - 1)); ne = lt; }
+        }
+        let e = ne;
         while (e > 0 && isW(masked.charCodeAt(e - 1))) e--;
-        if (e === q) return null;
-        const name = masked.slice(e, q), T = recvTypeAt(e, depth, src);
-        if (T === undefined) return callT(name);
-        return T ? retIn(T, name) : null;
+        if (e === ne) return null;
+        const name = masked.slice(e, ne), T = recvTypeAt(e, depth, src);
+        const r = T === undefined ? callT(name) : T ? retIn(T, name) : null;
+        return r || (targ && !targ.includes('[]') && typeNames.has(targ) ? targ : null);
       }
       if (!isW(c)) return null;
       let e = j;

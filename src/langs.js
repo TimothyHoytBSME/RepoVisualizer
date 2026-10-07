@@ -406,6 +406,8 @@ const DART = {
   defs: [
     [R`\b(?:class|mixin|enum|extension|typedef)[ \t]+(${N})`, 'class'],
     [R`^[ \t]*(?:(?:static|final|const|late)[ \t]+)+(?:[\w<>?,]+[ \t]+)?(${N})[ \t]*=`, 'variable'],
+    [R`^[ \t]*(?:(?:static|external)[ \t]+)*[A-Za-z_][\w.]*(?:<[^>\n]*>)?\??[ \t]+(${N})[ \t]*(?:<[^>\n]*>)?\((?:[^()]|\([^()]*\))*\)[ \t]*(?:async\*?|sync\*)?[ \t]*=>`, 'function'],
+    [R`^[ \t]*(?:(?:static|external)[ \t]+)*(?:[A-Za-z_][\w.]*(?:<[^>\n]*>)?\??[ \t]+)?get[ \t]+(${N})[ \t]*(?:=>|\{|async\b)`, 'function'],
   ],
   extra: cfuncs,
   imports: (raw, m) => grab([], /^[ \t]*(?:import|export|part)[ \t]+['"]([^'"]+)['"]/gm, raw, m),
