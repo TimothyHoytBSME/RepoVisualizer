@@ -175,6 +175,29 @@ const FIELD_MODS = new Set('public private protected internal static final reado
 const CTOR = /^(?:constructor|__init__|init|initialize)$/;
 const MODS = new Set('final const out ref in params this readonly volatile struct unsigned signed static register mut inout var val let'.split(' '));
 const lastSeg = s => { const m = s.match(/[A-Za-z_]\w*/g); return m ? m[m.length - 1] : null; };
+const CALL_VARS = [
+  /\b(?:let|var|val|const|auto)[ \t]+([A-Za-z_$][\w$]*)[ \t]*=[ \t]*(?:try[!?]?[ \t]+|await[ \t]+)*(?:[\w$]+[ \t]*\.[ \t]*)*([A-Za-z_$][\w$]*)[ \t]*\(/g,
+  /\b([A-Za-z_]\w*)(?:[ \t]*,[ \t]*\w+)?[ \t]*:=[ \t]*(?:\w+\.)*([A-Za-z_]\w*)[ \t]*\(/g,
+];
+const CALL_VARS_PLAIN = /^[ \t]*([A-Za-z_]\w*)[ \t]*=[ \t]*(?:await[ \t]+)?(?:[\w]+\.)*([A-Za-z_]\w*)[ \t]*\(/gm;
+const RET = [
+  /^\s*(?:async\s+)?(?:throws\s+|rethrows\s+)?->\s*&?(?:mut\s+)?(?:impl\s+|dyn\s+)?(?:[a-z]\w*(?:::|\.))*([A-Za-z_]\w*)/,
+  /^\s*:\s*(?:Promise<\s*)?(?:[a-z]\w*\.)*([A-Za-z_]\w*)/,
+];
+const RET_GO = /^\s*\(?\s*\*?(?:[a-z]\w*\.)?([A-Z]\w*)/;
+
+function afterParams(t, from) {
+  const i = t.indexOf('(', from);
+  if (i < 0 || i - from > 120) return -1;
+  let j = i + 1, depth = 1;
+  const lim = Math.min(t.length, j + 3000);
+  for (; j < lim && depth; j++) {
+    const c = t.charCodeAt(j);
+    if (c === 40) depth++; else if (c === 41) depth--;
+  }
+  return depth ? -1 : j;
+}
+
 const VAR_TYPES = [
   /\b(?:const|let|var|val|auto)[ \t]+([A-Za-z_$][\w$]*)[ \t]*(?::[ \t]*([A-Za-z_][\w.]*))?[ \t]*(?:=[ \t]*(?:new[ \t]+([A-Za-z_][\w.]*)|([A-Z]\w*)[ \t]*[({]))?/g,
   /\b([A-Za-z_]\w*)[ \t]*:=[ \t]*&?(?:[a-z]\w*\.)?([A-Z]\w*)[ \t]*\{/g,
@@ -561,7 +584,7 @@ export function analyze(files, rootName, progress = () => {}) {
 
   const names = new Map();
   const localsOf = new Map();
-  const ownerOf = new Map(), selfOf = new Map(), memberish = new Set(), typesOf = new Map(), fieldTypes = new Map();
+  const ownerOf = new Map(), selfOf = new Map(), memberish = new Set(), typesOf = new Map(), fieldTypes = new Map(), retOf = new Map();
   const pkgOf = new Map();
   const csNs = new Set();
   let done = 0;
@@ -619,6 +642,12 @@ export function analyze(files, rootName, progress = () => {}) {
         if (tn && !MODS.has(tn) && tn !== 'auto') (defs[di].types ??= new Map()).set(m[2], tn);
       }
     }
+    for (const re of L.group === 'py' || L.group === 'rb' ? [CALL_VARS_PLAIN] : CALL_VARS) {
+      for (const m of masked.matchAll(re)) {
+        const di = fnAt[lineAt(starts, m.index + m[0].length - 1)];
+        if (di >= 0) (defs[di].types ??= new Map()).set(m[1], '()' + m[2]);
+      }
+    }
     for (const re of VAR_TYPES) {
       for (const m of masked.matchAll(re)) {
         const ty = m[2] || m[3] || m[4];
@@ -661,6 +690,21 @@ export function analyze(files, rootName, progress = () => {}) {
       edges.push({ s: parent, t: d.node, type: 'contain' });
       if (d.locals) localsOf.set(d.node, d.locals);
       if (d.types && d.types.size) typesOf.set(d.node, d.types);
+      if (isFn(d.kind)) {
+        let rt = null;
+        const e = afterParams(masked, d.idx + d.name.length);
+        if (e > 0) {
+          const rest = masked.slice(e, e + 200);
+          for (const re of RET) { const m = re.exec(rest); if (m) { rt = m[1]; break; } }
+          if (!rt && L.group === 'go') { const m = RET_GO.exec(rest); if (m) rt = m[1]; }
+        }
+        if (!rt && L.paramLast) {
+          const ids = (lines[d.line].slice(0, d.idx - starts[d.line]).replace(/<[^<>]*(?:<[^<>]*>[^<>]*)*>/g, ' ').match(L.idAll) || []).filter(w => !MODS.has(w) && !FIELD_MODS.has(w));
+          rt = ids.length ? ids[ids.length - 1] : null;
+        }
+        if (rt && !/^(?:void|Unit|None|Void|self|Self|this)$/.test(rt)) retOf.set(d.name, retOf.has(d.name) && retOf.get(d.name) !== rt ? null : rt);
+        else if (retOf.has(d.name)) retOf.set(d.name, null);
+      }
       if (p && isClassy(p.kind)) {
         let ft = fieldTypes.get(p.node);
         if (d.kind === 'variable') {
@@ -843,6 +887,10 @@ export function analyze(files, rootName, progress = () => {}) {
           if (SELF.has(recv)) { if (isClassy(nodes[o].kind)) break; if (ownerOf.has(o)) { selfT = ownerOf.get(o); break; } continue; }
           const sv = selfOf.get(o);
           if (sv) { if (sv === recv) selfT = ownerOf.get(o); break; }
+        }
+        if (selfT && selfT.startsWith('()')) {
+          const call = selfT.slice(2);
+          selfT = typeNames.has(call) ? call : retOf.get(call) || null;
         }
         if (selfT) {
           const all = local.get(name) && g.get(name) ? [...new Set(cands.concat(local.get(name)))] : cands;
