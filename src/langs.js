@@ -501,7 +501,8 @@ const gen = (exts, syntax) => ({ group: 'gen', exts, syntax: { quotes: '"', trip
 const GENS = [
   gen('hs elm purs', { line: ['--'], block: [['{-', '-}']] }),
   gen('ml mli', { block: [['(*', '*)']] }),
-  gen('ex exs r jl nim pl pm tf hcl gd cr raku', { line: ['#'] }),
+  { ...gen('ex exs', { line: ['#'] }), group: 'ex', bareVars: true },
+  gen('r jl nim pl pm tf hcl gd cr raku', { line: ['#'] }),
   gen('erl hrl', { line: ['%'] }),
   gen('clj cljs cljc edn lisp el scm rkt', { line: [';'] }),
   gen('zig v sol fs fsx wgsl proto graphql gql d', { line: ['//'], block: [['/*', '*/']] }),

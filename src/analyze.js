@@ -1275,6 +1275,11 @@ export function analyze(files, rootName, progress = () => {}) {
         }
         if (!recv && !recvIdx) chainT = exprType(j, 0, src);
       }
+      if (L.bareVars && !member && name.charCodeAt(0) >= 95) {
+        const nx = masked.slice(at + name.length, at + name.length + 12);
+        const call = /^[ \t]*[(/]/.test(nx) || (/^[ \t]+[\w:@\[{%&~]/.test(nx) && !/^[ \t]+(?:when|do|in|and|or|not|else|end|after|catch|rescue)\b/.test(nx));
+        if (!call && !/(?:\|>|&)[ \t]*$/.test(masked.slice(Math.max(0, at - 4), at))) continue;
+      }
       if (L.group === 'c' && !member) {
         if (/(?:goto[ \t]+|^[ \t]*#[ \t]*)$/.test(masked.slice(Math.max(starts[ln], at - 8), at)) || (/^[ \t]*$/.test(masked.slice(starts[ln], at)) && /^[ \t]*:(?!:)/.test(masked.slice(at + name.length, at + name.length + 4)))) continue;
         if (at < declEnd) {
