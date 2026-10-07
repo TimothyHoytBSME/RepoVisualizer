@@ -701,6 +701,21 @@ export function analyze(files, rootName, progress = () => {}) {
     info.binds = null;
   }
   const infoOf = new Map(infos.map(i => [i.id, i]));
+  const impl = new Map();
+  for (const info of infos) if (info.L.group === 'c' && !/\.(?:h|hh|hpp|hxx|h\+\+|cuh)$/i.test(info.f.path)) impl.set(info.f.path.replace(/\.[^./]+$/, ''), info.id);
+  for (const info of infos) {
+    if (info.L.group !== 'c' || !info.imported.size) continue;
+    const seen = new Set(info.imported), q = [...seen];
+    for (let h = 0; h < q.length && seen.size < 400; h++) {
+      const t = q[h], ti = infoOf.get(t);
+      const sib = impl.get(nodes[t].path.replace(/\.[^./]+$/, ''));
+      if (sib != null && !seen.has(sib)) { seen.add(sib); q.push(sib); }
+      if (ti) for (const u of ti.imported) if (!seen.has(u)) { seen.add(u); q.push(u); }
+    }
+    seen.delete(info.id);
+    info.cimp = seen;
+  }
+  for (const info of infos) if (info.cimp) { info.imported = info.cimp; info.cimp = null; }
   const FACADE = /^(?:__init__\.pyi?|index\.[mc]?[jt]sx?|mod\.rs|lib\.rs)$/;
   for (const info of infos) {
     for (const t of [...info.imported]) {
@@ -796,7 +811,8 @@ export function analyze(files, rootName, progress = () => {}) {
           }
           if (!targets.length) {
             if (cands.length > MAXC) continue;
-            targets = !info.module || (L.pkgDir && info.pkg != null) ? cands
+            targets = L.group === 'c' ? cands.filter(c => isFn(nodes[c].kind))
+              : !info.module || (L.pkgDir && info.pkg != null) ? cands
               : member ? cands.filter(c => memberish.has(c) || (nodes[c].parent >= 0 && isClassy(nodes[nodes[c].parent].kind)))
               : masked.charCodeAt(at + name.length) === 33 ? cands : cands.filter(c => AMBIENT.test(nodes[c].path));
             if (!targets.length) continue;
