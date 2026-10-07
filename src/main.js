@@ -350,6 +350,12 @@ function toScreen(i) {
   return [(lay.x[i] - cam.x) * cam.scale + renderer.W / 2, (lay.y[i] - cam.y) * cam.scale + renderer.H / 2];
 }
 
+function moreAt(sx, sy, pad) {
+  const m = renderer?.moreHits;
+  if (m && sx >= 0) for (let k = 0; k < m.length; k += 5) if (sx >= m[k + 1] - pad && sx <= m[k + 3] + pad && sy >= m[k + 2] - pad && sy <= m[k + 4] + pad) return m[k];
+  return -1;
+}
+
 function pick(sx, sy, slop) {
   if (!app.nb || !renderer) return -1;
   const { cam, lay, style } = app;
@@ -479,11 +485,11 @@ const api = {
   hoverAt(sx, sy) {
     const i = sx < 0 ? -1 : pick(sx, sy, 5);
     if (i !== app.hover) { app.hover = i; app.dirty = true; }
-    stage.style.cursor = i >= 0 ? 'pointer' : '';
+    stage.style.cursor = i >= 0 || moreAt(sx, sy, 2) >= 0 ? 'pointer' : '';
   },
   tapAt(sx, sy, type, shift) {
-    const m = renderer?.moreHits, pad = type === 'mouse' ? 2 : 10;
-    if (m) for (let k = 0; k < m.length; k += 5) if (sx >= m[k + 1] - pad && sx <= m[k + 3] + pad && sy >= m[k + 2] - pad && sy <= m[k + 4] + pad) { app.expand(m[k]); return; }
+    const mi = moreAt(sx, sy, type === 'mouse' ? 2 : 10);
+    if (mi >= 0) { app.expand(mi); return; }
     const i = pick(sx, sy, type === 'mouse' ? 5 : 14);
     if (i < 0) { if (app.hl >= 0) { app.hl = -1; app.dirty = true; } return; }
     if (shift && i !== app.sel) app.setPath(app.view.ids[i]);
