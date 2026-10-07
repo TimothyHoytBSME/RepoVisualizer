@@ -791,6 +791,27 @@ function openHelp() {
   if (!h.open && !dlg.open) h.showModal();
 }
 $('#help-btn').addEventListener('click', openHelp);
+function saveImage() {
+  if (!renderer || !app.nb) return;
+  paint();
+  const src = renderer.canvas, c = document.createElement('canvas');
+  c.width = src.width; c.height = src.height;
+  const x = c.getContext('2d');
+  x.drawImage(src, 0, 0);
+  x.drawImage(renderer.labels, 0, 0, c.width, c.height);
+  const name = (app.meta?.label || 'repo').replace(/[^\w.-]+/g, '-') + '-' + app.g.nodes[app.view.ids[app.sel]].name.replace(/[^\w.-]+/g, '-');
+  c.toBlob(b => {
+    if (!b) { toast("Couldn't create the image"); return; }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(b);
+    a.download = `${name}.png`;
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  }, 'image/png');
+}
+$('#img-btn').addEventListener('click', () => { $('#filters').hidden = true; saveImage(); });
 $('#src-form').addEventListener('submit', e => {
   e.preventDefault();
   const spec = parseRepo($('#repo-input').value);

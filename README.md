@@ -21,7 +21,7 @@ Share a view with a link like `?repo=pallets/flask&node=f:src/flask/app.py&depth
 - **Folder map**: folders and libraries only, with every dependency rolled up to folder level: an architecture overview.
 - **Keyword map**: the distinctive words used across the code, linked to the files that use them.
 
-The funnel button shows or hides tests, variables, libraries and uncertain links, sets the direction and the node limit, and holds the color legend. When the limit trims a big neighborhood, labels show "+N" where nodes were hidden. Press ? for all controls.
+The funnel button shows or hides tests, variables, libraries and uncertain links, sets the direction and the node limit, saves the map as an image, and holds the color legend. When the limit trims a big neighborhood, labels show "+N" where nodes were hidden. Press ? for all controls.
 
 ## Controls
 
