@@ -38,3 +38,21 @@ The funnel button shows or hides tests, variables and libraries, and holds the c
 | Switch map | menu | M | Y |
 | Search | search box | / | — |
 | Open repository | repo name in the top bar | O | Start |
+
+## How it works
+
+Everything runs in the browser; there is no server.
+
+1. **Load**: GitHub repositories are listed with one GitHub API call and downloaded from raw.githubusercontent.com. Downloads are verified and saved on the device, so reopening a repository only fetches changed files and also works offline. Zips and folders are read locally.
+2. **Analyze** (in a background worker): language rules find definitions (functions, classes, methods, variables, types), imports and references for JavaScript/TypeScript (including Vue, Svelte and Astro components), Python, Go, Rust, C/C++/Objective-C, Java/Kotlin/Scala/Groovy, C#, Swift, Dart, Ruby, PHP, Lua, shell, SQL and more. References are resolved through imports, packages and file scope; links that are only a name match are marked as uncertain (≈).
+3. **Lay out** (in a second worker): a force-directed layout arranges the selected node's neighborhood in rings by distance.
+4. **Draw**: nodes and edges are drawn on the GPU with WebGL2, labels with a canvas overlay.
+
+## Development
+
+No build step: serve the folder with any static file server and open it.
+
+- `node tests/analyzer.test.mjs`: analyzer regression tests
+- `node tests/loading.test.mjs`: zip reading and GitHub link parsing
+- `node tests/browser.test.mjs`: end-to-end checks in headless Chromium (needs Playwright)
+
