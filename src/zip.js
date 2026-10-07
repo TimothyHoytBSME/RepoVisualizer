@@ -78,7 +78,7 @@ function parseEntries(cd, count) {
 export async function readZip(blob, choose, progress, signal) {
   if (typeof DecompressionStream === 'undefined') throw new Error("This browser can't open .zip files. Open the folder instead, or update the browser.");
   const { cd, count } = await centralDirectory(blob);
-  const entries = parseEntries(cd, count);
+  const entries = parseEntries(cd, count).filter(x => !/^__MACOSX\/|(^|\/)\._[^/]*$|(^|\/)\.DS_Store$/.test(x.name));
   const first = entries.length ? entries[0].name.split('/')[0] + '/' : '';
   const strip = first.length > 1 && entries.every(x => x.name.startsWith(first)) ? first.length : 0;
   const list = entries.filter(x => x.name.length > strip).map(x => ({ path: x.name.slice(strip), size: x.size, x }));

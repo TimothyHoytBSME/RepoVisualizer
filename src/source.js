@@ -64,38 +64,56 @@ async function api(url, signal) {
   throw Object.assign(new Error(`GitHub returned an error (${res.status}).`), { status: res.status });
 }
 
+function splits(spec) {
+  const tail = spec.sub || spec.focus || '';
+  const parts = [spec.ref, ...tail.split('/')].filter(Boolean);
+  if (!spec.ref) return [['HEAD', spec.sub || '', spec.focus || '']];
+  const out = [];
+  for (let k = 1; k <= Math.min(parts.length, 6); k++) {
+    const rest = parts.slice(k).join('/');
+    out.push(spec.sub ? [parts.slice(0, k).join('/'), rest, ''] : [parts.slice(0, k).join('/'), '', rest]);
+  }
+  return out;
+}
+
 async function listTree(spec, signal) {
   const { owner, repo } = spec;
-  const parts = [spec.ref, ...(spec.sub || '').split('/')].filter(Boolean);
-  const splits = spec.ref ? Array.from({ length: Math.min(parts.length, 6) }, (_, k) => [parts.slice(0, k + 1).join('/'), parts.slice(k + 1).join('/')]) : [['HEAD', spec.sub || '']];
   let last = null;
-  for (const [ref, sub] of splits) {
+  for (const [ref, sub, focus] of splits(spec)) {
     const tree = sub ? `${ref}:${sub}` : ref;
     try {
       const data = await api(`https://api.github.com/repos/${owner}/${repo}/git/trees/${encodeURIComponent(tree)}?recursive=1`, signal);
-      return { data, ref, sub };
+      return { data, ref, sub, focus };
     } catch (e) {
       if (e.status !== 404 && e.status !== 422) throw e;
       last = e;
     }
   }
-  if (last) throw new Error(`Couldn't find ${owner}/${repo}${spec.ref ? ' @ ' + [spec.ref, spec.sub].filter(Boolean).join('/') : ''}. Check the name; only public repositories work.`);
-  return null;
+  throw new Error(`Couldn't find ${owner}/${repo}${spec.ref ? ' @ ' + [spec.ref, spec.sub].filter(Boolean).join('/') : ''}. Check the name; only public repositories work.${last ? '' : ''}`);
 }
 
-async function fetchText(url, signal) {
+const DEC = new TextDecoder();
+
+async function gitSha(bytes) {
+  if (!crypto?.subtle) return null;
+  const head = new TextEncoder().encode(`blob ${bytes.length}\0`);
+  const buf = new Uint8Array(head.length + bytes.length);
+  buf.set(head);
+  buf.set(bytes, head.length);
+  const h = new Uint8Array(await crypto.subtle.digest('SHA-1', buf));
+  return Array.from(h, b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function fetchBytes(url, signal) {
   for (let attempt = 0; attempt < 3; attempt++) {
-    let r;
     try {
-      r = await fetch(url, { signal });
+      const r = await fetch(url, { signal });
+      if (r.ok) return { bytes: new Uint8Array(await r.arrayBuffer()) };
+      if (r.status === 429) return { limited: true };
+      if (r.status < 500) return { failed: true };
     } catch (e) {
       if (signal?.aborted) throw e;
-      await sleep(500 * 2 ** attempt, signal);
-      continue;
     }
-    if (r.ok) return { text: await r.text() };
-    if (r.status === 429) return { limited: true };
-    if (r.status < 500) return { failed: true };
     await sleep(500 * 2 ** attempt, signal);
   }
   return { failed: true };
@@ -108,12 +126,15 @@ export async function loadGitHub(spec, progress, signal) {
   try {
     listed = await listTree(spec, signal);
   } catch (e) {
-    if (e.status || signal?.aborted) throw e;
+    if (signal?.aborted || (e.status && e.status !== 403 && e.status !== 429 && e.status < 500)) throw e;
     const offline = await loadCachedGitHub(spec).catch(() => null);
-    if (offline) return offline;
+    if (offline) {
+      offline.meta.note = e.status ? 'GitHub limit reached, showing the saved copy' : 'offline copy';
+      return offline;
+    }
     throw e;
   }
-  const { data, ref, sub } = listed;
+  const { data, ref, sub, focus } = listed;
   const blobs = data.tree.filter(t => t.type === 'blob').map(t => ({ path: sub ? `${sub}/${t.path}` : t.path, rel: t.path, size: t.size || 0, sha: t.sha }));
   const { items, skipped } = cap(blobs.filter(t => wanted(t.rel, t.size)));
   let cached = new Map();
@@ -121,59 +142,75 @@ export async function loadGitHub(spec, progress, signal) {
     const { getBlobs } = await import('./cache.js');
     cached = await getBlobs(items.map(t => t.sha));
   } catch {}
+  const ctl = new AbortController();
+  const stop = () => ctl.abort();
+  signal?.addEventListener('abort', stop, { once: true });
   const files = [], fresh = [];
   let done = 0, failed = 0, limited = false, next = 0;
   const base = `https://raw.githubusercontent.com/${owner}/${repo}/${encPath(ref)}/`;
   const work = async () => {
-    while (next < items.length) {
+    while (next < items.length && !ctl.signal.aborted) {
       const t = items[next++];
       let text = cached.get(t.sha);
       if (text === undefined) {
         if (limited) { failed++; continue; }
-        const r = await fetchText(base + encPath(t.path), signal);
+        const r = await fetchBytes(base + encPath(t.path), ctl.signal);
         if (r.limited) { limited = true; failed++; continue; }
         if (r.failed) { failed++; continue; }
-        text = r.text;
+        text = DEC.decode(r.bytes);
         if (text.slice(0, 4000).includes('\u0000')) continue;
-        fresh.push({ sha: t.sha, text });
+        fresh.push({ sha: t.sha, bytes: r.bytes, text });
       }
       files.push({ path: t.path, text });
       progress({ phase: 'Downloading', done: ++done, total: items.length });
     }
   };
-  await Promise.all(Array.from({ length: Math.min(24, items.length) }, work));
+  try {
+    await Promise.all(Array.from({ length: Math.min(24, items.length) }, () => work().catch(e => { stop(); throw e; })));
+  } finally {
+    signal?.removeEventListener('abort', stop);
+  }
   if (signal?.aborted) throw aborted();
   if (!files.length) {
     if (limited) throw new Error('GitHub is limiting downloads right now. Wait a few minutes and try again.');
     throw new Error(`No readable source files were found in ${owner}/${repo}${sub ? '/' + sub : ''}.`);
   }
+  const key = ghKey({ owner, repo, ref: spec.ref ? ref : '', sub });
   const label = `${owner}/${repo}${spec.ref ? '@' + ref : ''}${sub ? '/' + sub : ''}`;
-  const meta = { kind: 'github', owner, repo, ref, sub, label, skipped, failed, truncated: !!data.truncated, focus: spec.focus || '' };
+  const meta = { kind: 'github', owner, repo, ref, sub, label, skipped, failed, truncated: !!data.truncated, focus };
   const shaOf = new Map(items.map(t => [t.path, t.sha]));
-  import('./cache.js').then(async c => {
-    await c.putBlobs(fresh);
-    await c.saveRepo(ghKey(spec), { kind: 'github', label, owner, repo, ref: spec.ref ? ref : '', sub, files: files.map(f => ({ path: f.path, sha: shaOf.get(f.path) })) });
-  }).catch(() => {});
+  (async () => {
+    const c = await import('./cache.js');
+    const ok = [];
+    for (const f of fresh) if ((await gitSha(f.bytes)) === f.sha) ok.push({ sha: f.sha, text: f.text });
+    await c.putBlobs(ok);
+    await c.saveRepo(key, { kind: 'github', label, owner, repo, ref: spec.ref ? ref : '', sub }, files.map(f => ({ path: f.path, sha: shaOf.get(f.path) })));
+  })().catch(() => {});
   return { name: repo, files, meta };
 }
 
-const ghKey = spec => `gh:${spec.owner}/${spec.repo}@${spec.ref || ''}:${spec.sub || ''}`;
+const ghKey = spec => `gh:${spec.owner.toLowerCase()}/${spec.repo.toLowerCase()}@${spec.ref || ''}:${spec.sub || ''}`;
 
 async function loadCachedGitHub(spec) {
   const c = await import('./cache.js');
-  const rec = await c.getRepo(ghKey(spec));
-  if (!rec || !rec.files) return null;
-  const blobs = await c.getBlobs(rec.files.map(f => f.sha).filter(Boolean));
-  const files = rec.files.filter(f => blobs.has(f.sha)).map(f => ({ path: f.path, text: blobs.get(f.sha) }));
-  if (!files.length) return null;
-  return { name: rec.repo, files, meta: { kind: 'github', owner: rec.owner, repo: rec.repo, ref: rec.ref || 'HEAD', sub: rec.sub || '', label: rec.label, offline: true, focus: spec.focus || '' } };
+  for (const [ref, sub, focus] of splits(spec)) {
+    const key = ghKey({ owner: spec.owner, repo: spec.repo, ref: spec.ref ? ref : '', sub });
+    const rec = await c.getRepo(key);
+    if (!rec) continue;
+    const list = (await c.getFiles(key)) || [];
+    const blobs = await c.getBlobs(list.map(f => f.sha).filter(Boolean));
+    const files = list.filter(f => blobs.has(f.sha)).map(f => ({ path: f.path, text: blobs.get(f.sha) }));
+    if (!files.length) continue;
+    return { name: rec.repo, files, meta: { kind: 'github', owner: rec.owner, repo: rec.repo, ref: rec.ref || 'HEAD', sub: rec.sub || '', label: rec.label, offline: true, focus } };
+  }
+  return null;
 }
 
 export async function saveLocal(src) {
   try {
     const c = await import('./cache.js');
     const key = `local:${src.meta.label}`;
-    await c.saveRepo(key, { kind: 'local', label: src.meta.label, files: src.files });
+    await c.saveRepo(key, { kind: 'local', label: src.meta.label }, src.files);
     return key;
   } catch {
     return null;
@@ -184,11 +221,10 @@ export async function loadSaved(key) {
   const c = await import('./cache.js');
   const rec = await c.getRepo(key);
   if (!rec) throw new Error('That saved repository is no longer on this device.');
-  if (rec.kind === 'github') {
-    const spec = { owner: rec.owner, repo: rec.repo, ref: rec.ref || '', sub: rec.sub || '' };
-    return { spec };
-  }
-  return { src: { name: rec.label, files: rec.files, meta: { kind: 'local', label: rec.label, saved: key } } };
+  if (rec.kind === 'github') return { spec: { owner: rec.owner, repo: rec.repo, ref: rec.ref || '', sub: rec.sub || '', focus: '' } };
+  const files = await c.getFiles(key);
+  if (!files || !files.length) throw new Error('That saved repository is no longer on this device.');
+  return { src: { name: rec.label, files, meta: { kind: 'local', label: rec.label, saved: key } } };
 }
 
 export async function recent() {

@@ -55,10 +55,10 @@ export function buildView(g, type, filters = {}) {
   for (let k = 0; k < ES.length; k++) {
     let s = ES[k], t = ET[k];
     const ty = TY[k];
-    if (words && g.nodes[t].kind !== 'keyword') continue;
+    if (words ? g.nodes[t].kind !== 'keyword' : g.nodes[t].kind === 'keyword') continue;
     if (files && ty !== CONTAIN) { s = lift(s); t = lift(t); }
     const a = local[s], b = local[t];
-    if (a < 0 || b < 0 || a === b) continue;
+    if (!(a >= 0) || !(b >= 0) || a === b) continue;
     const key = a * n + b;
     const p = seen.get(key);
     if (p !== undefined) { if (ty > T[p]) T[p] = ty; continue; }

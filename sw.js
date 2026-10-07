@@ -1,4 +1,4 @@
-const VERSION = 'rv-2';
+const VERSION = 'rv-3';
 const SHELL = [
   './', 'index.html', 'style.css', 'manifest.webmanifest', 'icon.svg',
   'src/main.js', 'src/source.js', 'src/zip.js', 'src/cache.js', 'src/langs.js', 'src/analyze.js', 'src/worker.js',
@@ -21,7 +21,8 @@ self.addEventListener('fetch', e => {
   const net = req.mode === 'navigate' ? fetch(url.href, { cache: 'no-cache', credentials: 'same-origin' }) : fetch(req, { cache: 'no-cache' });
   e.respondWith(
     net.then(res => {
-      if (res.ok) {
+      const html = (res.headers.get('content-type') || '').includes('text/html');
+      if (res.ok && (req.mode !== 'navigate' || html)) {
         const copy = res.clone();
         e.waitUntil(caches.open(VERSION).then(c => c.put(req.mode === 'navigate' ? 'index.html' : req, copy)));
       }

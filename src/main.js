@@ -103,7 +103,8 @@ async function load(getSource, nodeKey) {
   abort?.abort();
   abort = new AbortController();
   const signal = abort.signal;
-  const live = p => { if (seq === loadSeq) progress(p); };
+  let over = false;
+  const live = p => { if (seq === loadSeq && !over) progress(p); };
   try {
     const src = await getSource(live, signal);
     if (seq !== loadSeq) return;
@@ -129,12 +130,16 @@ async function load(getSource, nodeKey) {
     if (m.skipped) notes.push(`${fmt(m.skipped)} files skipped (too large)`);
     if (m.failed) notes.push(`${fmt(m.failed)} couldn't be read`);
     if (m.truncated) notes.push('GitHub cut the file list short');
-    if (m.offline) notes.push('offline copy');
+    if (m.note) notes.push(m.note);
+    else if (m.offline) notes.push('offline copy');
     toast([`${fmt(g.stats.files)} files · ${fmt(g.stats.symbols)} symbols · ${fmt(g.stats.libs)} libraries`, ...notes].join(' · '));
   } catch (e) {
-    if (seq !== loadSeq || e.name === 'AbortError') return;
+    over = true;
+    if (seq !== loadSeq || e?.name === 'AbortError') return;
     hideStatus();
-    openSource(e.message || String(e));
+    openSource(e?.message || String(e));
+  } finally {
+    over = true;
   }
 }
 
@@ -210,7 +215,7 @@ app.selectGlobal = (gid, push = true) => {
 };
 
 function setDepth(d) {
-  d = clamp(d, 1, MAX_DEPTH);
+  d = clamp(Math.round(+d) || 2, 1, MAX_DEPTH);
   if (d === app.depth && app.nb) return;
   app.depth = d;
   $('#depth').value = d;
@@ -255,7 +260,7 @@ window.addEventListener('popstate', e => {
   if (!app.g) return;
   const q = new URLSearchParams(location.search);
   const m = app.meta, repo = q.get('repo');
-  if (repo && m && m.kind === 'github' && repo.toLowerCase() !== `${m.owner}/${m.repo}`.toLowerCase()) {
+  if (repo && m && (m.kind !== 'github' || repo.toLowerCase() !== `${m.owner}/${m.repo}`.toLowerCase())) {
     const spec = parseRepo(repo);
     if (spec) {
       spec.ref = q.get('ref') || '';
