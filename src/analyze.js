@@ -780,7 +780,7 @@ export function analyze(files, rootName, progress = () => {}) {
           const ids = (lines[d.line].slice(0, d.idx - starts[d.line]).replace(/<[^<>]*(?:<[^<>]*>[^<>]*)*>/g, ' ').match(L.idAll) || []).filter(w => !MODS.has(w) && !FIELD_MODS.has(w));
           rt = ids.length ? ids[ids.length - 1] : null;
         }
-        if (rt && !/^(?:void|Unit|None|Void|self|Self|this)$/.test(rt)) retOf.set(d.name, retOf.has(d.name) && retOf.get(d.name) !== rt ? null : rt);
+        if (rt && !/^(?:void|Unit|None|Void|self|Self|this|[A-Z]\d?)$/.test(rt)) retOf.set(d.name, retOf.has(d.name) && retOf.get(d.name) !== rt ? null : rt);
         else if (retOf.has(d.name)) retOf.set(d.name, null);
       }
       if (isClassy(d.kind) && !d.ext) {
