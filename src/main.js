@@ -12,7 +12,8 @@ const store = {
 };
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const fmt = n => n.toLocaleString();
-const narrow = () => matchMedia('(max-width: 760px)').matches;
+const NARROW = matchMedia('(max-width: 760px), (max-width: 1100px) and (orientation: portrait)');
+const narrow = () => NARROW.matches;
 const MAPS = ['code', 'files', 'dirs', 'words'];
 
 let pendingTo = null;
