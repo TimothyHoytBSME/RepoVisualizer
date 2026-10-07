@@ -511,7 +511,8 @@ const api = {
   },
   depth: d => setDepth(app.depth + d),
   focusSearch() { $('#search').focus(); },
-  path() { app.startPath(); },
+  path() { if (app.hl >= 0 && app.hl !== app.sel) app.setPath(app.view.ids[app.hl]); else app.startPath(); },
+  pathToHighlight() { if (app.hl >= 0 && app.hl !== app.sel) app.setPath(app.view.ids[app.hl]); else if (app.path != null) app.clearPath(); else api.recenter(); },
   help() { openHelp(); },
   cycleDir() { app.cycleDir(); },
   escape() {

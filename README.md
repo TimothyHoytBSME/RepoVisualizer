@@ -33,14 +33,14 @@ The funnel button shows or hides tests, variables and libraries, and holds the c
 | Peek | hover / long-press | (highlight shows it) | (highlight shows it) |
 | Depth | slider | [ / ] | LB / RB |
 | Fit to screen | ⛶ button | F | Back/Select |
-| Recenter | click the selected node | C | stick press |
+| Recenter | click the selected node | C | left stick press |
 | Links followed (both / uses / used by) | filter menu | U | — |
 | Show/hide tests | funnel button | T | — |
 | Details panel | tap the sheet | P | X |
 | Switch map | menu | M | Y |
 | Search | search box | / | — |
 | Open repository | repo name in the top bar | O | Start |
-| Path to another node | route button in the details panel | G | — |
+| Path to another node | route button in the details panel | G (highlighted node, else search) | right stick press (highlighted node) |
 | Controls help | Controls… in the filter menu | ? | — |
 
 ## How it works

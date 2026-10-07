@@ -133,6 +133,14 @@ const state = page => page.evaluate(() => {
   await page.keyboard.press('u');
   await page.waitForTimeout(200);
   check('direction filter cycles back', await page.evaluate(() => window.__rv.app.dir === 'both' && !document.querySelector('#counts .dirtag')));
+  await page.keyboard.press('ArrowRight');
+  await page.waitForTimeout(150);
+  await page.keyboard.press('g');
+  await page.waitForTimeout(300);
+  const ph = await page.evaluate(() => { const a = window.__rv.app; return { hl: a.hl, sel: a.sel, last: a.pathNodes ? a.pathNodes[a.pathNodes.length - 1] : null, focus: document.activeElement.id }; });
+  check('G paths to the highlighted node', ph.hl >= 0 && ph.last === ph.hl && ph.focus !== 'search', ph);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(150);
 
   await page.evaluate(() => window.__rv.app.selectGlobal(window.__rv.app.g.byKey.get('f:src/graph.js')));
   await page.waitForTimeout(300);

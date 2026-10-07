@@ -135,7 +135,7 @@ export function makeGamepad(api) {
     const zt = b(7) - b(6);
     if (Math.abs(zt) > 0.05) { api.zoomAt(Math.exp(zt * 0.04)); active = true; }
     const acts = {
-      0: () => api.activate(), 1: () => api.back(), 10: () => api.recenter(), 11: () => api.recenter(), 2: () => api.togglePanel(), 3: () => api.cycleMap(),
+      0: () => api.activate(), 1: () => api.back(), 10: () => api.recenter(), 11: () => api.pathToHighlight(), 2: () => api.togglePanel(), 3: () => api.cycleMap(),
       4: () => api.depth(-1), 5: () => api.depth(1), 8: () => api.fit(), 9: () => api.openSource(),
       12: () => api.move(0, -1), 13: () => api.move(0, 1), 14: () => api.move(-1, 0), 15: () => api.move(1, 0),
     };
