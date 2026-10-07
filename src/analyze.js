@@ -57,6 +57,7 @@ const PROP_FN = /(?:\.[\w$]+\s*=|[\w$]+\s*:)\s*(?:async\s+)?function\s*\*?\s*$|\
 const CAP_TYPES = new Set(['jvm', 'cs', 'swift', 'dart', 'py', 'rs', 'rb', 'php']);
 const IMPLICIT_THIS = new Set(['jvm', 'cs', 'swift', 'dart', 'c', 'rb']);
 const AMBIENT = /\.d\.[mc]?ts$/;
+const TRAILING = new Set(['swift', 'jvm']);
 const GLOBAL_VARS = new Set(['swift', 'go', 'c', 'jvm', 'cs']);
 const EX_PATH = /^(?:[^/]+\/){0,2}(?:examples?|samples?|demos?|docs?|benchmarks?|bench)\//i;
 const EX_ROOT = /^(?:[^/]+\/){0,2}(?:examples?|samples?|demos?)\/[^/]+\//i;
@@ -719,7 +720,7 @@ export function analyze(files, rootName, progress = () => {}) {
 
   const names = new Map();
   const localsOf = new Map();
-  const aliasOf = new Map(), retNode = new Map(), ownerOf = new Map(), selfOf = new Map(), memberish = new Set(), typesOf = new Map(), fieldTypes = new Map(), retOf = new Map(), basesOf = new Map();
+  const aliasOf = new Map(), retNode = new Map(), closureOf = new Map(), ownerOf = new Map(), selfOf = new Map(), memberish = new Set(), typesOf = new Map(), fieldTypes = new Map(), retOf = new Map(), basesOf = new Map();
   const pkgOf = new Map();
   const csNs = new Set();
   let done = 0;
@@ -844,6 +845,11 @@ export function analyze(files, rootName, progress = () => {}) {
       if (isFn(d.kind)) {
         let rt = null;
         const e = afterParams(masked, d.idx + d.name.length);
+        if (e > 0 && TRAILING.has(L.group)) {
+          const op = masked.indexOf('(', d.idx + d.name.length), last = op >= 0 && op < e ? topSplit(masked.slice(op + 1, e - 1), ',').pop() : '';
+          const fm = last && /\(([^()]*(?:\([^()]*\)[^()]*)*)\)\s*(?:async\s*)?(?:throws\s*)?->/.exec(last);
+          if (fm) closureOf.set(d.node, topSplit(fm[1], ',').map(a => { const x = tyOf(a.slice(a.lastIndexOf(':') + 1)); return x && !/^[A-Z]\d?$/.test(x) ? x : null; }));
+        }
         if (e > 0) {
           const rest = masked.slice(e, e + 200);
           for (const re of L.group === 'py' ? RET.slice(0, 1) : RET) { const m = re.exec(rest); if (m) { rt = tyOf(m[1].replace(/\bwhere\b[^]*$/, '').replace(/^\s*Promise<([^]*)>\s*$/, '$1')); break; } }
@@ -911,17 +917,23 @@ export function analyze(files, rootName, progress = () => {}) {
           if (!ns.length) continue;
           const at0 = m[1] !== undefined && L.group === 'js' ? m.index + m[0].indexOf(m[1]) : m.index, cb = CB.exec(masked.slice(Math.max(0, at0 - 120), at0));
           if (cb && !(tm && tm.has(ns[0]))) (tm ??= new Map()).set(ns[0], '@' + cb[1]);
+          else if (TRAILING.has(L.group)) {
+            let j = m.index;
+            while (j > 0 && masked.charCodeAt(j - 1) <= 32) j--;
+            const c = masked.charCodeAt(j - 1);
+            if (c === 41 || (isW(c) && !/\b(?:in|else|do|try|return|=|throws|async)$/.test(masked.slice(Math.max(0, j - 8), j)))) for (let i = 0; i < ns.length; i++) if (!(tm && tm.has(ns[i]))) (tm ??= new Map()).set(ns[i], '%' + j + ':' + i);
+          }
           const a = lineAt(starts, m.index);
-          scopes.push({ a, b: blockEnd(lines, a, skipOf(L)), names: new Set(ns), types: tm && tm.size ? tm : null });
+          scopes.push({ a, at: m.index, b: blockEnd(lines, a, skipOf(L)), names: new Set(ns), types: tm && tm.size ? tm : null });
         }
       }
       if (L.group === 'swift') for (const m of masked.matchAll(/\bcatch\b[ \t]*(?:let[ \t]+(\w+)[ \t]+as[ \t]*!?[ \t]*(\w+)[ \t]*)?\{/g)) {
         const a = lineAt(starts, m.index), nm = m[1] || 'error';
-        scopes.push({ a, b: blockEnd(lines, a, skipOf(L)), names: new Set([nm]), types: new Map([[nm, m[2] || 'Error']]) });
+        scopes.push({ a, at: m.index, b: blockEnd(lines, a, skipOf(L)), names: new Set([nm]), types: new Map([[nm, m[2] || 'Error']]) });
       }
       if (L.group === 'jvm') for (const m of masked.matchAll(CB_IT)) {
         const a = lineAt(starts, m.index);
-        scopes.push({ a, b: blockEnd(lines, a, skipOf(L)), names: new Set(['it']), types: new Map([['it', '@' + m[1]]]) });
+        scopes.push({ a, at: m.index, b: blockEnd(lines, a, skipOf(L)), names: new Set(['it']), types: new Map([['it', '@' + m[1]]]) });
       }
       if (scopes.length) {
         info.scopes = scopes;
@@ -1141,8 +1153,9 @@ export function analyze(files, rootName, progress = () => {}) {
       let t = null;
       if (info.scopes && info.scopeNames.has(v)) {
         let best = null;
-        for (const sc of info.scopes) if (sc.types && sc.a <= ln && ln <= sc.b && sc.types.has(v) && (!best || sc.a >= best.a)) best = sc;
+        for (const sc of info.scopes) if (sc.types && sc.a <= ln && ln <= sc.b && !(sc.a === ln && curAt < sc.at) && sc.types.has(v) && (!best || sc.a >= best.a)) best = sc;
         if (best) t = best.types.get(v);
+        if (t && t[0] === '%') { const k = t.indexOf(':'); t = depth < 3 ? closureArg(+t.slice(1, k), +t.slice(k + 1), src) : null; }
       }
       if (!t) for (let o = src; o !== fid && o >= 0; o = nodes[o].parent) {
         const tm = typesOf.get(o), ty = tm && tm.get(v);
@@ -1185,6 +1198,37 @@ export function analyze(files, rootName, progress = () => {}) {
       if (t && t[0] === '@') t = depth < 3 && t.slice(1) !== v ? elemOf(varType(t.slice(1), src, ln, depth + 1, true)) : null;
       if (!raw) t = headOf(t);
       return t;
+    };
+    let cDepth = 0, curAt = Infinity;
+    const closureArg = (j, i, src) => {
+      if (cDepth > 2) return null;
+      cDepth++;
+      try { return closureArgIn(j, i, src); } finally { cDepth--; }
+    };
+    const closureArgIn = (j, i, src) => {
+      let e, name;
+      if (masked.charCodeAt(j - 1) === 41) {
+        let d = 0, q = j - 1;
+        for (const lim = Math.max(0, j - 2000); q >= lim; q--) { const ch = masked.charCodeAt(q); if (ch === 41) d++; else if (ch === 40 && --d === 0) break; }
+        if (d) return null;
+        e = q;
+        while (e > 0 && isW(masked.charCodeAt(e - 1))) e--;
+        name = masked.slice(e, q);
+      } else {
+        e = j;
+        while (e > 0 && isW(masked.charCodeAt(e - 1))) e--;
+        name = masked.slice(e, j);
+      }
+      if (!name) return null;
+      const T = recvTypeAt(e, 1, src);
+      let c;
+      if (T === undefined) c = g.get(name) || local.get(name) || [];
+      else if (!T) return null;
+      else { const set = new Set(ofType(headOf(T), name, fid) || []); for (const k of classes(headOf(T), fid)) for (const h of memberIn(k, name) || []) set.add(h); c = [...set]; }
+      const cnt = new Map();
+      let out = null, n = 0;
+      for (const h of c) { const r = closureOf.get(h)?.[i]; if (!r) continue; n++; cnt.set(r, (cnt.get(r) || 0) + 1); if (!out || cnt.get(r) > cnt.get(out)) out = r; }
+      return out && cnt.get(out) >= n * 0.75 ? out : null;
     };
     const callT = c => typeNames.has(c) ? c : headOf(retOf.get(c)) || null;
     const retIn = (T, name) => {
@@ -1245,6 +1289,7 @@ export function analyze(files, rootName, progress = () => {}) {
     };
     let ln = 0, declEnd = -1;
     for (const m of masked.matchAll(L.id)) {
+      curAt = m.index;
       const name = m[0];
       if (name.length < 2) continue;
       if (countWords && !L.kw.has(name)) idc.set(name, (idc.get(name) || 0) + 1);
@@ -1310,7 +1355,7 @@ export function analyze(files, rootName, progress = () => {}) {
       }
       if (!member) {
         let shadow = false;
-        if (info.scopes && info.scopeNames.has(name)) for (const sc of info.scopes) if (sc.a <= ln && ln <= sc.b && sc.names.has(name)) { shadow = true; break; }
+        if (info.scopes && info.scopeNames.has(name)) for (const sc of info.scopes) if (sc.a <= ln && ln <= sc.b && !(sc.a === ln && at < sc.at) && sc.names.has(name)) { shadow = true; break; }
         for (let o = src; o !== fid && o >= 0; o = nodes[o].parent) {
           const ls = localsOf.get(o);
           if (ls && ls.has(name)) { shadow = true; break; }
