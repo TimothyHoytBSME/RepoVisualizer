@@ -57,6 +57,7 @@ const PROP_FN = /(?:\.[\w$]+\s*=|[\w$]+\s*:)\s*(?:async\s+)?function\s*\*?\s*$|\
 const CAP_TYPES = new Set(['jvm', 'cs', 'swift', 'dart', 'py', 'rs', 'rb', 'php']);
 const IMPLICIT_THIS = new Set(['jvm', 'cs', 'swift', 'dart', 'c', 'rb']);
 const AMBIENT = /\.d\.[mc]?ts$/;
+const GLOBAL_VARS = new Set(['swift', 'go', 'c', 'jvm', 'cs']);
 const EX_PATH = /^(?:[^/]+\/){0,2}(?:examples?|samples?|demos?|docs?|benchmarks?|bench)\//i;
 const EX_ROOT = /^(?:[^/]+\/){0,2}(?:examples?|samples?|demos?)\/[^/]+\//i;
 const isFn = k => k === 'function' || k === 'method';
@@ -269,7 +270,7 @@ const CB_NAMES = 'forEach|map|filter|some|every|find|findLast|findIndex|flatMap|
 const CB = new RegExp(`(?:\\b(?:this|self)\\.|@)?([A-Za-z_$][\\w$]*)[ \\t]*[?!]?\\.[ \\t]*(?:${CB_NAMES})[ \\t]*(?:\\([ \\t]*(?:async[ \\t]*)?)?[ \\t]*$`);
 const CB_IT = new RegExp(`(?:\\bthis\\.)?([A-Za-z_]\\w*)[ \\t]*[?!]*\\.[ \\t]*(?:${CB_NAMES})[ \\t]*\\{(?![^\\n]*->)`, 'g');
 const VAR_TYPES = [
-  /\b(?:const|let|var|val|auto)[ \t]+([A-Za-z_$][\w$]*)[ \t]*(?::[ \t]*([A-Za-z_][\w.]*(?:<[^=;\n]*>)?(?:\[\])*\??))?[ \t]*(?:=[ \t]*(?:new[ \t]+([A-Za-z_][\w.]*)|([A-Z]\w*)[ \t]*[({]))?/g,
+  /\b(?:const|let|var|val|auto)[ \t]+([A-Za-z_$][\w$]*)[ \t]*(?::[ \t]*([A-Za-z_][\w.]*(?:<[^=;\n]*>)?(?:\[\])*\??))?[ \t]*(?:=[ \t]*(?:new[ \t]+([A-Za-z_][\w.]*)|([A-Z]\w*)[ \t]*[({]|([A-Z]\w*)\.(?:shared|default|instance|current|main|standard|sharedInstance|getInstance\(\)|INSTANCE)\b))?/g,
   /\b([A-Za-z_]\w*)[ \t]*:=[ \t]*&?(?:[a-z]\w*\.)?([A-Z]\w*)[ \t]*\{/g,
 ];
 
@@ -794,7 +795,7 @@ export function analyze(files, rootName, progress = () => {}) {
     }
     for (const re of L.group === 'go' ? VAR_TYPES : L.group === 'php' ? [PHP_NEW] : L.group === 'rb' ? [RB_NEW] : L.group === 'py' ? [] : VAR_TYPES.slice(0, 1)) {
       for (const m of masked.matchAll(re)) {
-        const ty = m[2] || m[3] || m[4];
+        const ty = m[2] || m[3] || m[4] || m[5];
         if (!ty) continue;
         const ln = lineAt(starts, m.index), di = fnAt[ln];
         const tn = tyOf(ty);
@@ -1110,6 +1111,11 @@ export function analyze(files, rootName, progress = () => {}) {
     return null;
   };
 
+  const gvt = new Map();
+  for (const info of infos) if (info.types && GLOBAL_VARS.has(info.L.group)) for (const [k, v] of info.types) {
+    const key = info.L.group + ':' + k;
+    gvt.set(key, gvt.has(key) && gvt.get(key) !== v ? null : v);
+  }
   done = 0;
   for (const info of infos) {
     if (++done % 50 === 0) progress({ phase: 'Linking', done, total: infos.length });
@@ -1164,10 +1170,13 @@ export function analyze(files, rootName, progress = () => {}) {
           }
         }
       }
-      if (!t && info.types && info.types.has(v) && !(info.scopes && info.scopeNames.has(v))) {
-        let shadowed = false;
-        for (let o = src; o !== fid && o >= 0 && !shadowed; o = nodes[o].parent) shadowed = !!(localsOf.get(o)?.has(v) || typesOf.get(o)?.has(v));
-        if (!shadowed) t = info.types.get(v);
+      if (!t && !(info.scopes && info.scopeNames.has(v))) {
+        const ft = info.types && info.types.get(v), gt = ft ? null : gvt.get(L.group + ':' + v);
+        if (ft || gt) {
+          let shadowed = false;
+          for (let o = src; o !== fid && o >= 0 && !shadowed; o = nodes[o].parent) shadowed = !!(localsOf.get(o)?.has(v) || typesOf.get(o)?.has(v));
+          if (!shadowed && (ft || !local.has(v))) t = ft || gt;
+        }
       }
       if (t && t[0] === '@') t = depth < 3 && t.slice(1) !== v ? elemOf(varType(t.slice(1), src, ln, depth + 1, true)) : null;
       if (!raw) t = headOf(t);
@@ -1179,8 +1188,10 @@ export function analyze(files, rootName, progress = () => {}) {
       if (!T || T === '[]') return null;
       const c = new Set(ofType(T, name, fid) || []);
       for (const k of classes(T, fid)) for (const h of memberIn(k, name) || []) c.add(h);
-      let out = null;
-      for (const h of c) { const r = retNode.get(h); if (!r) continue; if (out && out !== r) return null; out = r; }
+      const cnt = new Map();
+      let out = null, n = 0;
+      for (const h of c) { const r = retNode.get(h); if (!r) continue; n++; cnt.set(r, (cnt.get(r) || 0) + 1); if (!out || cnt.get(r) > cnt.get(out)) out = r; }
+      if (out && cnt.get(out) < n * 0.75) out = null;
       if (!out && name === 'new' && typeNames.has(T)) return T;
       return out ? headOf(out) : null;
     };
