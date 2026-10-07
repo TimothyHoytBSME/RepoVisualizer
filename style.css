@@ -177,7 +177,7 @@ dialog .row button:not(.primary) { flex: 1; }
 .help td { color: var(--muted); }
 @media (max-width: 560px) { .help th:nth-child(n+3), .help td:nth-child(n+3) { display: none; } .help tbody th { white-space: normal; } }
 .dirtag { color: var(--accent); font-weight: 600; }
-.linkish { background: none; border: 0; padding: 4px 0; color: var(--accent); font-size: 13px; cursor: pointer; text-align: left; }
+.linkish { background: none; border: 0; padding: 7px 6px; color: var(--accent); font-size: 13px; cursor: pointer; text-align: left; }
 dialog .close { position: absolute; right: -10px; top: -12px; width: 34px; height: 34px; padding: 0; border: 0; background: none; font-size: 22px; color: var(--muted); }
 .examples { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; color: var(--muted); font-size: 12px; }
 .examples button { height: 28px; padding: 0 10px; font-size: 12px; border-radius: 999px; }

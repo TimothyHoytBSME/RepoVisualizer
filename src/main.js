@@ -145,7 +145,8 @@ async function load(getSource, nodeKey) {
     if (m.truncated) notes.push('GitHub cut the file list short');
     if (m.note) notes.push(m.note);
     else if (m.offline) notes.push('offline copy');
-    toast([`${fmt(g.stats.files)} files · ${fmt(g.stats.symbols)} symbols · ${fmt(g.stats.libs)} libraries`, ...notes].join(' · '));
+    const pl = (n, one, many) => `${fmt(n)} ${n === 1 ? one : many}`;
+    toast([`${pl(g.stats.files, 'file', 'files')} · ${pl(g.stats.symbols, 'symbol', 'symbols')} · ${pl(g.stats.libs, 'library', 'libraries')}`, ...notes].join(' · '));
   } catch (e) {
     over = true;
     if (seq !== loadSeq || e?.name === 'AbortError') return;
