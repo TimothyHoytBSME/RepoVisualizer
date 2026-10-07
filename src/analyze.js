@@ -58,6 +58,7 @@ const CAP_TYPES = new Set(['jvm', 'cs', 'swift', 'dart', 'py', 'rs', 'rb', 'php'
 const IMPLICIT_THIS = new Set(['jvm', 'cs', 'swift', 'dart', 'c', 'rb']);
 const AMBIENT = /\.d\.[mc]?ts$/;
 const C_HEADER = /\.(?:h|hh|hpp|hxx|h\+\+|cuh|inc|inl)$/i;
+const STR_TYPE = { jvm: 'String', swift: 'String', dart: 'String', cs: 'string', js: 'String', py: 'str', rs: 'str' };
 const PATHSEG = new Set(['rs', 'c', 'rb', 'php']);
 const DECLS = new Set(['c', 'jvm', 'cs']);
 const TRAILING = new Set(['swift', 'jvm']);
@@ -749,6 +750,7 @@ export function analyze(files, rootName, progress = () => {}) {
     if (L.group === 'cs' && masked) for (const m of masked.matchAll(/\bnamespace[ \t]+([\w.]+)/g)) csNs.add(m[1]);
     if (L.strip && masked) masked = masked.replace(L.strip, x => ' '.repeat(x.length));
     info.masked = masked;
+    if (STR_TYPE[L.group]) info.raw = text;
     if (!L.defs || !masked) continue;
 
     const starts = lineStarts(masked);
@@ -1265,6 +1267,7 @@ export function analyze(files, rootName, progress = () => {}) {
       return undefined;
     };
     const exprType = (j, depth, src) => {
+      if (info.raw) { const q = info.raw.charCodeAt(j - 1); if ((q === 34 || q === 39 || q === 96) && masked.charCodeAt(j - 1) <= 32) return STR_TYPE[L.group]; }
       while (j > 0 && masked.charCodeAt(j - 1) <= 32) j--;
       if (depth > 8 || j <= 0) return null;
       let c = masked.charCodeAt(j - 1);
