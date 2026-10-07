@@ -19,24 +19,47 @@ function grab(out, re, text, masked, g = 1, fmt) {
 }
 
 const NOT_BEFORE = kw('return else new case throw await yield typeof delete sizeof goto do in of and or not is as co_return co_await co_yield if while for switch catch using lock fixed foreach');
-const CF_TAIL = /\s*(?:(?:const|noexcept|override|final|volatile|mutable|async|throws\s+[\w.,\s]+?|->\s*[^{;=]+?|:\s*[^{;]+?|where\s+[^{;]+?)\s*)*\{/y;
+const GAP = /^\s*(?:(?:const|noexcept|override|final|volatile|mutable|async|throws|where)\b|->|:(?!:)|$)/;
+const TYPEISH = /[\w>*&\]?]$/;
+const LAST_WORD = /(\w+)[\s*&]*$/;
 
-function cfuncs(t) {
+function prevLine(t, ls) {
+  let pe = ls - 1;
+  while (pe > 0) {
+    const ps = t.lastIndexOf('\n', pe - 1) + 1;
+    const prev = t.slice(Math.max(ps, pe - 200), pe).trim();
+    if (prev) return prev;
+    pe = ps - 1;
+  }
+  return '';
+}
+
+function cfuncs(t, gnu) {
   const out = [];
+  let ls = 0, nl = t.indexOf('\n');
   for (const m of t.matchAll(/([A-Za-z_~][\w:~]*)[ \t]*\(/g)) {
+    while (nl !== -1 && nl < m.index) { ls = nl + 1; nl = t.indexOf('\n', ls); }
     const name = m[1];
-    const ls = t.lastIndexOf('\n', m.index - 1) + 1;
-    const before = t.slice(ls, m.index).trim();
-    if (!before ? !name.includes('::') : !/[\w>*&\]?]$/.test(before)) continue;
-    if (before.includes('=')) continue;
-    let bal = 0;
-    for (let i = 0; i < before.length; i++) {
-      const c = before.charCodeAt(i);
-      if (c === 40) bal++; else if (c === 41) bal--;
+    const before = t.slice(Math.max(ls, m.index - 200), m.index).trim();
+    if (!before) {
+      if (!name.includes('::')) {
+        if (!gnu || ls === 0) continue;
+        const prev = prevLine(t, ls);
+        if (!prev || !/[\w*&>]$/.test(prev) || prev[0] === '#' || /[=(@]/.test(prev)) continue;
+        const pw = LAST_WORD.exec(prev);
+        if (pw && NOT_BEFORE.has(pw[1])) continue;
+      }
+    } else {
+      if (!TYPEISH.test(before) || /\s\?$/.test(before) || before.includes('=')) continue;
+      let bal = 0;
+      for (let i = 0; i < before.length; i++) {
+        const c = before.charCodeAt(i);
+        if (c === 40) bal++; else if (c === 41) bal--;
+      }
+      if (bal > 0) continue;
+      const lw = LAST_WORD.exec(before);
+      if (lw && NOT_BEFORE.has(lw[1])) continue;
     }
-    if (bal > 0) continue;
-    const lw = /(\w+)[\s*&]*$/.exec(before);
-    if (lw && NOT_BEFORE.has(lw[1])) continue;
     let j = m.index + m[0].length, depth = 1;
     const lim = Math.min(t.length, j + 3000);
     for (; j < lim && depth; j++) {
@@ -46,17 +69,23 @@ function cfuncs(t) {
       else if (c === 59 || c === 123 || c === 125) break;
     }
     if (depth) continue;
-    CF_TAIL.lastIndex = j;
-    if (!CF_TAIL.test(t)) continue;
-    const k = name.lastIndexOf(':');
-    out.push({ name: name.slice(k + 1), idx: m.index + k + 1, kind: 'function' });
+    let k = j;
+    const lim2 = Math.min(t.length, j + 400);
+    while (k < lim2) {
+      const c = t.charCodeAt(k);
+      if (c === 123 || c === 59 || c === 125) break;
+      k++;
+    }
+    if (k >= lim2 || t.charCodeAt(k) !== 123 || !GAP.test(t.slice(j, k))) continue;
+    const q = name.lastIndexOf(':');
+    out.push({ name: name.slice(q + 1), idx: m.index + q + 1, kind: 'function' });
   }
   return out;
 }
 
 function goGroups(t) {
   const out = [];
-  for (const m of t.matchAll(/^(var|const|type)[ \t]*\(\n([\s\S]*?)^\)/gmd)) {
+  for (const m of t.matchAll(/^(var|const|type)[ \t]*\(\r?\n([\s\S]*?)^\)/gmd)) {
     const kind = m[1] === 'type' ? 'type' : 'variable';
     const base = m.indices[2][0];
     for (const n of m[2].matchAll(/^(?:\t| {2,4})([A-Za-z_]\w*)/gm)) {
@@ -105,7 +134,7 @@ const BASE_KW = kw(`if else for while do switch case break continue return funct
 const JS = {
   group: 'js', explicit: true, flatVars: true,
   exts: 'js mjs cjs jsx ts tsx mts cts vue svelte astro',
-  syntax: { line: ['//'], block: [['/*', '*/']], quotes: '\'"`', template: true },
+  syntax: { line: ['//'], block: [['/*', '*/']], quotes: '\'"`', template: true, regex: true },
   id: /[A-Za-z_$][\w$]*/g,
   kw: kw(`break case catch class const continue debugger default delete do else export extends finally for function if import in instanceof let new return super switch this throw try typeof var void while with yield async await static of null true false undefined interface type enum implements package private protected public readonly abstract declare namespace module as from any number string boolean never unknown object symbol bigint keyof infer is satisfies override constructor require exports console window document Math JSON Object Array String Number Boolean Promise Error Map Set Date RegExp Symbol`),
   defs: [
@@ -115,7 +144,7 @@ const JS = {
     [R`\b(?:namespace|module)\s+(${W})\s*\{`, 'module'],
     [R`\btype\s+(${W})\s*(?:<[^>\n]*>)?\s*=`, 'type'],
     [R`\b(?:const|let|var)\s+(${W})\s*(?::[^=;\n]+)?=\s*(?:async\s*)?(?:function\b|(?:\([^()]*\)|${W})\s*(?::[^=;\n]+)?=>)`, 'function'],
-    [R`(?<!\bfor\s*\(\s*)\b(?:const|let|var)\s+(${W})(?![\w$]|\s*=\s*(?:require\s*\(|await\s+import\s*\())`, 'variable'],
+    [R`\b(?:const|let|var)\s+(${W})(?![\w$]|\s*=\s*(?:require\s*\(|await\s+import\s*\())`, 'variable', (t, i) => !/\bfor\s*\(\s*(?:const|let|var)\s+$/.test(t.slice(Math.max(0, i - 40), i))],
     [R`^[ \t]*(?:(?:static|async|get|set|public|private|protected|readonly|override|abstract|declare)\s+)*\*?\s*(#?${W})\s*(?:<[^>\n]*>)?\((?:[^()]|\([^()]*\))*\)\s*(?::[^{;\n]+)?\{`, 'method'],
     [R`^[ \t]*(?:(?:static|public|private|protected|readonly)\s+)*(#?${W})\s*(?::[^=;\n]+)?=\s*(?:async\s*)?(?:\([^()]*\)|${W})\s*=>`, 'method'],
   ],
@@ -138,7 +167,7 @@ const PY = {
 
 const GO = {
   group: 'go', pkgDir: true, exts: 'go',
-  syntax: { line: ['//'], block: [['/*', '*/']], quotes: '"`', charQuote: true },
+  syntax: { line: ['//'], block: [['/*', '*/']], quotes: '"`', charQuote: true, raw: '`' },
   kw: kw(`break case chan const continue default defer else fallthrough for func go goto if import interface map package range return select struct switch type var nil true false iota string int int8 int16 int32 int64 uint uint8 uint16 uint32 uint64 uintptr byte rune float32 float64 complex64 complex128 bool error any make new len cap append copy delete panic recover close print println`),
   defs: [
     [R`^func[ \t]+(?:\([^)]*\)[ \t]*)?(${N})`, 'function'],
@@ -150,7 +179,7 @@ const GO = {
 
 const RS = {
   group: 'rs', explicit: true, exts: 'rs',
-  syntax: C_SYN,
+  syntax: { ...C_SYN, multi: '"' },
   kw: kw(`as async await break const continue crate dyn else enum extern false fn for if impl in let loop match mod move mut pub ref return self Self static struct super trait true type unsafe use where while Some None Ok Err Box Vec String Option Result i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 usize isize f32 f64 bool str char println format vec assert assert_eq`),
   defs: [
     [R`\bfn[ \t]+(${N})`, 'function'],
@@ -176,7 +205,7 @@ const C = {
     [R`^[ \t]*@(?:interface|implementation|protocol)[ \t]+(${N})`, 'class'],
     [R`^[ \t]*[-+][ \t]*\([^)]*\)[ \t]*(${N})`, 'method'],
   ],
-  extra: cfuncs,
+  extra: t => cfuncs(t, true),
   imports: (raw, m) => grab([], /^[ \t]*#[ \t]*include[ \t]*([<"])([^>"\n]+)[>"]/gm, raw, m, 2, x => (x[1] === '<' ? '<' : '') + x[2]),
   resolve: 'c',
 };
@@ -243,7 +272,7 @@ const DART = {
 const RB = {
   group: 'rb', flatVars: true, exts: 'rb rake gemspec ru',
   names: ['gemfile', 'rakefile', 'podfile', 'fastfile', 'vagrantfile', 'guardfile'],
-  syntax: { line: ['#'], block: [['=begin', '=end']], quotes: '\'"`' },
+  syntax: { line: ['#'], block: [['=begin', '=end']], quotes: '\'"`', multi: '"' },
   id: /[A-Za-z_]\w*[!?]?/g,
   kw: kw(`alias and begin break case class def defined do else elsif end ensure false for if in module next nil not or redo rescue retry return self super then true undef unless until when while yield require require_relative attr_accessor attr_reader attr_writer include extend puts private protected public new raise lambda proc`),
   defs: [
@@ -258,7 +287,7 @@ const RB = {
 
 const PHP = {
   group: 'php', flatVars: true, exts: 'php phtml',
-  syntax: { line: ['//', '#'], block: [['/*', '*/']], quotes: '\'"' },
+  syntax: { line: ['//', '#'], block: [['/*', '*/']], quotes: '\'"', multi: '\'"' },
   kw: kw(`abstract and array as break callable case catch class clone const continue declare default do echo else elseif empty enddeclare endfor endforeach endif endswitch endwhile extends final finally fn for foreach function global goto if implements include include_once instanceof insteadof interface isset list match namespace new or print private protected public readonly require require_once return static switch throw trait try unset use var while xor yield this self parent true false null string int float bool mixed void`),
   defs: [
     [R`\bfunction[ \t]+&?(${N})`, 'function'],
@@ -312,7 +341,7 @@ const GEN_DEFS = [
   [R`\b(?:function|func|fn|def|defp|defmacro|defn-?|fun|sub|proc|procedure|rpc)[ \t]+([A-Za-z_][\w?!']*)`, 'function'],
   [R`\b(?:class|struct|interface|enum|trait|module|defmodule|record|type|contract|library|message|service|input|schema)[ \t]+([A-Za-z_][\w.]*)`, 'class'],
 ];
-const gen = (exts, syntax) => ({ group: 'gen', exts, syntax: { quotes: '"', ...syntax }, defs: GEN_DEFS });
+const gen = (exts, syntax) => ({ group: 'gen', exts, syntax: { quotes: '"', triple: true, multi: '"', ...syntax }, defs: GEN_DEFS });
 const GENS = [
   gen('hs elm purs', { line: ['--'], block: [['{-', '-}']] }),
   gen('ml mli', { block: [['(*', '*)']] }),
@@ -333,7 +362,7 @@ const CSS = {
 };
 const TEXT = {
   group: 'text', exts: 'txt json jsonc json5 yaml yml toml ini cfg conf xml plist properties env cmake mk',
-  names: ['makefile', 'dockerfile', 'license', 'readme', 'procfile', 'justfile', 'containerfile'],
+  names: ['makefile', 'dockerfile', 'license', 'readme', 'procfile', 'justfile', 'containerfile', 'go.mod'],
 };
 
 export const LANGS = [JS, PY, GO, RS, C, JVM, CS, SWIFT, DART, RB, PHP, LUA, SH, SQL, ...GENS, MD, HTML, CSS, TEXT];
@@ -349,6 +378,7 @@ for (const L of LANGS) {
     for (const [o] of s.block || []) f[o.charCodeAt(0)] = 1;
     for (const l of s.line || []) f[l.charCodeAt(0)] = 1;
     for (const q of s.quotes || '') f[q.charCodeAt(0)] = 1;
+    if (s.regex) f[47] = 1;
     s.first = f;
   }
 }
@@ -378,6 +408,34 @@ export function wanted(path, size = 0) {
   return size <= (TEXT_GROUPS.has(L.group) ? 250e3 : 800e3);
 }
 
+const RE_PREV = new Set('(,=:[!&|?{};+-*%<>~^'.split(''));
+const RE_KW = /(?:^|[^\w$])(?:return|typeof|case|do|else|in|of|new|delete|void|throw|yield|await)$/;
+
+function regexEnd(text, out, i) {
+  let p = i - 1;
+  while (p >= 0 && (out[p] === 32 || out[p] === 9 || out[p] === 10 || out[p] === 13)) p--;
+  if (p >= 0) {
+    const pc = String.fromCharCode(out[p]);
+    if (!RE_PREV.has(pc) && !(/[\w$]/.test(pc) && RE_KW.test(text.slice(Math.max(0, p - 12), p + 1)))) return -1;
+  }
+  const n = text.length;
+  let j = i + 1, inClass = false;
+  while (j < n) {
+    const c = out[j];
+    if (c === 92) { j += 2; continue; }
+    if (c === 10) return -1;
+    if (c === 91) inClass = true;
+    else if (c === 93) inClass = false;
+    else if (c === 47 && !inClass) {
+      j++;
+      while (j < n && /[a-z]/i.test(text[j])) j++;
+      return j;
+    }
+    j++;
+  }
+  return -1;
+}
+
 export function mask(text, L, cls) {
   const S = L.syntax;
   if (!S) return text;
@@ -389,7 +447,7 @@ export function mask(text, L, cls) {
     for (let k = a; k < b; k++) if (out[k] !== 10) out[k] = 32;
     if (cls) cls.fill(c, a, b);
   };
-  const line = S.line || [], block = S.block || [], quotes = S.quotes || '', first = S.first;
+  const line = S.line || [], block = S.block || [], quotes = S.quotes || '', first = S.first, raw = S.raw || '', multi = S.multi || '';
   let i = 0;
   scan: while (i < n) {
     const code = out[i];
@@ -409,6 +467,11 @@ export function mask(text, L, cls) {
         blank(i, j, 1); i = j; continue scan;
       }
     }
+    if (code === 47 && S.regex) {
+      const e = regexEnd(text, out, i);
+      if (e > 0) { blank(i, e, 2); i = e; } else i++;
+      continue;
+    }
     const ch = text[i];
     if (quotes.includes(ch)) {
       if (S.triple && text.startsWith(ch + ch + ch, i)) {
@@ -424,9 +487,9 @@ export function mask(text, L, cls) {
       let j = i + 1, start = i;
       while (j < n) {
         const c = out[j];
-        if (c === 92) { j += 2; continue; }
+        if (c === 92 && !raw.includes(ch)) { j += 2; continue; }
         if (c === code) { j++; break; }
-        if (c === 10 && ch !== '`') break;
+        if (c === 10 && ch !== '`' && !multi.includes(ch)) break;
         if (S.template && code === 96 && c === 36 && out[j + 1] === 123) {
           blank(start, j, 2);
           j += 2;

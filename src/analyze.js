@@ -34,7 +34,15 @@ function indentOf(s) {
   return n;
 }
 
-function blockEnd(lines, d) {
+const LABELS = /^(?:[A-Za-z_$][\w$]*:(?!:)\s*$|case\b|default\s*:)/;
+const SKIP_SAME = {
+  c: /^(?:#|[A-Za-z_]\w*:(?!:)\s*$|case\b|default\s*:)/,
+  cs: /^(?:#|[A-Za-z_]\w*:(?!:)\s*$|case\b|default\s*:)/,
+  go: LABELS, js: LABELS, jvm: LABELS, rs: LABELS, swift: LABELS, dart: LABELS, php: LABELS,
+  rb: /^(?:rescue|ensure|elsif|when|else)\b/,
+};
+
+function blockEnd(lines, d, skip) {
   const I = indentOf(lines[d]);
   let end = d, first = true;
   for (let k = d + 1; k < lines.length; k++) {
@@ -44,6 +52,7 @@ function blockEnd(lines, d) {
     if (ind > I) { end = k; first = false; continue; }
     if (ind === I) {
       const c = t[0];
+      if (skip && skip.test(t)) continue;
       if (c === '{' && first) { end = k; first = false; continue; }
       if (c === '}' || c === ')' || c === ']') {
         end = k;
@@ -59,20 +68,43 @@ function blockEnd(lines, d) {
 
 function extractDefs(masked, L, starts, lines) {
   const found = [], seen = new Set();
-  const push = (name, idx, kind) => {
+  let pdepth = null;
+  const nested = line => {
+    if (!pdepth) {
+      pdepth = new Int16Array(lines.length);
+      let d = 0, ln = 0;
+      for (let i = 0; i < masked.length; i++) {
+        const c = masked.charCodeAt(i);
+        if (c === 10) { if (++ln < pdepth.length) pdepth[ln] = d; }
+        else if (c === 40 || c === 91) d++;
+        else if ((c === 41 || c === 93) && d > 0) d--;
+      }
+    }
+    return pdepth[line] > 0;
+  };
+  const push = (name, idx, kind, extra) => {
     if (L.clean) name = L.clean(name);
     if (!name || L.kw.has(name)) return;
     const line = lineAt(starts, idx);
     const k = line + ':' + name;
     if (seen.has(k)) return;
-    if (kind === 'variable' && /,\s*$/.test(lines[line])) return;
+    if (kind === 'variable') {
+      const ln = lines[line];
+      if (!extra && ((ln.length < 2000 && /,\s*$/.test(ln)) || nested(line))) return;
+    }
     seen.add(k);
     found.push({ name, kind, line, idx, end: line });
   };
-  for (const [re, kind] of L.defs) for (const m of masked.matchAll(re)) push(m[1], m.indices[1][0], kind);
-  if (L.extra) for (const d of L.extra(masked)) push(d.name, d.idx, d.kind);
+  for (const [re, kind, ok] of L.defs) {
+    for (const m of masked.matchAll(re)) {
+      const i = m.indices[1][0];
+      if (!ok || ok(masked, i)) push(m[1], i, kind);
+    }
+  }
+  if (L.extra) for (const d of L.extra(masked)) push(d.name, d.idx, d.kind, true);
   found.sort((a, b) => a.idx - b.idx);
-  for (const d of found) d.end = blockEnd(lines, d.line);
+  const skip = SKIP_SAME[L.group];
+  for (const d of found) d.end = blockEnd(lines, d.line, skip);
   return found;
 }
 
@@ -100,7 +132,10 @@ function params(t, from, L) {
   const out = [];
   for (const p of parts) {
     const head = p.split('=')[0];
-    const colon = head.search(/(?<!:):(?!:)/);
+    let colon = -1;
+    for (let k = 0; k < head.length; k++) {
+      if (head[k] === ':' && head[k - 1] !== ':' && head[k + 1] !== ':') { colon = k; break; }
+    }
     const pre = colon >= 0 ? head.slice(0, colon) : head;
     const ids = (pre.match(L.idAll) || []).filter(w => !L.kw.has(w));
     if (!ids.length) continue;
@@ -123,17 +158,44 @@ const parentOf = d => (d ? d.slice(0, Math.max(0, d.lastIndexOf('/'))) : null);
 const JS_EXT = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.mts', '.cts', '.vue', '.svelte', '.json', '.css', '.scss', '.d.ts'];
 const EXTERNAL = /^([a-z][\w+.-]*:|\/\/|#)/i;
 
-function makeResolver({ nodes, fileIds, dirs, dirFiles, csNs }) {
-  const suffix = new Map();
-  for (const [p, id] of fileIds) {
+function suffixMap(entries) {
+  const map = new Map();
+  for (const [p, v] of entries) {
+    if (!p) continue;
     let i = -1;
     do {
       const s = p.slice(i + 1);
-      const a = suffix.get(s);
-      if (a) a.push(id); else suffix.set(s, [id]);
+      const a = map.get(s);
+      if (a) a.push(v); else map.set(s, [v]);
       i = p.indexOf('/', i + 1);
     } while (i >= 0);
   }
+  return map;
+}
+
+function makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, goMods, names }) {
+  const suffix = suffixMap(fileIds);
+  const dirSuffix = suffixMap([...dirs.keys()].map(d => [d, d]));
+  const prefixOf = (id, tail) => { const p = nodes[id].path; return p.slice(0, p.length - tail.length); };
+  const hasFile = (d, f) => fileIds.has((d ? d + '/' : '') + f);
+  const isGo = id => nodes[id].path.endsWith('.go') && !nodes[id].path.endsWith('_test.go');
+  const goPkg = d => { const fs = (dirFiles.get(d) || []).filter(isGo); return fs.length ? fs.slice(0, 60) : null; };
+  const crateRoot = dir => {
+    for (let d = dir; d != null; d = parentOf(d)) {
+      if (hasFile(d, 'lib.rs') || hasFile(d, 'main.rs')) return d;
+      if (!d) break;
+    }
+    return null;
+  };
+  const modDir = info => (/^(mod|lib|main)\.rs$/.test(nodes[info.id].name) ? info.dir : join(info.dir, nodes[info.id].name.replace(/\.rs$/, '')));
+  const rsFind = (base, rest) => {
+    for (let k = rest.length; k > 0; k--) {
+      const q = rest.slice(0, k).join('/');
+      const r = exact(join(base, q + '.rs')) ?? exact(join(base, q + '/mod.rs'));
+      if (r != null) return r;
+    }
+    return null;
+  };
   const topDirs = new Set([...dirs.keys()].filter(d => d && !d.includes('/')));
   const exact = p => (p == null ? null : fileIds.get(p) ?? null);
   const pick = (list, info) => {
@@ -159,7 +221,6 @@ function makeResolver({ nodes, fileIds, dirs, dirFiles, csNs }) {
       s = s.slice(i + 1);
     }
   };
-  const filesIn = (d, ext) => (dirFiles.get(d) || []).filter(id => nodes[id].path.endsWith(ext)).slice(0, 12);
 
   const tryJs = b => {
     if (b == null) return null;
@@ -167,7 +228,8 @@ function makeResolver({ nodes, fileIds, dirs, dirFiles, csNs }) {
     let r = exact(b);
     if (r != null) return r;
     for (const e of JS_EXT) if ((r = exact(b + e)) != null) return r;
-    for (const e of JS_EXT) if ((r = exact(b + '/index' + e)) != null) return r;
+    const pre = b ? b + '/' : '';
+    for (const e of JS_EXT) if ((r = exact(pre + 'index' + e)) != null) return r;
     const m = /\.[mc]?jsx?$/.exec(b);
     if (m) {
       const s = b.slice(0, m.index);
@@ -206,19 +268,26 @@ function makeResolver({ nodes, fileIds, dirs, dirFiles, csNs }) {
       }
       for (let k = segs.length; k > 0; k--) {
         const q = segs.slice(0, k).join('/');
-        const r = suf(q + '.py', info) ?? suf(q + '/__init__.py', info);
-        if (r != null) return r;
+        for (const tail of [q + '.py', q + '/__init__.py']) {
+          const list = (suffix.get(tail) || []).filter(id => !hasFile(prefixOf(id, tail).replace(/\/$/, ''), '__init__.py'));
+          const r = pick(list.length ? list : null, info);
+          if (r != null) return r;
+        }
       }
       return segs[0];
     },
     go(spec) {
-      const d = dirMatch(spec);
-      if (d) {
-        const fs = filesIn(d, '.go').filter(id => !nodes[id].path.endsWith('_test.go'));
-        if (fs.length) return fs;
+      for (const { dir, mod } of goMods) {
+        if (spec === mod) return goPkg(dir);
+        if (spec.startsWith(mod + '/')) return goPkg(join(dir, spec.slice(mod.length + 1)));
       }
       const p = spec.split('/');
-      return p[0].includes('.') ? p.slice(0, 3).join('/') : spec;
+      if (!p[0].includes('.')) return spec;
+      if (!goMods.length) {
+        const d = dirMatch(spec);
+        if (d) { const fs = goPkg(d); if (fs) return fs; }
+      }
+      return p.slice(0, 3).join('/');
     },
     rs(spec, info) {
       if (spec.startsWith('extern:')) return spec.slice(7);
@@ -231,19 +300,31 @@ function makeResolver({ nodes, fileIds, dirs, dirFiles, csNs }) {
       const head = segs[0];
       if (!head) return null;
       if (head === 'std' || head === 'core' || head === 'alloc') return head;
-      const local = head === 'crate' || head === 'self' || head === 'super';
-      const rest = local ? segs.slice(1) : segs;
-      for (let k = rest.length; k > 0; k--) {
-        const q = rest.slice(0, k).join('/');
-        const r = suf(q + '.rs', info) ?? suf(q + '/mod.rs', info);
-        if (r != null) return r;
+      if (head === 'crate') {
+        const root = crateRoot(info.dir);
+        return root == null ? null : rsFind(root, segs.slice(1));
       }
-      return local ? null : head;
+      if (head === 'self' || head === 'super') {
+        let base = modDir(info), i = 0;
+        while (segs[i] === 'super' || segs[i] === 'self') {
+          if (segs[i] === 'super') { base = parentOf(base); if (base == null) return null; }
+          i++;
+        }
+        return rsFind(base, segs.slice(i));
+      }
+      const root = crateRoot(info.dir);
+      const r = root == null ? null : rsFind(root, segs);
+      return r ?? head;
     },
     c(spec, info) {
       const sys = spec[0] === '<';
       const s = sys ? spec.slice(1) : spec;
-      const r = exact(join(info.dir, s)) ?? suf(s.replace(/^(\.\.?\/)+/, ''), info);
+      let r = exact(join(info.dir, s));
+      if (r != null) return r;
+      const tail = s.replace(/^(\.\.?\/)+/, '');
+      let list = suffix.get(tail);
+      if (list && sys && !tail.includes('/')) list = list.filter(id => /(^|\/)(include|inc)\/$/.test(prefixOf(id, tail)) || prefixOf(id, tail) === '');
+      r = pick(list && list.length ? list : null, info);
       if (r != null) return r;
       return sys ? s.split('/')[0].replace(/\.(h|hpp|hh)$/, '') : null;
     },
@@ -259,12 +340,20 @@ function makeResolver({ nodes, fileIds, dirs, dirFiles, csNs }) {
           if (r != null) return r;
         }
       }
-      if (wild) {
-        const d = dirMatch(segs.join('/'));
-        if (d) {
-          const fs = (dirFiles.get(d) || []).slice(0, 12);
-          if (fs.length) return fs;
+      const pkg = (wild ? segs : segs.slice(0, -1)).join('/');
+      const ds = pkg ? dirSuffix.get(pkg) : null;
+      if (ds) {
+        if (wild) {
+          const fs = ds.flatMap(d => dirFiles.get(d) || []).slice(0, 60);
+          return fs.length ? fs : null;
         }
+        const cands = names.get(info.L.group)?.get(segs[segs.length - 1]);
+        if (cands) {
+          const set = new Set(ds);
+          const hits = [...new Set(cands.map(c => nodes[c].file).filter(f => set.has(nodes[nodes[f].parent].path)))];
+          if (hits.length) return hits;
+        }
+        return null;
       }
       return segs.slice(0, Math.min(2, segs.length)).join('.');
     },
@@ -284,7 +373,9 @@ function makeResolver({ nodes, fileIds, dirs, dirFiles, csNs }) {
         const b = join(info.dir, spec.slice(4));
         return b == null ? null : exact(b + '.rb') ?? exact(b);
       }
-      return suf(spec.replace(/\.rb$/, '') + '.rb', info) ?? spec.split('/')[0];
+      const tail = spec.replace(/\.rb$/, '') + '.rb';
+      const list = (suffix.get(tail) || []).filter(id => { const pre = prefixOf(id, tail); return pre === '' || /(^|\/)lib\/$/.test(pre); });
+      return pick(list.length ? list : null, info) ?? spec.split('/')[0];
     },
     php(spec, info) {
       if (/\/|\.php$/.test(spec)) {
@@ -358,6 +449,7 @@ export function analyze(files, rootName, progress = () => {}) {
   const sorted = files.slice().sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   const fileIds = new Map();
   const infos = [];
+  const goMods = [];
   for (const f of sorted) {
     if (fileIds.has(f.path)) continue;
     const i = f.path.lastIndexOf('/');
@@ -370,7 +462,12 @@ export function analyze(files, rootName, progress = () => {}) {
     dirFiles.get(dir).push(id);
     edges.push({ s: parent, t: id, type: 'contain' });
     if (L) infos.push({ id, f, L, dir });
+    if (f.path === 'go.mod' || f.path.endsWith('/go.mod')) {
+      const m = /^module\s+"?([^\s"]+)/m.exec(f.text);
+      if (m) goMods.push({ dir, mod: m[1] });
+    }
   }
+  goMods.sort((a, b) => b.mod.length - a.mod.length);
 
   const names = new Map();
   const localsOf = new Map();
@@ -386,6 +483,7 @@ export function analyze(files, rootName, progress = () => {}) {
     if (!L.defs || !masked) continue;
 
     const starts = lineStarts(masked);
+    if (masked.length > 20000 && starts.length * 400 < masked.length) continue;
     const lines = masked.split('\n');
     const defs = extractDefs(masked, L, starts, lines);
     const stack = [];
@@ -439,7 +537,7 @@ export function analyze(files, rootName, progress = () => {}) {
     Object.assign(info, { starts, owner, defPos, local });
   }
 
-  const resolve = makeResolver({ nodes, fileIds, dirs, dirFiles, csNs });
+  const resolve = makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, goMods, names });
   const libs = new Map();
   for (const info of infos) {
     info.imported = new Set();
