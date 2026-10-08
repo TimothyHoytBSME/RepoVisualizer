@@ -769,8 +769,7 @@ export function analyze(files, rootName, progress = () => {}) {
   const pkgOf = new Map();
   const csNs = new Set(), phpNs = new Map(), exMods = new Map(), fixtures = new Set();
   let done = 0;
-  for (const info of infos) {
-    if (++done % 50 === 0) progress({ phase: 'Reading code', done, total: infos.length });
+  const readFile = info => {
     const { f, L } = info;
     const text = L.prep ? L.prep(f.path, f.text) : f.text;
     let masked = L.syntax ? mask(text, L) : null;
@@ -788,10 +787,10 @@ export function analyze(files, rootName, progress = () => {}) {
     if (L.strip && masked) masked = masked.replace(L.strip, x => ' '.repeat(x.length));
     info.masked = masked;
     if (STR_TYPE[L.group]) info.raw = text;
-    if (!L.defs || !masked) continue;
+    if (!L.defs || !masked) return;
 
     const starts = lineStarts(masked);
-    if (masked.length > 20000 && starts.length * 400 < masked.length) continue;
+    if (masked.length > 20000 && starts.length * 400 < masked.length) return;
     const lines = masked.split('\n');
     const defs = extractDefs(masked, L, starts, lines);
     const stack = [];
@@ -1068,6 +1067,10 @@ export function analyze(files, rootName, progress = () => {}) {
     }
     Object.assign(info, { starts, owner, defPos, local });
     if (info.pkg != null) pkgOf.set(info.id, info.pkg);
+  };
+  for (const info of infos) {
+    if (++done % 50 === 0) progress({ phase: 'Reading code', done, total: infos.length });
+    readFile(info);
   }
 
   const resolve = makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, phpNs, exMods, goMods, names, swiftMods, crates, jsPkgs, jsAliases });
@@ -1254,9 +1257,7 @@ export function analyze(files, rootName, progress = () => {}) {
   done = 0;
   const testFile = new Map();
   let fileIdx = null;
-  for (const info of infos) {
-    if (++done % 50 === 0) progress({ phase: 'Linking', done, total: infos.length });
-    if (!info.owner || /\.gradle(?:\.kts)?$/.test(info.f.path)) continue;
+  const linkFile = info => {
     const { L, masked, starts, owner, defPos, local, id: fid } = info;
     const g = names.get(L.group);
     const fdir = nodes[fid].parent;
@@ -1745,6 +1746,11 @@ export function analyze(files, rootName, progress = () => {}) {
       }
     }
     for (const [k, type] of out) edges.push({ s: Math.floor(k / 4194304), t: k % 4194304, type });
+  };
+  for (const info of infos) {
+    if (++done % 50 === 0) progress({ phase: 'Linking', done, total: infos.length });
+    if (!info.owner || /\.gradle(?:\.kts)?$/.test(info.f.path)) continue;
+    linkFile(info);
   }
 
   keywords(infos, nodes, edges, add);
