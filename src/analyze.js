@@ -115,17 +115,18 @@ const SKIP_SAME = {
 
 function blockEnd(lines, d, skip, cont) {
   const I = indentOf(lines[d]);
-  let end = d, first = true;
+  let end = d, first = true, where = false;
   for (let k = d + 1; k < lines.length; k++) {
     const s = lines[k], t = s.trim();
     if (!t) continue;
     const ind = indentOf(s);
-    if (ind > I) { end = k; first = false; continue; }
+    if (ind > I) { end = k; if (!where) first = false; continue; }
     if (ind === I) {
       const c = t[0];
       if (cont && first && cont.test(t)) { end = k; cont = null; continue; }
+      if (first && /^where\b/.test(t)) { end = k; where = true; continue; }
       if (skip && skip.test(t)) continue;
-      if (c === '{' && first) { end = k; first = false; continue; }
+      if (c === '{' && first) { end = k; first = where = false; continue; }
       if (c === '}' || c === ')' || c === ']') {
         end = k;
         if (/(?:[{(\[:]|=>)$/.test(t)) { first = false; continue; }
@@ -804,6 +805,7 @@ export function analyze(files, rootName, progress = () => {}) {
         if (m[2] === 'require' || m[2] === 'import') continue;
         const ln = lineAt(starts, m.index + m[0].length - 1), di = fnAt[ln];
         const q = /[.>:][ \t]*$/.test(m[0].slice(0, m[0].lastIndexOf(m[2]))) ? '().' : '()';
+        if (q === '().') { const h = /=[ \t]*(?:(?:await|try[!?]?)[ \t]+)*\$?([A-Za-z_$][\w$]*)/.exec(m[0]); if (h) (info.callHead ??= new Map()).set(m[1], h[1]); }
         if (di >= 0) (defs[di].types ??= new Map()).set(m[1], q + m[2]);
         else if (indentOf(lines[ln]) === 0) (info.types ??= new Map()).set(m[1], q + m[2]);
       }
@@ -1365,6 +1367,11 @@ export function analyze(files, rootName, progress = () => {}) {
         let j = at - (prev === 46 ? 1 : 2);
         const q = masked.charCodeAt(j - 1);
         if (q === 63 || q === 33) j--;
+        else if (q === 62 && prev === 58) {
+          let d = 0, r = j - 1;
+          for (const lim = Math.max(0, j - 200); r >= lim; r--) { const c = masked.charCodeAt(r); if (c === 62) d++; else if (c === 60 && --d === 0) break; else if (c === 59 || c === 123 || c === 125) { r = -1; break; } }
+          if (r > 0 && d === 0) { j = r; if (masked.charCodeAt(j - 1) === 58 && masked.charCodeAt(j - 2) === 58) j -= 2; }
+        }
         let k = j;
         while (k > 0 && isW(masked.charCodeAt(k - 1))) k--;
         recv = masked.slice(k, j);
@@ -1460,6 +1467,7 @@ export function analyze(files, rootName, progress = () => {}) {
         if (selfT && selfT.startsWith('()')) {
           const q = selfT[2] === '.', call = selfT.slice(q ? 3 : 2);
           if (!typeNames.has(call) && !retOf.has(call) && !g.has(call) && !local.has(call) || !q && info.ext && info.ext.has(call) && !local.has(call)) continue;
+          if (q && info.ext && recv && info.callHead) { const h = info.callHead.get(recv); if (h && info.ext.has(h) && !local.has(h)) continue; }
           selfT = typeNames.has(call) ? call : headOf(retOf.get(call)) || null;
         }
         if (selfT) {
