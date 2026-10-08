@@ -247,7 +247,7 @@ function tyOf(s, n = 0) {
   return head;
 }
 const CALL_VARS = [
-  /\b(?:let|var|val|const|auto)[ \t]+([A-Za-z_$][\w$]*)[ \t]*=[ \t]*(?:try[!?]?[ \t]+|await[ \t]+)*(?:[\w$]+[ \t]*\.[ \t]*)*([A-Za-z_$][\w$]*)[ \t]*\(/g,
+  /\b(?:let|var|val|const|auto)[ \t]+([A-Za-z_$][\w$]*)[ \t]*=[ \t]*(?:try[!?]?[ \t]+|await[ \t]+)*(?:[\w$]+[ \t]*\.[ \t]*)*([A-Za-z_$][\w$]*)[ \t]*(?:<([A-Z][\w.]*)>)?[ \t]*\(/g,
   /\b([A-Za-z_]\w*)(?:[ \t]*,[ \t]*\w+)?[ \t]*:=[ \t]*(?:\w+\.)*([A-Za-z_]\w*)[ \t]*\(/g,
 ];
 const PHP_CALL = /\$(\w+)[ \t]*=[ \t]*(?:\$?\w+[ \t]*(?:->|::)[ \t]*)*(\w+)[ \t]*\(/g;
@@ -806,8 +806,9 @@ export function analyze(files, rootName, progress = () => {}) {
         const ln = lineAt(starts, m.index + m[0].length - 1), di = fnAt[ln];
         const q = /[.>:][ \t]*$/.test(m[0].slice(0, m[0].lastIndexOf(m[2]))) ? '().' : '()';
         if (q === '().') { const h = /=[ \t]*(?:(?:await|try[!?]?)[ \t]+)*\$?([A-Za-z_$][\w$]*)/.exec(m[0]); if (h) (info.callHead ??= new Map()).set(m[1], h[1]); }
-        if (di >= 0) (defs[di].types ??= new Map()).set(m[1], q + m[2]);
-        else if (indentOf(lines[ln]) === 0) (info.types ??= new Map()).set(m[1], q + m[2]);
+        const ty = m[3] ? lastSeg(m[3]) : q + m[2];
+        if (di >= 0) (defs[di].types ??= new Map()).set(m[1], ty);
+        else if (indentOf(lines[ln]) === 0) (info.types ??= new Map()).set(m[1], ty);
       }
     }
     for (const re of LOOPS[L.group] || []) {
@@ -1058,6 +1059,13 @@ export function analyze(files, rootName, progress = () => {}) {
     info.binds = null;
   }
   const infoOf = new Map(infos.map(i => [i.id, i]));
+  const lineCache = new Map();
+  const staticish = c => {
+    const n = nodes[c];
+    let ls = lineCache.get(n.file);
+    if (!ls) { const inf = infoOf.get(n.file); lineCache.set(n.file, (ls = inf && inf.masked ? inf.masked.split('\n') : [])); }
+    return /^[ \t]*(?:@\w+[ \t]+)*(?:(?:public|private|internal|fileprivate|open|final|indirect|nonisolated)[ \t]+)*(?:case|static|class[ \t]+(?:var|let|func))\b/.test(ls[n.line] || '');
+  };
   const impl = new Map();
   for (const info of infos) if (info.L.group === 'c' && !/\.(?:h|hh|hpp|hxx|h\+\+|cuh)$/i.test(info.f.path)) impl.set(info.f.path.replace(/\.[^./]+$/, ''), info.id);
   for (const info of infos) {
@@ -1179,6 +1187,7 @@ export function analyze(files, rootName, progress = () => {}) {
     const fdir = nodes[fid].parent;
     const nf = L.group === 'c' || L.group === 'py' ? notField : () => true, srcTest = TEST_PATH.test(nodes[fid].path), srcEx = EX_PATH.test(nodes[fid].path), exRoot = srcEx ? EX_ROOT.exec(nodes[fid].path)?.[0] : null;
     const out = new Map(), impCache = new Map(), strictBare = !LOOSE_BARE.has(L.group) && !/\.(?:kts?|scala|sc|groovy|gradle)$/.test(nodes[fid].path);
+    const multi = a => { const p = nodes[a[0]].parent; for (const c of a) if (nodes[c].parent !== p) return true; return false; };
     const bareOk = (c, src) => { const p = nodes[c].parent; if (p < 0 || !isClassy(nodes[p].kind) || isClassy(nodes[c].kind) || nodes[c].name === nodes[p].name) return true; for (let o = src; o >= 0; o = nodes[o].parent) if (o === p) return true; return false; };
     const idc = new Map();
     const countWords = !TEST_PATH.test(info.f.path);
@@ -1325,7 +1334,7 @@ export function analyze(files, rootName, progress = () => {}) {
         if (v) return v.startsWith('()') ? callT(v.slice(v[2] === '.' ? 3 : 2)) : v;
         return typeNames.has(w) ? w : null;
       }
-      return T ? fieldIn(T, w) : null;
+      return T ? fieldIn(T, w) || (/^(?:shared|default|instance|current|main|standard|sharedInstance|INSTANCE)$/.test(w) && typeNames.has(T) ? T : null) : null;
     };
     const keyTargets = (at, name) => {
       let d = 0, q = at - 1;
@@ -1457,6 +1466,18 @@ export function analyze(files, rootName, progress = () => {}) {
       }
       if (member && recv && info.ext && info.ext.has(recv) && !local.has(recv)) continue;
       if (member && recv === 'class' && L.group === 'jvm') continue;
+      if (member && recv === 'std' && L.group === 'c') continue;
+      if (member && L.group === 'swift' && !recv && !recvIdx && !recvCall && !chainT && prev === 46) {
+        let j = at - 1;
+        while (j > 0 && masked.charCodeAt(j - 1) <= 32) j--;
+        const b = masked.charCodeAt(j - 1);
+        if (!isW(b) && b !== 41 && b !== 93 && b !== 63 && b !== 33 && b !== 62) {
+          const hit = cands.filter(staticish);
+          if (!hit.length) continue;
+          targets = hit;
+          if (multi(hit)) type = 'ref';
+        }
+      }
       if (member && (recv || recvIdx || chainT)) {
         let selfT = chainT || (recvIdx ? headOf(elemOf(varType(recvIdx, src, ln, 0, true))) : SELF.has(recv) ? null : varType(recv, src, ln, 0));
         if (!selfT) for (let o = src; o !== fid && o >= 0; o = nodes[o].parent) {
@@ -1557,15 +1578,15 @@ export function analyze(files, rootName, progress = () => {}) {
             else if (exRoot) targets = targets.filter(c => { const r = EX_ROOT.exec(nodes[c].path); return !r || r[0] === exRoot; });
             if (!targets.length) continue;
             const t0 = targets.length === 1 && !member ? nodes[targets[0]].path : null, ad = t0 && AMBIENT.test(t0) ? t0.slice(0, t0.lastIndexOf('/') + 1) : null;
-            if (!(ad != null && nodes[fid].path.startsWith(ad)) && ((L.group === 'c' || (strictBare && !member) ? targets.length > 1 : cands.length > 1) || L.explicit || member)) type = 'ref';
+            if (!(ad != null && nodes[fid].path.startsWith(ad)) && (multi(L.group === 'c' || (strictBare && !member) ? targets : cands) || L.explicit || member)) type = 'ref';
           } else if (member && targets.length > 1) {
             const top = viaImport ? targets.filter(c => nodes[c].parent === nodes[c].file) : [];
-            if (top.length) targets = top; else type = 'ref';
+            if (top.length) targets = top; else if (multi(targets)) type = 'ref';
           }
         } else if (member && targets.length > 1) {
           targets = targets.filter(nf);
           if (!targets.length) continue;
-          type = 'ref';
+          if (multi(targets)) type = 'ref';
         }
       }
       if (L.group === 'rs') {

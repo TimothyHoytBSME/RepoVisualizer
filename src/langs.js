@@ -431,6 +431,7 @@ const SWIFT = {
     [R`\b(?:class|struct|enum|protocol|actor)[ \t]+(${N})`, 'class'],
     [R`\bextension[ \t]+(${N})`, 'extension'],
     [R`\bfunc[ \t]+(${N})`, 'function'],
+    [R`^[ \t]*(?:indirect[ \t]+)?case[ \t]+(${N})(?![ \t]*:)`, 'variable'],
     [R`^[ \t]*(?:(?:private|public|internal|fileprivate|open|static|final|lazy|weak|unowned|override|class|@\w+)[ \t]+)*(?:let|var)[ \t]+(${N})`, 'variable'],
     [R`\btypealias[ \t]+(${N})`, 'type'],
   ],
