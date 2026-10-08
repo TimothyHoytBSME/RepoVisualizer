@@ -1029,7 +1029,7 @@ export function analyze(files, rootName, progress = () => {}) {
           if (ty) { if (!ft) fieldTypes.set(p.node, (ft = new Map())); ft.set(d.name, ty); }
         } else if (d.types && (CTOR.test(d.name) || d.name === p.name)) {
           if (!ft) fieldTypes.set(p.node, (ft = new Map()));
-          for (const [k, v] of d.types) if (!ft.has(k)) ft.set(k, v);
+          for (const [k, v] of d.types) if (!ft.has(k) && v[0] !== '#') ft.set(k, v);
         }
       }
       if (ownerName) ownerOf.set(d.node, ownerName);
