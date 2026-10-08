@@ -62,6 +62,7 @@ const STR_TYPE = { jvm: 'String', swift: 'String', dart: 'String', cs: 'string',
 const PATHSEG = new Set(['rs', 'c', 'rb', 'php']);
 const DECLS = new Set(['c', 'jvm', 'cs']);
 const LOOSE_BARE = new Set(['rb', 'ex', 'gen', 'sh', 'lua', 'sql', 'md', 'html', 'css', 'text']);
+const MULTI_INIT = new Set(['js', 'jvm', 'swift', 'dart', 'cs', 'rs']);
 const UNTYPED_RET = new Set(['py', 'js', 'rb', 'php', 'lua']);
 const KEY_COLON = new Set(['js', 'rb', 'swift', 'dart', 'cs', 'php', 'ex']);
 const KEY_EQ = { py: /(?:^|[(,])[ \t]*$/, lua: /[{,][ \t]*$/ };
@@ -130,7 +131,7 @@ function blockEnd(lines, d, skip, cont) {
       if (c === '{' && first) { end = k; first = where = false; continue; }
       if (c === '}' || c === ')' || c === ']') {
         end = k;
-        if (/(?:[{(\[:]|=>)$/.test(t)) { first = false; continue; }
+        if (/(?:[{(\[:,]|=>)$/.test(t)) { first = false; continue; }
         break;
       }
       if (/^end\b/.test(t)) end = k;
@@ -237,16 +238,17 @@ function tyOf(s, n = 0) {
   if (s.endsWith('[]')) { const e = tyOf(s.slice(0, -2), n + 1); return e && '[]' + e; }
   if (s[0] === '(' || topSplit(s, '|').length > 1) return null;
   const b = s.search(/[<[]/);
-  if (b < 0) return lastSeg(s);
-  const head = lastSeg(s.slice(0, b));
-  if (!head || !s.endsWith(s[b] === '<' ? '>' : ']')) return head;
+  if (b < 0) return qualSeg(s);
+  const head = lastSeg(s.slice(0, b)), qh = qualSeg(s.slice(0, b));
+  if (!head || !s.endsWith(s[b] === '<' ? '>' : ']')) return qh;
   const args = topSplit(s.slice(b + 1, -1), ',').map(x => x.trim()).filter(x => x && !/^(?:None|null|undefined)$/.test(x));
   if (WRAP.has(head)) return args.length === 1 ? tyOf(args[0], n + 1) : null;
   if (head === 'Result' && args.length) return tyOf(args[0], n + 1);
   if (COLL.has(head)) { const e = args.length ? tyOf(args[0], n + 1) : null; return e ? '[]' + e : '[]'; }
-  if (args.length === 1) { const e = tyOf(args[0], n + 1); return e && !e.includes('[]') ? head + '[]' + e : head; }
-  return head;
+  if (args.length === 1) { const e = tyOf(args[0], n + 1); return e && !e.includes('[]') ? qh + '[]' + e : qh; }
+  return qh;
 }
+const qualSeg = s => { const m = s.match(/[A-Za-z_]\w*/g); if (!m) return null; const a = m[m.length - 2], b = m[m.length - 1]; return a && /^[A-Z]/.test(a) && /^[A-Z]/.test(b) && !/^[A-Z0-9_]+$/.test(a) ? a + '.' + b : b; };
 const CALL_VARS = [
   /\b(?:let|var|val|const|auto)[ \t]+([A-Za-z_$][\w$]*)[ \t]*=[ \t]*(?:try[!?]?[ \t]+|await[ \t]+)*(?:[\w$]+[ \t]*\.[ \t]*)*([A-Za-z_$][\w$]*)[ \t]*(?:<([A-Z][\w.]*)>)?[ \t]*\(/g,
   /\b([A-Za-z_]\w*)(?:[ \t]*,[ \t]*\w+)?[ \t]*:=[ \t]*(?:\w+\.)*([A-Za-z_]\w*)[ \t]*\(/g,
@@ -260,6 +262,24 @@ const RET = [
   /^[ \t]*:[ \t]*([^{=;\n]+)/,
 ];
 const RET_GO = /^\s*\(?\s*\*?(?:[a-z]\w*\.)?([A-Z]\w*)/;
+
+function exprEnd(t, from) {
+  let i = from, d = 0;
+  while (i < t.length && t.charCodeAt(i) <= 32) i++;
+  for (const lim = Math.min(t.length, from + 3000); i < lim; i++) {
+    const c = t.charCodeAt(i);
+    if (c === 40 || c === 91 || c === 123) d++;
+    else if (c === 41 || c === 93 || c === 125) { if (!d) return i; d--; }
+    else if (c === 59 && !d) return i;
+    else if (c === 10 && !d) {
+      let j = i + 1;
+      while (j < t.length && t.charCodeAt(j) <= 32) j++;
+      const n = t.charCodeAt(j), n2 = t.charCodeAt(j + 1);
+      if (!((n === 46 && n2 !== 46) || (n === 63 && n2 === 46) || (n === 33 && n2 === 46))) return i;
+    }
+  }
+  return -1;
+}
 
 function afterParams(t, from) {
   const i = t.indexOf('(', from);
@@ -830,6 +850,15 @@ export function analyze(files, rootName, progress = () => {}) {
         else if (indentOf(lines[ln]) === 0) (info.types ??= new Map()).set(m[1], tn);
       }
     }
+    if (MULTI_INIT.has(L.group)) for (const m of masked.matchAll(/\b(?:val|let|var|const|auto|final)[ \t]+(?:mut[ \t]+)?([A-Za-z_$][\w$]*)[ \t]*=(?![=>])/g)) {
+      const st = m.index + m[0].length, e = exprEnd(masked, st);
+      if (e < 0 || !masked.slice(st, e).includes('\n')) continue;
+      let j = e;
+      while (j > st && masked.charCodeAt(j - 1) <= 32) j--;
+      const ln = lineAt(starts, m.index), di = fnAt[ln];
+      if (di >= 0) { const tm = (defs[di].types ??= new Map()); if (!tm.has(m[1])) tm.set(m[1], '#' + j); }
+      else if (indentOf(lines[ln]) === 0 && !info.types?.has(m[1])) (info.types ??= new Map()).set(m[1], '#' + j);
+    }
     const owner = new Int32Array(lines.length).fill(info.id);
     const defPos = new Set();
     const local = new Map();
@@ -881,6 +910,7 @@ export function analyze(files, rootName, progress = () => {}) {
           if (!rt && L.group === 'go') { const m = RET_GO.exec(rest); if (m) rt = m[1]; }
         }
         if (!rt && L.paramLast) rt = tyOf(lines[d.line].slice(0, d.idx - starts[d.line]).split(/\s+/).filter(w => !FIELD_MODS.has(w)).join(' '));
+        if (rt && L.kw.has(rt)) rt = null;
         if (!rt && UNTYPED_RET.has(L.group) && d.end > d.line && d.end - d.line < 80) {
           const body = masked.slice(starts[d.line + 1], d.end + 1 < starts.length ? starts[d.end + 1] : masked.length), all = body.match(/\breturn\b/g);
           if (all) {
@@ -889,6 +919,11 @@ export function analyze(files, rootName, progress = () => {}) {
           }
         }
         if (L.group === 'py' && /^[ \t]*@(?:pytest\.)?fixture\b/.test(lines[d.line - 1] || '')) fixtures.add(d.name);
+        if (!rt && e > 0 && /^\s*=\s*(?:apply|also|this)\b/.test(masked.slice(e, e + 40))) rt = 'this';
+        if (!rt && d.end > d.line && d.end - d.line < 80) {
+          const body = masked.slice(starts[d.line + 1], d.end + 1 < starts.length ? starts[d.end + 1] : masked.length), all = body.match(/\breturn\b/g);
+          if (all && all.length === (body.match(/\breturn[ \t]+(?:this|self)\b[ \t]*;?[ \t]*$/gm) || []).length) rt = 'this';
+        }
         const cls = p && isClassy(p.kind) ? p.name : ownerName;
         if (rt && cls && /^(?:self|Self|this|static)$/.test(rt)) retNode.set(d.node, cls);
         else if (rt && !/^(?:void|Unit|None|Void|[A-Z]\d?)$/.test(rt)) retNode.set(d.node, rt);
@@ -915,6 +950,7 @@ export function analyze(files, rootName, progress = () => {}) {
           const after = /^[ \t]*[?!]?[ \t]*:[ \t]*([^=;\n{,)]+)/.exec(ln.slice(col + d.name.length));
           let ty = after ? tyOf(after[1]) : null;
           if (!ty && L.paramLast) ty = tyOf(ln.slice(0, col).split(/\s+/).filter(w => !FIELD_MODS.has(w)).join(' '));
+          if (!ty) { const im = /^[ \t]*=[ \t]*(?:new[ \t]+)?(?:([A-Z][\w.]*)|([a-z_]\w*))[ \t]*(?:<[^<>\n]*>)?[ \t]*\(/.exec(ln.slice(col + d.name.length)); if (im) ty = im[1] ? tyOf(im[1]) : '()' + im[2]; }
           if (ty) { if (!ft) fieldTypes.set(p.node, (ft = new Map())); ft.set(d.name, ty); }
         } else if (d.types && (CTOR.test(d.name) || d.name === p.name)) {
           if (!ft) fieldTypes.set(p.node, (ft = new Map()));
@@ -1109,6 +1145,22 @@ export function analyze(files, rootName, progress = () => {}) {
     const a = classByName.get(n.name);
     if (a) a.push(n.id); else classByName.set(n.name, [n.id]);
   }
+  const qn = c => { let q = nodes[c].name; for (let p = nodes[c].parent; p >= 0 && isClassy(nodes[p].kind); p = nodes[p].parent) q = nodes[p].name + '.' + q; return q; };
+  for (const n of nodes) if (isClassy(n.kind) && n.parent >= 0 && isClassy(nodes[n.parent].kind) && !n.name.includes('.')) {
+    const q = qn(n.id), q2 = nodes[n.parent].name + '.' + n.name;
+    for (const k of q === q2 ? [q] : [q, q2]) {
+      const a = classByName.get(k);
+      typeNames.add(k);
+      if (a) a.push(n.id); else classByName.set(k, [n.id]);
+    }
+  }
+  const fixT = v => typeof v === 'string' && v.includes('.') ? v.replace(/([A-Za-z_]\w*)\.([A-Z]\w*)/g, (m, a, b) => classByName.has(m) ? m : b) : v;
+  const fixM = m => { if (m) for (const [k, v] of m) if (typeof v === 'string' && v.includes('.')) m.set(k, fixT(v)); };
+  fixM(retNode); fixM(retOf);
+  for (const m of fieldTypes.values()) fixM(m);
+  for (const m of typesOf.values()) fixM(m);
+  for (const [k, a] of closureOf) closureOf.set(k, a.map(fixT));
+  for (const info of infos) { fixM(info.types); if (info.scopes) for (const sc of info.scopes) fixM(sc.types); }
   const preferImported = (list, info) => {
     if (list.length < 2) return list;
     const near = list.filter(c => nodes[c].file === info.id || info.imported.has(nodes[c].file));
@@ -1126,6 +1178,7 @@ export function analyze(files, rootName, progress = () => {}) {
     if (cp && n.kind !== 'keyword') {
       addIdx(byClass, cp.id, n.name, n.id);
       addIdx(byType, cp.name, n.name, n.id);
+      if (cp.parent >= 0 && isClassy(nodes[cp.parent].kind)) addIdx(byType, qn(cp.id), n.name, n.id);
       const dot = cp.name.lastIndexOf('.');
       if (dot >= 0) addIdx(byType, cp.name.slice(dot + 1), n.name, n.id);
     }
@@ -1184,6 +1237,7 @@ export function analyze(files, rootName, progress = () => {}) {
 
   const gvt = new Map();
   for (const info of infos) if (info.types && GLOBAL_VARS.has(info.L.group)) for (const [k, v] of info.types) {
+    if (v[0] === '#') continue;
     const key = info.L.group + ':' + k;
     gvt.set(key, gvt.has(key) && gvt.get(key) !== v ? null : v);
   }
@@ -1254,11 +1308,12 @@ export function analyze(files, rootName, progress = () => {}) {
         }
       }
       if (!t && L.group === 'py' && fixtures.has(v)) for (let o = src; o !== fid && o >= 0; o = nodes[o].parent) if (localsOf.get(o)?.has(v)) { t = '()' + v; break; }
+      if (t && t[0] === '#') { if (hashDepth < 3) { hashDepth++; try { t = exprType(+t.slice(1), 0, src); } finally { hashDepth--; } } else t = null; }
       if (t && t[0] === '@') t = depth < 3 && t.slice(1) !== v ? elemOf(varType(t.slice(1), src, ln, depth + 1, true)) : null;
       if (!raw) t = headOf(t);
       return t;
     };
-    let cDepth = 0, curAt = Infinity;
+    let cDepth = 0, curAt = Infinity, hashDepth = 0;
     const closureArg = (j, i, src) => {
       if (cDepth > 2) return null;
       cDepth++;
@@ -1297,7 +1352,13 @@ export function analyze(files, rootName, progress = () => {}) {
       for (const k of classes(T, fid)) for (const h of memberIn(k, name) || []) c.add(h);
       const cnt = new Map();
       let out = null, n = 0;
-      for (const h of c) { const r = retNode.get(h); if (!r) continue; n++; cnt.set(r, (cnt.get(r) || 0) + 1); if (!out || cnt.get(r) > cnt.get(out)) out = r; }
+      for (const h of c) {
+        let r = retNode.get(h);
+        if (!r) continue;
+        const p = nodes[h].parent;
+        if (p >= 0 && isClassy(nodes[p].kind) && !r.includes('.')) { const pq = qn(p); if (r === nodes[p].name) r = pq; else if (classByName.has(pq + '.' + r)) r = pq + '.' + r; }
+        n++; cnt.set(r, (cnt.get(r) || 0) + 1); if (!out || cnt.get(r) > cnt.get(out)) out = r;
+      }
       if (out && cnt.get(out) < n * 0.75) out = null;
       if (!out && name === 'new' && typeNames.has(T)) return T;
       return out ? headOf(out) : null;
@@ -1332,7 +1393,7 @@ export function analyze(files, rootName, progress = () => {}) {
         while (e > 0 && isW(masked.charCodeAt(e - 1))) e--;
         if (e === ne) return null;
         const name = masked.slice(e, ne), T = recvTypeAt(e, depth, src);
-        const r = T === undefined ? callT(name) : T ? retIn(T, name) || (typeNames.has(name) && /^[A-Z]/.test(name) ? name : null) : null;
+        const r = T === undefined ? callT(name) : T ? retIn(T, name) || (classByName.has(headOf(T) + '.' + name) ? headOf(T) + '.' + name : typeNames.has(name) && /^[A-Z]/.test(name) ? name : null) : null;
         return r || (targ && !targ.includes('[]') && typeNames.has(targ) ? targ : null);
       }
       if (!isW(c)) return null;
