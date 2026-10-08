@@ -211,6 +211,7 @@ function refresh() {
     const p = shortestPath(app.view, app.sel, app.path);
     if (p && p.length > 1) { app.nb = withPath(app.view, app.nb, p); app.pathNodes = p; } else app.path = null;
   }
+  if (renderer) { const vr = visibleRect(); app.lay.aspect = (vr.bottom - vr.top) / Math.max(1, renderer.W); }
   app.lay.set(app.nb, app.sel, cam.x, cam.y);
   if (app.marks) setMarks(search.value.trim().toLowerCase());
   renderer?.setLabelOrder(app.nb, app.style.rad);
@@ -383,10 +384,10 @@ function pick(sx, sy, slop) {
 function zoomToSel() {
   if (!app.nb || !renderer) return;
   const { x, y } = app.lay, c = app.sel;
-  let r = 0;
-  for (const i of app.nb.nodes) r = Math.max(r, Math.hypot(x[i] - x[c], y[i] - y[c]));
+  let rx = 0, ry = 0;
+  for (const i of app.nb.nodes) { rx = Math.max(rx, Math.abs(x[i] - x[c])); ry = Math.max(ry, Math.abs(y[i] - y[c])); }
   const H = renderer.H - Math.abs(viewOffset()) * 2;
-  const s = clamp((Math.min(renderer.W, H) / 2 - 40) / Math.max(r, 1), 0.03, 1.6);
+  const s = clamp(Math.min((renderer.W / 2 - 40) / Math.max(rx, 1), (H / 2 - 40) / Math.max(ry, 1)), 0.03, 1.6);
   if (app.cam.scale < s * 0.7) { app.goto = { scale: s }; app.follow = true; app.dirty = true; }
 }
 

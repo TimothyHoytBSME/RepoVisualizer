@@ -32,6 +32,7 @@ self.onmessage = e => {
     }
     if (!lay.from) lay.from = new Int32Array(lay.x.length);
     for (let k = 0; k < nodes.length; k++) lay.from[nodes[k]] = m.par[k];
+    lay.aspect = m.aspect || 1;
     lay.set({ nodes, depth: m.depth, edges: m.edges, from: lay.from }, m.sel);
     loop();
   }

@@ -7,6 +7,7 @@ export class LayoutHost {
     this.y = new Float32Array(view.n);
     this.placed = new Uint8Array(view.n);
     this.alpha = 0;
+    this.aspect = 1;
     this.seq = 0;
     this.fresh = false;
     this.local = null;
@@ -52,6 +53,7 @@ export class LayoutHost {
     this.nb = nb;
     this.sel = sel;
     if (this.local) {
+      this.local.aspect = this.aspect;
       this.local.set(nb, sel, hx, hy);
       this.alpha = this.local.alpha;
       this.onFresh?.();
@@ -67,7 +69,7 @@ export class LayoutHost {
     this.alpha = 0.9;
     const par = new Int32Array(m);
     for (let k = 0; k < m; k++) par[k] = nb.from ? nb.from[nb.nodes[k]] : -1;
-    this.w.postMessage({ type: 'set', seq: this.seq, nodes: nb.nodes, depth: nb.depth, edges: nb.edges, sel, pos, par }, [pos.buffer, par.buffer]);
+    this.w.postMessage({ type: 'set', seq: this.seq, nodes: nb.nodes, depth: nb.depth, edges: nb.edges, sel, pos, par, aspect: this.aspect }, [pos.buffer, par.buffer]);
   }
 
   run(budget) {

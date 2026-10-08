@@ -32,6 +32,8 @@ export class Layout {
     this.alo = new Float32Array(n);
     this.ahi = new Float32Array(n);
     this.alpha = 0;
+    this.aspect = 1;
+    this.ax = this.ay = 1;
     this.cap = 0;
     this.stack = new Int32Array(2048);
   }
@@ -71,6 +73,9 @@ export class Layout {
       this.rOut[d] = outer;
       prev = outer;
     }
+    const asp = Math.min(1.8, Math.max(0.6, this.aspect || 1));
+    this.ay = Math.sqrt(asp);
+    this.ax = 1 / this.ay;
     this.sectors(nb, sel);
     const m = nb.nodes.length;
     this.theta2 = m > 3000 ? 1.44 : 0.81;
@@ -94,8 +99,8 @@ export class Layout {
       const u = order[i], p = u === sel ? -1 : from[u];
       if (p >= 0 && w.has(p)) w.set(p, w.get(p) + w.get(u));
     }
-    const sx = x[sel], sy = y[sel];
-    const ang = u => Math.atan2(y[u] - sy, x[u] - sx);
+    const sx = x[sel], sy = y[sel], { ax, ay } = this;
+    const ang = u => Math.atan2((y[u] - sy) / ay, (x[u] - sx) / ax);
     const split = (u, lo, hi) => {
       const k = kids.get(u);
       if (!k) return;
@@ -127,9 +132,10 @@ export class Layout {
   get done() { return this.alpha < MIN_ALPHA; }
 
   tick() {
-    const { x, y, vx, vy, la, lb, ls, lbias, ld, sel, rIn, rOut, alo, ahi, useSec } = this;
+    const { x, y, vx, vy, la, lb, ls, lbias, ld, sel, rIn, rOut, alo, ahi, useSec, ax, ay } = this;
     const { nodes, depth } = this.nb;
-    const alpha = this.alpha;
+    const alpha = this.alpha, warp = ax !== 1;
+    if (warp) for (let k = 0; k < nodes.length; k++) { const i = nodes[k]; x[i] /= ax; y[i] /= ay; vx[i] /= ax; vy[i] /= ay; }
     for (let i = 0; i < la.length; i++) {
       const a = la[i], b = lb[i];
       let dx = x[b] + vx[b] - x[a] - vx[a], dy = y[b] + vy[b] - y[a] - vy[a];
@@ -170,6 +176,7 @@ export class Layout {
       vx[i] *= 0.6; vy[i] *= 0.6;
       x[i] += vx[i]; y[i] += vy[i];
     }
+    if (warp) for (let k = 0; k < nodes.length; k++) { const i = nodes[k]; x[i] *= ax; y[i] *= ay; vx[i] *= ax; vy[i] *= ay; }
     this.alpha -= this.alpha * this.decay;
   }
 
