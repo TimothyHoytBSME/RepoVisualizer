@@ -569,7 +569,6 @@ const GEN_DEFS = [
 const gen = (exts, syntax) => ({ group: 'gen', exts, syntax: { quotes: '"', triple: true, multi: '"', ...syntax }, defs: GEN_DEFS });
 const GENS = [
   gen('elm purs', { line: ['--'], block: [['{-', '-}']] }),
-  gen('ml mli', { block: [['(*', '*)']] }),
   {
     ...gen('ex exs', { line: ['#'] }), group: 'ex', bareVars: true, resolve: 'ex',
     id: /[A-Z]\w*(?:\.[A-Z]\w*)*|[A-Za-z_]\w*[?!]?/g,
@@ -624,6 +623,24 @@ const HS = {
   binds: raw => [...raw.matchAll(/^import[ \t]+(?:safe[ \t]+)?(?:qualified[ \t]+)?(?:"[^"\n]*"[ \t]+)?([A-Z][\w.]*)[^\n]*?\bas[ \t]+([A-Z][\w.]*)/gm)].map(x => [x[2], x[1], true]),
 };
 
+const ML = {
+  group: 'ml', exts: 'ml mli', resolve: 'ml',
+  syntax: { block: [['(*', '*)']], quotes: '"' },
+  id: /[A-Za-z_][\w']*/g,
+  kw: kw(`and as assert begin class constraint do done downto else end exception external false for fun function functor if in include inherit initializer lazy let match method module mutable new nonrec object of open or private rec sig struct then to true try type val virtual when while with unit int string bool float char list option array ref result Some None Ok Error raise failwith ignore fst snd not print_endline printf sprintf List Array String Printf Option Result Hashtbl Map Set Fun Format Buffer Bytes Char Int Float Bool Seq Stdlib Sys`),
+  defs: [
+    [R`^[ \t]*(?:let|and)[ \t]+(?:rec[ \t]+)?(?:inline[ \t]+)?([a-z_][\w']*)`, 'function', (t, i) => { const e = t.indexOf('\n', i); return !/\bin[ \t]*$/.test(t.slice(i, e < 0 ? t.length : e)); }],
+    [R`^[ \t]*(?:let|and)[*+]?[ \t]+(?:rec[ \t]+)?([a-z_][\w']*)[^\n]*\bin[ \t]*$`, 'variable'],
+    [R`^[ \t]*let[*+][ \t]+([a-z_][\w']*)`, 'variable'],
+    [R`^[ \t]*(?:val|external)[ \t]+([a-z_][\w']*)[ \t]*:`, 'function'],
+    [R`^[ \t]*(?:type|and)[ \t]+(?:nonrec[ \t]+)?(?:'\w+[ \t]+|\([^)\n]*\)[ \t]+)?([a-z_][\w']*)[ \t]*(?:=|\n|$)`, 'type'],
+    [R`^[ \t]*module[ \t]+(?:type[ \t]+)?(?:rec[ \t]+)?([A-Z][\w']*)`, 'class'],
+    [R`^[ \t]*exception[ \t]+([A-Z][\w']*)`, 'type'],
+  ],
+  imports: (raw, m) => grab([], /^[ \t]*(?:open!?|include)[ \t]+([A-Z][\w']*)/gm, raw, m),
+  strip: /^[ \t]*(?:open!?|include)[ \t]+[A-Z][\w'.]*/gm,
+};
+
 const MD = {
   group: 'md', exts: 'md mdx markdown rst', linkType: 'ref', resolve: 'md',
   imports: raw => grab(grab([], /\]\(\s*<?([^)\s>]+)/g, raw), /^\s*\[[^\]]+\]:\s*<?(\S+?)>?\s*$/gm, raw),
@@ -638,7 +655,7 @@ const TEXT = {
   names: ['makefile', 'dockerfile', 'license', 'readme', 'procfile', 'justfile', 'containerfile', 'go.mod'],
 };
 
-export const LANGS = [JS, PY, GO, RS, C, JVM, CS, SWIFT, DART, RB, PHP, LUA, SH, SQL, HS, ...GENS, MD, HTML, CSS, TEXT];
+export const LANGS = [JS, PY, GO, RS, C, JVM, CS, SWIFT, DART, RB, PHP, LUA, SH, SQL, HS, ML, ...GENS, MD, HTML, CSS, TEXT];
 const BY_EXT = new Map(), BY_NAME = new Map();
 for (const L of LANGS) {
   for (const e of L.exts.split(' ')) BY_EXT.set(e, L);

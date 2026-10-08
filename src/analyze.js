@@ -344,6 +344,10 @@ const VAR_TYPES = [
 ];
 
 function params(t, from, L, types) {
+  if (L.group === 'ml' || L.group === 'hs') {
+    const e = t.indexOf('\n', from), head = t.slice(from, e < 0 ? t.length : e).split(/=|->/)[0];
+    return (head.match(/[a-z_][\w']*/g) || []).filter(w => !L.kw.has(w));
+  }
   const i = t.indexOf('(', from);
   if (i < 0 || i - from > 120 || /[{};]/.test(t.slice(from, i))) return [];
   let j = i + 1, depth = 1;
@@ -434,7 +438,8 @@ function looseJSON(t) {
   try { return JSON.parse(o.replace(/,(\s*[}\]])/g, '$1')); } catch { return null; }
 }
 
-function makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, phpNs, exMods, goMods, names, swiftMods, crates, jsPkgs, jsAliases }) {
+let mlNear = null;
+function makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, phpNs, exMods, mlMods, goMods, names, swiftMods, crates, jsPkgs, jsAliases }) {
   const suffix = suffixMap(fileIds);
   const csFirst = new Set([...csNs].map(n => n.split('.')[0]));
   const dirSuffix = suffixMap([...dirs.keys()].map(d => [d, d]));
@@ -460,6 +465,21 @@ function makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, phpNs, exMods, goM
   };
   const topDirs = new Set([...dirs.keys()].filter(d => d && !d.includes('/')));
   const exact = p => (p == null ? null : fileIds.get(p) ?? null);
+  const nearMl = (mod, from) => {
+    const l = mlMods.get(mod);
+    if (!l) return null;
+    const fp = nodes[from].path;
+    let best = null, bl = -1;
+    for (const id of l) {
+      if (/\.mli$/.test(nodes[id].path) && l.some(o => o !== id && nodes[o].path === nodes[id].path.slice(0, -1))) continue;
+      const p = nodes[id].path;
+      let k = 0;
+      while (k < p.length && k < fp.length && p[k] === fp[k]) k++;
+      if (k > bl) { bl = k; best = id; }
+    }
+    return best;
+  };
+  mlNear = nearMl;
   const pick = (list, info) => {
     if (!list) return null;
     if (list.length === 1) return list[0];
@@ -689,6 +709,9 @@ function makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, phpNs, exMods, goM
       }
       return n > 1 ? segs[0] : null;
     },
+    ml(spec, info) {
+      return nearMl(spec, info.id) ?? spec;
+    },
     hs(spec, info) {
       const p = spec.replace(/\./g, '/');
       return suf(p + '.hs', info) ?? suf(p + '.lhs', info) ?? spec.split('.').slice(0, 2).join('.');
@@ -802,7 +825,7 @@ export function analyze(files, rootName, progress = () => {}) {
   const localsOf = new Map();
   const macros = new Set(), privC = new Set(), aliasOf = new Map(), retNode = new Map(), closureOf = new Map(), ownerOf = new Map(), selfOf = new Map(), memberish = new Set(), typesOf = new Map(), fieldTypes = new Map(), retOf = new Map(), basesOf = new Map();
   const pkgOf = new Map();
-  const csNs = new Set(), phpNs = new Map(), exMods = new Map(), fixtures = new Set();
+  const csNs = new Set(), phpNs = new Map(), exMods = new Map(), mlMods = new Map(), fixtures = new Set();
   let done = 0;
   const readFile = info => {
     const { f, L } = info;
@@ -817,6 +840,7 @@ export function analyze(files, rootName, progress = () => {}) {
       if (pm) info.pkg = pm[1];
     }
     if (L.group === 'cs' && masked) for (const m of masked.matchAll(/\bnamespace[ \t]+([\w.]+)/g)) csNs.add(m[1]);
+    if (L.group === 'ml') { const b = nodes[info.id].name.replace(/\.mli?$/, ''), k = b[0].toUpperCase() + b.slice(1), l = mlMods.get(k); if (!l) mlMods.set(k, [info.id]); else if (!l.includes(info.id)) l.push(info.id); }
     if (L.group === 'ex' && masked) { for (const m of masked.matchAll(/\bdefmodule[ \t]+([A-Z][\w.]*)/g)) if (!exMods.has(m[1])) exMods.set(m[1], info.id); if (L.aliases) info.alias = L.aliases(text); }
     if (L.group === 'php' && masked) { const m = /^namespace[ \t]+([\w\\]+)/m.exec(masked); if (m) { const l = phpNs.get(m[1]); if (l) l.push(info.id); else phpNs.set(m[1], [info.id]); } }
     if (L.strip && masked) masked = masked.replace(L.strip, x => ' '.repeat(x.length));
@@ -1108,7 +1132,7 @@ export function analyze(files, rootName, progress = () => {}) {
     readFile(info);
   }
 
-  const resolve = makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, phpNs, exMods, goMods, names, swiftMods, crates, jsPkgs, jsAliases });
+  const resolve = makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, phpNs, exMods, mlMods, goMods, names, swiftMods, crates, jsPkgs, jsAliases });
   const libs = new Map();
   for (const info of infos) {
     info.imported = new Set();
@@ -1293,6 +1317,10 @@ export function analyze(files, rootName, progress = () => {}) {
   done = 0;
   const testFile = new Map();
   let fileIdx = null;
+  const inFile = (f, name) => {
+    if (!fileIdx) { fileIdx = new Map(); for (const n of nodes) if (n.kind !== 'file' && n.kind !== 'dir' && n.file >= 0) { let m = fileIdx.get(n.file); if (!m) fileIdx.set(n.file, (m = new Map())); const l = m.get(n.name); if (l) l.push(n.id); else m.set(n.name, [n.id]); } }
+    return fileIdx.get(f)?.get(name);
+  };
   const linkFile = info => {
     const { L, masked, starts, owner, defPos, local, id: fid } = info;
     const g = names.get(L.group);
@@ -1496,6 +1524,16 @@ export function analyze(files, rootName, progress = () => {}) {
       if (countWords && !L.kw.has(name)) idc.set(name, (idc.get(name) || 0) + 1);
       let look = name;
       if (info.alias && name.charCodeAt(0) < 91) { const d = name.indexOf('.'), h = info.alias.get(d < 0 ? name : name.slice(0, d)); if (h) look = d < 0 ? h : h + name.slice(d); }
+      if (L.group === 'ml' && name.charCodeAt(0) < 91 && masked.charCodeAt(m.index + name.length) === 46) {
+        const f = mlNear(name, fid);
+        if (f != null && f !== fid) {
+          while (ln + 1 < starts.length && starts[ln + 1] <= m.index) ln++;
+          const k = owner[ln] * 4194304 + f;
+          if (!out.has(k)) out.set(k, 'dep');
+        }
+        if (f != null) continue;
+      }
+      if (L.group === 'ml' && name.charCodeAt(0) < 91 && masked.charCodeAt(m.index + name.length) !== 46 && masked.charCodeAt(m.index - 1) !== 46) continue;
       const cands = g.get(look) || local.get(look);
       if (!cands) continue;
       if (info.ext && info.ext.has(name) && !local.has(name)) continue;
@@ -1614,11 +1652,17 @@ export function analyze(files, rootName, progress = () => {}) {
       if (member && recv && !keyHit && info.modBind) {
         const mf = info.modBind.get(recv);
         if (mf !== undefined) {
-          if (!fileIdx) { fileIdx = new Map(); for (const n of nodes) if (n.kind !== 'file' && n.kind !== 'dir' && n.file >= 0) { let m = fileIdx.get(n.file); if (!m) fileIdx.set(n.file, (m = new Map())); const l = m.get(n.name); if (l) l.push(n.id); else m.set(n.name, [n.id]); } }
-          const hit = fileIdx.get(mf)?.get(name);
+          const hit = inFile(mf, name);
           if (hit) keyHit = hit;
           else if (L.group === 'lua') continue;
         }
+      }
+      if (L.group === 'ml' && ((member && !(recv && recv.charCodeAt(0) < 91)) || prev === 126 || prev === 63)) continue;
+      if (member && recv && !keyHit && L.group === 'ml' && recv.charCodeAt(0) < 91) {
+        const f = mlNear(recv, fid), hit = new Set(f != null ? inFile(f, name) || [] : []);
+        for (const c of classes(recv, fid)) for (const h of memberIn(c, name) || []) hit.add(h);
+        if (hit.size) keyHit = [...hit];
+        else continue;
       }
       if (member && recv && !keyHit && L.group === 'lua' && (recv === 'self' || local.get(recv)?.some(c => nodes[c].file === fid && nodes[c].parent === fid))) {
         const hit = local.get(name)?.filter(c => nodes[c].file === fid);
