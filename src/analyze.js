@@ -79,6 +79,7 @@ const isStd = (name, group) => {
     case 'jvm': return /^(?:java|javax|kotlin|scala|groovy|jdk|sun)(?:\.|$)/.test(name);
     case 'cs': return /^System(?:\.|$)/.test(name);
     case 'dart': return name.startsWith('dart:');
+    case 'hs': return /^(?:Prelude|GHC|Foreign|Numeric|Debug|Unsafe|Type|System\.(?:IO|Exit|Environment|Info|Mem|Timeout|CPUTime)|Control\.(?:Monad|Applicative|Exception|Concurrent|Arrow|Category|DeepSeq)|Text\.(?:Printf|Read|Show)|Data\.(?:List|Maybe|Char|Either|Function|Functor|Foldable|Traversable|IORef|STRef|Word|Int|Bits|Ord|Monoid|Semigroup|Kind|Proxy|Coerce|Void|Typeable|Data|String|Tuple|Ratio|Complex|Fixed|Dynamic|Unique|Version|Bifunctor|Bool|Eq|Type|Array))(?:\.|$)/.test(name);
     case 'js': return name.startsWith('node:') || STD.js.has(name.split('/')[0]);
     default: return !!STD[group]?.has(name.split(/[./]/)[0]);
   }
@@ -214,6 +215,15 @@ function extractDefs(masked, L, starts, lines) {
       while (e + 1 < lines.length && /\\[ \t]*$/.test(lines[e])) e++;
       d.end = e;
     } else d.end = d.kind === 'field' || (L.group === 'c' && d.kind === 'type') ? d.line : blockEnd(lines, d.line, skip, d.kind === 'class' ? L.head : null);
+    if (L.sameName && isFn(d.kind) && indentOf(lines[d.line]) === 0) {
+      const re = new RegExp(`^${d.name}(?![\\w'])`);
+      for (let k = d.end + 1; k < lines.length; k++) {
+        const t = lines[k];
+        if (!t.trim()) continue;
+        if (re.test(t)) { d.end = blockEnd(lines, k, skip, null); k = d.end; continue; }
+        break;
+      }
+    }
   }
   return found;
 }
@@ -678,6 +688,10 @@ function makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, phpNs, exMods, goM
         if (r != null) return r;
       }
       return n > 1 ? segs[0] : null;
+    },
+    hs(spec, info) {
+      const p = spec.replace(/\./g, '/');
+      return suf(p + '.hs', info) ?? suf(p + '.lhs', info) ?? spec.split('.').slice(0, 2).join('.');
     },
     ex(spec) {
       return exMods.get(spec) ?? spec.split('.')[0];

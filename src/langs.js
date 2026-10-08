@@ -568,7 +568,7 @@ const GEN_DEFS = [
 ];
 const gen = (exts, syntax) => ({ group: 'gen', exts, syntax: { quotes: '"', triple: true, multi: '"', ...syntax }, defs: GEN_DEFS });
 const GENS = [
-  gen('hs elm purs', { line: ['--'], block: [['{-', '-}']] }),
+  gen('elm purs', { line: ['--'], block: [['{-', '-}']] }),
   gen('ml mli', { block: [['(*', '*)']] }),
   {
     ...gen('ex exs', { line: ['#'] }), group: 'ex', bareVars: true, resolve: 'ex',
@@ -597,6 +597,33 @@ const GENS = [
   gen('zig v sol fs fsx wgsl proto graphql gql d', { line: ['//'], block: [['/*', '*/']] }),
 ];
 
+const HS = {
+  group: 'hs', exts: 'hs lhs', explicit: true, resolve: 'hs',
+  syntax: { line: ['--'], block: [['{-', '-}']], quotes: '"' },
+  id: /[A-Za-z_][\w']*/g,
+  kw: kw(`case class data default deriving do else foreign if import in infix infixl infixr instance let module newtype of then type where qualified as hiding forall family pattern Just Nothing True False Right Left IO Maybe Either Int Integer String Bool Char Double Float Word Show Eq Ord Monad Functor Applicative Monoid Semigroup return pure fmap map mapM mapM_ show error undefined otherwise id const flip not null length head tail fst snd`),
+  defs: [
+    [R`^(?:data|newtype)[ \t]+(?:family[ \t]+|instance[ \t]+)?([A-Z][\w']*)`, 'class'],
+    [R`^type[ \t]+(?:family[ \t]+|instance[ \t]+)?([A-Z][\w']*)`, 'type'],
+    [R`^class[ \t]+(?:[^\n=]*=>[ \t]*)?([A-Z][\w']*)`, 'class'],
+  ],
+  extra: t => {
+    const out = [], seen = new Set();
+    for (const m of t.matchAll(/^([a-z_][\w']*)[ \t]*::/gm)) if (!seen.has(m[1])) { seen.add(m[1]); out.push({ name: m[1], idx: m.index, kind: 'function' }); }
+    for (const m of t.matchAll(/^([a-z_][\w']*)\b[^\n=|:]*(?:=|\|)/gm)) if (!seen.has(m[1]) && !/^(?:import|module|infix[lr]?|instance|deriving|default|foreign|where|let|in)$/.test(m[1])) { seen.add(m[1]); out.push({ name: m[1], idx: m.index, kind: 'function' }); }
+    let cls = false, pos = 0;
+    for (const line of t.split('\n')) {
+      if (/^\S/.test(line)) cls = /^class\b/.test(line);
+      else if (cls) { const m = /^[ \t]+([a-z_][\w']*)[ \t]*::/.exec(line); if (m) out.push({ name: m[1], idx: pos + m[0].indexOf(m[1]), kind: 'function' }); }
+      pos += line.length + 1;
+    }
+    return out;
+  },
+  sameName: true,
+  imports: (raw, m) => grab([], /^import[ \t]+(?:safe[ \t]+)?(?:qualified[ \t]+)?(?:"[^"\n]*"[ \t]+)?([A-Z][\w.]*)/gm, raw, m),
+  binds: raw => [...raw.matchAll(/^import[ \t]+(?:safe[ \t]+)?(?:qualified[ \t]+)?(?:"[^"\n]*"[ \t]+)?([A-Z][\w.]*)[^\n]*?\bas[ \t]+([A-Z][\w.]*)/gm)].map(x => [x[2], x[1], true]),
+};
+
 const MD = {
   group: 'md', exts: 'md mdx markdown rst', linkType: 'ref', resolve: 'md',
   imports: raw => grab(grab([], /\]\(\s*<?([^)\s>]+)/g, raw), /^\s*\[[^\]]+\]:\s*<?(\S+?)>?\s*$/gm, raw),
@@ -611,7 +638,7 @@ const TEXT = {
   names: ['makefile', 'dockerfile', 'license', 'readme', 'procfile', 'justfile', 'containerfile', 'go.mod'],
 };
 
-export const LANGS = [JS, PY, GO, RS, C, JVM, CS, SWIFT, DART, RB, PHP, LUA, SH, SQL, ...GENS, MD, HTML, CSS, TEXT];
+export const LANGS = [JS, PY, GO, RS, C, JVM, CS, SWIFT, DART, RB, PHP, LUA, SH, SQL, HS, ...GENS, MD, HTML, CSS, TEXT];
 const BY_EXT = new Map(), BY_NAME = new Map();
 for (const L of LANGS) {
   for (const e of L.exts.split(' ')) BY_EXT.set(e, L);
