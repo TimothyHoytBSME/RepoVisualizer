@@ -61,6 +61,7 @@ const C_HEADER = /\.(?:h|hh|hpp|hxx|h\+\+|cuh|inc|inl)$/i;
 const STR_TYPE = { jvm: 'String', swift: 'String', dart: 'String', cs: 'string', js: 'String', py: 'str', rs: 'str' };
 const PATHSEG = new Set(['rs', 'c', 'rb', 'php']);
 const DECLS = new Set(['c', 'jvm', 'cs']);
+const LOOSE_BARE = new Set(['rb', 'ex', 'gen', 'sh', 'lua', 'sql', 'md', 'html', 'css', 'text']);
 const KEY_COLON = new Set(['js', 'rb', 'swift', 'dart', 'cs', 'php', 'ex']);
 const KEY_EQ = { py: /(?:^|[(,])[ \t]*$/, lua: /[{,][ \t]*$/ };
 const TRAILING = new Set(['swift', 'jvm']);
@@ -186,7 +187,7 @@ function extractDefs(masked, L, starts, lines) {
       let e = d.line;
       while (e + 1 < lines.length && /\\[ \t]*$/.test(lines[e])) e++;
       d.end = e;
-    } else d.end = d.kind === 'field' ? d.line : blockEnd(lines, d.line, skip, d.kind === 'class' ? L.head : null);
+    } else d.end = d.kind === 'field' || (L.group === 'c' && d.kind === 'type') ? d.line : blockEnd(lines, d.line, skip, d.kind === 'class' ? L.head : null);
   }
   return found;
 }
@@ -378,7 +379,7 @@ function looseJSON(t) {
   try { return JSON.parse(o.replace(/,(\s*[}\]])/g, '$1')); } catch { return null; }
 }
 
-function makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, goMods, names, swiftMods, crates, jsPkgs, jsAliases }) {
+function makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, phpNs, goMods, names, swiftMods, crates, jsPkgs, jsAliases }) {
   const suffix = suffixMap(fileIds);
   const csFirst = new Set([...csNs].map(n => n.split('.')[0]));
   const dirSuffix = suffixMap([...dirs.keys()].map(d => [d, d]));
@@ -622,6 +623,11 @@ function makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, goMods, names, swi
       }
       const segs = spec.split('\\').filter(Boolean);
       const n = segs.length;
+      if (phpNs.size) {
+        const inNs = (phpNs.get(segs.slice(0, -1).join('\\')) || []).find(id => nodes[id].name === segs[n - 1] + '.php');
+        if (inNs != null) return inNs;
+        if (n < 2) return null;
+      }
       for (let i = 0; i <= Math.max(0, n - 2); i++) {
         const r = suf(segs.slice(i).join('/') + '.php', info);
         if (r != null) return r;
@@ -734,7 +740,7 @@ export function analyze(files, rootName, progress = () => {}) {
   const localsOf = new Map();
   const macros = new Set(), privC = new Set(), aliasOf = new Map(), retNode = new Map(), closureOf = new Map(), ownerOf = new Map(), selfOf = new Map(), memberish = new Set(), typesOf = new Map(), fieldTypes = new Map(), retOf = new Map(), basesOf = new Map();
   const pkgOf = new Map();
-  const csNs = new Set();
+  const csNs = new Set(), phpNs = new Map();
   let done = 0;
   for (const info of infos) {
     if (++done % 50 === 0) progress({ phase: 'Reading code', done, total: infos.length });
@@ -750,6 +756,7 @@ export function analyze(files, rootName, progress = () => {}) {
       if (pm) info.pkg = pm[1];
     }
     if (L.group === 'cs' && masked) for (const m of masked.matchAll(/\bnamespace[ \t]+([\w.]+)/g)) csNs.add(m[1]);
+    if (L.group === 'php' && masked) { const m = /^namespace[ \t]+([\w\\]+)/m.exec(masked); if (m) { const l = phpNs.get(m[1]); if (l) l.push(info.id); else phpNs.set(m[1], [info.id]); } }
     if (L.strip && masked) masked = masked.replace(L.strip, x => ' '.repeat(x.length));
     info.masked = masked;
     if (STR_TYPE[L.group]) info.raw = text;
@@ -1006,7 +1013,7 @@ export function analyze(files, rootName, progress = () => {}) {
     if (info.pkg != null) pkgOf.set(info.id, info.pkg);
   }
 
-  const resolve = makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, goMods, names, swiftMods, crates, jsPkgs, jsAliases });
+  const resolve = makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, phpNs, goMods, names, swiftMods, crates, jsPkgs, jsAliases });
   const libs = new Map();
   for (const info of infos) {
     info.imported = new Set();
@@ -1169,7 +1176,8 @@ export function analyze(files, rootName, progress = () => {}) {
     const g = names.get(L.group);
     const fdir = nodes[fid].parent;
     const nf = L.group === 'c' || L.group === 'py' ? notField : () => true, srcTest = TEST_PATH.test(nodes[fid].path), srcEx = EX_PATH.test(nodes[fid].path), exRoot = srcEx ? EX_ROOT.exec(nodes[fid].path)?.[0] : null;
-    const out = new Map(), impCache = new Map(), strictBare = IMPLICIT_THIS.has(L.group) && L.group !== 'rb' && !/\.(?:kts?|scala|sc|groovy|gradle)$/.test(nodes[fid].path);
+    const out = new Map(), impCache = new Map(), strictBare = !LOOSE_BARE.has(L.group) && !/\.(?:kts?|scala|sc|groovy|gradle)$/.test(nodes[fid].path);
+    const bareOk = (c, src) => { const p = nodes[c].parent; if (p < 0 || !isClassy(nodes[p].kind) || isClassy(nodes[c].kind) || nodes[c].name === nodes[p].name) return true; for (let o = src; o >= 0; o = nodes[o].parent) if (o === p) return true; return false; };
     const idc = new Map();
     const countWords = !TEST_PATH.test(info.f.path);
     if (countWords) info.idc = idc;
@@ -1386,6 +1394,14 @@ export function analyze(files, rootName, progress = () => {}) {
           const b1 = masked.charCodeAt(k - 1), b2 = masked.charCodeAt(k - 2);
           if ((b1 === 46 && b2 !== 46) || (b1 === 62 && b2 === 45) || (b1 === 58 && b2 === 58)) chainT = exprType(j, 0, src);
         }
+      } else if (prev === 46 && p2 === 46 && L.group === 'dart' && masked.charCodeAt(at - 3) !== 46) {
+        member = true;
+        let j = at - 2;
+        while (j > 0 && masked.charCodeAt(j - 1) <= 32) j--;
+        let k = j;
+        while (k > 0 && isW(masked.charCodeAt(k - 1))) k--;
+        if (k < j && masked.charCodeAt(k - 1) !== 46 && masked.charCodeAt(k - 1) !== 41) recv = masked.slice(k, j);
+        else chainT = exprType(j, 0, src);
       }
       if (!member && (KEY_COLON.has(L.group) || KEY_EQ[L.group])) {
         const nx = masked.slice(at + name.length, at + name.length + 3), ps = masked.slice(Math.max(starts[ln], at - 60), at), whole = at - starts[ln] <= 60;
@@ -1511,6 +1527,7 @@ export function analyze(files, rootName, progress = () => {}) {
           const ck = member ? '.' + name : name;
           targets = impCache.get(ck);
           if (!targets) impCache.set(ck, (targets = cands.filter(c => info.imported.has(nodes[c].file) && (!member || nf(c)))));
+          if (strictBare && !member && targets.length) targets = targets.filter(c => bareOk(c, src));
           const viaImport = targets.length > 0;
           if (!targets.length && L.pkgDir) {
             const pk = info.pkg, uses = info.uses;
@@ -1527,12 +1544,12 @@ export function analyze(files, rootName, progress = () => {}) {
               : member ? preferImported(cands.filter(c => (memberish.has(c) || (nodes[c].parent >= 0 && isClassy(nodes[nodes[c].parent].kind))) && nf(c)), info)
               : masked.charCodeAt(at + name.length) === 33 ? cands : cands.filter(c => AMBIENT.test(nodes[c].path));
             if (!srcTest) targets = targets.filter(c => !TEST_PATH.test(nodes[c].path));
-            if (strictBare && !member) targets = targets.filter(c => { const p = nodes[c].parent; if (p < 0 || !isClassy(nodes[p].kind)) return true; for (let o = src; o >= 0; o = nodes[o].parent) if (o === p) return true; return false; });
+            if (strictBare && !member) targets = targets.filter(c => bareOk(c, src));
             if (!srcEx) targets = targets.filter(c => !EX_PATH.test(nodes[c].path));
             else if (exRoot) targets = targets.filter(c => { const r = EX_ROOT.exec(nodes[c].path); return !r || r[0] === exRoot; });
             if (!targets.length) continue;
             const t0 = targets.length === 1 && !member ? nodes[targets[0]].path : null, ad = t0 && AMBIENT.test(t0) ? t0.slice(0, t0.lastIndexOf('/') + 1) : null;
-            if (!(ad != null && nodes[fid].path.startsWith(ad)) && ((L.group === 'c' ? targets.length > 1 : cands.length > 1) || L.explicit || member)) type = 'ref';
+            if (!(ad != null && nodes[fid].path.startsWith(ad)) && ((L.group === 'c' || (strictBare && !member) ? targets.length > 1 : cands.length > 1) || L.explicit || member)) type = 'ref';
           } else if (member && targets.length > 1) {
             const top = viaImport ? targets.filter(c => nodes[c].parent === nodes[c].file) : [];
             if (top.length) targets = top; else type = 'ref';

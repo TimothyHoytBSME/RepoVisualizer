@@ -493,6 +493,7 @@ const PHP = {
     const o = grab([], /^[ \t]*use[ \t]+(?:function[ \t]+|const[ \t]+)?([\w\\]+)/gm, m);
     return grab(o, /\b(?:require|include)(?:_once)?[ \t(]*['"]([^'"]+)['"]/g, raw, m);
   },
+  binds: raw => [...raw.matchAll(/^use[ \t]+(?:function[ \t]+|const[ \t]+)?([\w\\]+)(?:[ \t]+as[ \t]+(\w+))?[ \t]*;/gm)].map(x => [x[2] || x[1].split('\\').pop(), x[1]]),
   resolve: 'php',
 };
 
