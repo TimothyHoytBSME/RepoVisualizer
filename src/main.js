@@ -28,7 +28,7 @@ const app = {
   follow: false, goto: null, dirty: true, pal: readPalette(), ver: 0,
   dir: ['out', 'in'].includes(store.get('rv:dir')) ? store.get('rv:dir') : 'both',
   limit: (() => { const v = store.get('rv:limit'); return v === null ? (narrow() ? 300 : 1200) : +v; })(),
-  filters: Object.assign({ tests: false, vars: true, libs: true, refs: true }, (() => { try { return JSON.parse(store.get('rv:filters')) || {}; } catch { return {}; } })()),
+  filters: Object.assign({ tests: false, vars: true, libs: true, std: false, refs: true }, (() => { try { return JSON.parse(store.get('rv:filters')) || {}; } catch { return {}; } })()),
 };
 const panel = new Panel(panelEl, $('#peek'), app);
 
@@ -245,6 +245,7 @@ function hiddenBy(n) {
   if (f.tests === false && (isTest(n) || (file && isTest(file)))) return ['tests', 'tests'];
   if (f.vars === false && n.kind === 'variable') return ['vars', 'variables'];
   if (f.libs === false && n.kind === 'lib') return ['libs', 'libraries'];
+  if (f.std === false && n.std) return ['std', 'standard library modules'];
   return null;
 }
 

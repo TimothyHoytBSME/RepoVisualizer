@@ -42,7 +42,8 @@ export function buildView(g, type, filters = {}) {
   const shown = n => keep(n.kind)
     && !(filters.tests === false && isTest(n))
     && !(filters.vars === false && n.kind === 'variable')
-    && !(filters.libs === false && n.kind === 'lib');
+    && !(filters.libs === false && n.kind === 'lib')
+    && !(filters.std === false && n.std);
   const local = new Int32Array(g.nodes.length).fill(-1);
   const ids = [];
   for (const n of g.nodes) if (shown(n)) { local[n.id] = ids.length; ids.push(n.id); }

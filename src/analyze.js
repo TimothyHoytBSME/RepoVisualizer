@@ -62,6 +62,27 @@ const STR_TYPE = { jvm: 'String', swift: 'String', dart: 'String', cs: 'string',
 const PATHSEG = new Set(['rs', 'c', 'rb', 'php']);
 const DECLS = new Set(['c', 'jvm', 'cs']);
 const LOOSE_BARE = new Set(['rb', 'ex', 'gen', 'sh', 'lua', 'sql', 'md', 'html', 'css', 'text']);
+const STD_SETS = {
+  py: '__future__ _typeshed abc argparse array ast asyncio atexit base64 binascii bisect builtins bz2 calendar cgi cmath cmd code codecs collections colorsys concurrent configparser contextlib contextvars copy copyreg cProfile csv ctypes curses dataclasses datetime dbm decimal difflib dis doctest email encodings enum errno faulthandler fcntl filecmp fileinput fnmatch fractions ftplib functools gc getopt getpass gettext glob graphlib grp gzip hashlib heapq hmac html http imaplib importlib inspect io ipaddress itertools json keyword linecache locale logging lzma mailbox marshal math mimetypes mmap multiprocessing netrc numbers operator optparse os pathlib pdb pickle pkgutil platform plistlib poplib posixpath pprint profile pstats pty pwd py_compile queue quopri random re readline reprlib resource rlcompleter runpy sched secrets select selectors shelve shlex shutil signal site smtplib socket socketserver sqlite3 ssl stat statistics string stringprep struct subprocess symtable sys sysconfig syslog tarfile tempfile termios textwrap threading time timeit tkinter token tokenize tomllib trace traceback tracemalloc tty types typing unicodedata unittest urllib uuid venv warnings wave weakref webbrowser winreg wsgiref xml xmlrpc zipapp zipfile zipimport zlib zoneinfo _thread',
+  js: 'assert async_hooks buffer child_process cluster console constants crypto dgram diagnostics_channel dns domain events fs http http2 https inspector module net os path perf_hooks process punycode querystring readline repl stream string_decoder sys timers tls trace_events tty url util v8 vm wasi worker_threads zlib',
+  rb: 'abbrev base64 benchmark bigdecimal cgi coverage csv date delegate digest English erb etc fcntl fiddle fileutils find forwardable getoptlong io ipaddr irb json logger matrix monitor net objspace observer open3 open-uri openssl optparse ostruct pathname pp prettyprint prime pstore psych racc rbconfig readline resolv ripper securerandom set shellwords singleton socket stringio strscan syslog tempfile time timeout tmpdir tsort un uri weakref yaml zlib',
+  c: 'assert complex ctype errno fenv float inttypes iso646 limits locale math setjmp signal stdalign stdarg stdatomic stdbool stddef stdint stdio stdlib stdnoreturn string tgmath threads time uchar wchar wctype unistd fcntl pthread sys dirent dlfcn poll sched semaphore strings termios netdb netinet arpa windows algorithm any array atomic bitset cassert cctype cerrno cfloat charconv chrono cinttypes climits clocale cmath codecvt complex condition_variable csetjmp csignal cstdarg cstddef cstdint cstdio cstdlib cstring ctime cwchar deque exception execution filesystem forward_list fstream functional future initializer_list iomanip ios iosfwd iostream istream iterator limits list map memory memory_resource mutex new numeric optional ostream queue random ratio regex scoped_allocator set shared_mutex span sstream stack stdexcept streambuf string_view system_error thread tuple type_traits typeindex typeinfo unordered_map unordered_set utility valarray variant vector',
+  swift: 'Foundation UIKit SwiftUI AppKit Combine Dispatch os Darwin Glibc CoreGraphics CoreFoundation CoreServices XCTest Network Security CoreImage AVFoundation QuartzCore ObjectiveC MobileCoreServices UniformTypeIdentifiers FoundationNetworking FoundationEssentials SystemConfiguration CoreData CoreLocation MapKit WebKit Photos StoreKit UserNotifications Accelerate Metal MetalKit SceneKit SpriteKit GameKit CryptoKit OSLog Observation',
+  lua: 'string table math io os coroutine debug utf8 package bit jit ffi',
+  ex: 'Kernel Enum Map MapSet String List Keyword GenServer Supervisor DynamicSupervisor Agent Task Logger Application Process Registry IO File Path System Code Module Atom Integer Float Tuple Stream Access Inspect Protocol Exception ExUnit Mix Regex URI Base Bitwise Calendar Date DateTime NaiveDateTime Time Version Node Port Function Range StringIO OptionParser EEx',
+};
+const STD = Object.fromEntries(Object.entries(STD_SETS).map(([k, v]) => [k, new Set(v.split(' '))]));
+const isStd = (name, group) => {
+  switch (group) {
+    case 'go': return !name.split('/')[0].includes('.');
+    case 'rs': return /^(?:std|core|alloc|proc_macro|test)$/.test(name);
+    case 'jvm': return /^(?:java|javax|kotlin|scala|groovy|jdk|sun)(?:\.|$)/.test(name);
+    case 'cs': return /^System(?:\.|$)/.test(name);
+    case 'dart': return name.startsWith('dart:');
+    case 'js': return name.startsWith('node:') || STD.js.has(name.split('/')[0]);
+    default: return !!STD[group]?.has(name.split(/[./]/)[0]);
+  }
+};
 const RET_ANY = /\breturn\b(?:[ \t]+(?:new[ \t]+)?([A-Z]\w*)[ \t]*\(|[ \t]+(this|self)\b[ \t]*;?[ \t]*$)?/gm;
 const MULTI_INIT = new Set(['js', 'jvm', 'swift', 'dart', 'cs', 'rs']);
 const UNTYPED_RET = new Set(['py', 'js', 'rb', 'php', 'lua']);
@@ -1091,6 +1112,7 @@ export function analyze(files, rootName, progress = () => {}) {
         let id = libs.get(r);
         if (id === undefined) {
           id = add({ kind: 'lib', key: 'l:' + r, name: r, path: '', parent: -1, file: -1, line: 0, end: 0, group: info.L.group });
+          if (isStd(r, info.L.group)) nodes[id].std = true;
           libs.set(r, id);
         }
         if (!seen.has(id)) { seen.add(id); edges.push({ s: info.id, t: id, type: 'dep' }); }
