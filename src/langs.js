@@ -109,6 +109,25 @@ function ctypedefs(t) {
   return out;
 }
 
+function recordProps(t) {
+  const out = [];
+  for (const m of t.matchAll(/\brecord(?:[ \t]+(?:class|struct))?[ \t]+\w+(?:<[^>\n]*>)?[ \t]*\(/g)) {
+    let d = 1, j = m.index + m[0].length, from = j;
+    for (const lim = Math.min(t.length, j + 4000); j < lim && d; j++) {
+      const c = t.charCodeAt(j);
+      if (c === 40 || c === 60 || c === 91) d++;
+      else if (c === 41 || c === 62 || c === 93) d--;
+      if (d === 1 && c === 44 || d === 0) {
+        const part = t.slice(from, j).replace(/\[[^\]]*\]/g, x => ' '.repeat(x.length)).replace(/=[^]*$/, '');
+        const p = /([A-Za-z_][\w.]*(?:<[^()]*>)?(?:\[\])?\??)[ \t\r\n]+([A-Za-z_]\w*)[ \t\r\n]*$/.exec(part);
+        if (p) out.push({ name: p[2], idx: from + p.index + p[0].lastIndexOf(p[2]), kind: 'field', ty: p[1] });
+        from = j + 1;
+      }
+    }
+  }
+  return out;
+}
+
 function ctorProps(t) {
   const out = [];
   for (const m of t.matchAll(/\bclass[ \t]+\w+(?:<[^>\n]*>)?[ \t]*(?:(?:private|protected|internal|public)?[ \t]*constructor[ \t]*)?\(/g)) {
@@ -418,7 +437,7 @@ const CS = {
     [R`^[ \t]*(?:\[[^\]\n]*\][ \t]*)*(?:(?:public|private|protected|internal|static|virtual|override|abstract|readonly|required|new|sealed|const)[ \t]+)+[\w<>\[\],.?]+[ \t]+(${N})[ \t]*(?:\{[ \t]*(?:get|set|init)\b|=>|=(?!=)|;)`, 'variable'],
     [R`^[ \t]*(?:(?:public|private|protected|internal|static|virtual|override|abstract|sealed|async|new|extern|unsafe|partial|readonly)[ \t]+)*[A-Za-z_][\w.]*(?:<[^>\n]*>)?(?:\[\])?\??[ \t]+(${N})[ \t]*(?:<[^>\n]*>)?\((?:[^()]|\([^()]*\))*\)[ \t]*(?:where[ \t][^=\n]*)?=>`, 'function'],
   ],
-  extra: cfuncs,
+  extra: t => cfuncs(t).concat(recordProps(t)),
   imports: (raw, m) => grab([], /^[ \t]*(?:global[ \t]+)?using[ \t]+(?:static[ \t]+)?(?:\w+[ \t]*=[ \t]*)?([\w.]+)[ \t]*;/gm, m),
   resolve: 'cs',
 };

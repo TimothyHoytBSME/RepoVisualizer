@@ -160,7 +160,7 @@ function extractDefs(masked, L, starts, lines) {
     }
     return pdepth[line] > 0;
   };
-  const push = (name, idx, kind, extra, owner, self) => {
+  const push = (name, idx, kind, extra, owner, self, ty) => {
     if (L.clean) name = L.clean(name);
     if (!name || L.kw.has(name)) return;
     const line = lineAt(starts, idx);
@@ -175,7 +175,7 @@ function extractDefs(masked, L, starts, lines) {
       const r = L.extRecv.exec(masked.slice(Math.max(starts[line], idx - 160), idx));
       if (r) owner = r[1];
     }
-    found.push({ name, kind, line, idx, end: line, owner, self });
+    found.push({ name, kind, line, idx, end: line, owner, self, ty, prop: extra && kind === 'field' });
   };
   for (const [re, kind, ok, keep] of L.defs) {
     for (const m of masked.matchAll(re)) {
@@ -183,7 +183,7 @@ function extractDefs(masked, L, starts, lines) {
       if (!ok || ok(masked, i)) push(m[1], i, kind, keep);
     }
   }
-  if (L.extra) for (const d of L.extra(masked)) push(d.name, d.idx, d.kind, true, d.owner, d.self);
+  if (L.extra) for (const d of L.extra(masked)) push(d.name, d.idx, d.kind, true, d.owner, d.self, d.ty);
   found.sort((a, b) => a.idx - b.idx);
   const skip = SKIP_SAME[L.group];
   for (const d of found) {
@@ -303,7 +303,7 @@ const LOOPS = {
   rs: [/\bfor\s+(\w+)\s+in\s+&?(?:mut\s+)?(?:self\.)?(\w+)/g],
   cs: [/\bforeach\s*\(\s*var\s+(\w+)\s+in\s+(?:this\.)?(\w+)\s*\)/g],
 };
-const CB_NAMES = 'forEach|map|filter|some|every|find|findLast|findIndex|flatMap|sort|each|each_with_index|select|reject|collect|flat_map|compactMap|first|contains|allSatisfy|forEachIndexed|mapNotNull|filterNot|any|all|none|sumOf|associateBy|groupBy|onEach|sortedBy|maxBy|minBy|forEachOrdered';
+const CB_NAMES = 'Select|Where|First|FirstOrDefault|Single|SingleOrDefault|Any|All|OrderBy|OrderByDescending|ForEach|SelectMany|GroupBy|ToDictionary|Count|Sum|Max|Min|forEach|map|filter|some|every|find|findLast|findIndex|flatMap|sort|each|each_with_index|select|reject|collect|flat_map|compactMap|first|contains|allSatisfy|forEachIndexed|mapNotNull|filterNot|any|all|none|sumOf|associateBy|groupBy|onEach|sortedBy|maxBy|minBy|forEachOrdered';
 const CB = new RegExp(`(?:\\b(?:this|self)\\.|@)?([A-Za-z_$][\\w$]*)[ \\t]*[?!]?\\.[ \\t]*(?:${CB_NAMES})[ \\t]*(?:\\([ \\t]*(?:async[ \\t]*)?)?[ \\t]*$`);
 const CB_IT = new RegExp(`(?:\\bthis\\.)?([A-Za-z_]\\w*)[ \\t]*[?!]*\\.[ \\t]*(?:${CB_NAMES})[ \\t]*\\{(?![^\\n]*->)`, 'g');
 const VAR_TYPES = [
@@ -955,7 +955,7 @@ export function analyze(files, rootName, progress = () => {}) {
         if (d.kind === 'variable') {
           const ln = lines[d.line], col = d.idx - starts[d.line];
           const after = /^[ \t]*[?!]?[ \t]*:[ \t]*([^=;\n{,)]+)/.exec(ln.slice(col + d.name.length));
-          let ty = after ? tyOf(after[1]) : null;
+          let ty = d.ty ? tyOf(d.ty) : after ? tyOf(after[1]) : null;
           if (!ty && L.paramLast) ty = tyOf(ln.slice(0, col).split(/\s+/).filter(w => !FIELD_MODS.has(w)).join(' '));
           if (!ty) { const im = /^[ \t]*=[ \t]*(?:new[ \t]+)?(?:([A-Z][\w.]*)|([a-z_]\w*))[ \t]*(?:<[^<>\n]*>)?[ \t]*\(/.exec(ln.slice(col + d.name.length)); if (im) ty = im[1] ? tyOf(im[1]) : '()' + im[2]; }
           if (ty) { if (!ft) fieldTypes.set(p.node, (ft = new Map())); ft.set(d.name, ty); }
@@ -973,7 +973,7 @@ export function analyze(files, rootName, progress = () => {}) {
       if (L.group === 'js' && isFn(d.kind) && PROP_FN.test(lines[d.line].slice(Math.max(0, d.idx - starts[d.line] - 120), d.idx - starts[d.line]))) memberish.add(d.node);
       if (d.self) selfOf.set(d.node, d.self);
       if (isClassy(d.kind) && !d.ext && !types.has(d.name)) types.set(d.name, d);
-      owner.fill(d.node, d.line, d.end + 1);
+      if (!d.prop) owner.fill(d.node, d.line, d.end + 1);
       defPos.add(d.idx);
       let inFn = false;
       for (let q = p; q && !inFn; q = q.up) if (isFn(q.kind) && !q.drop) inFn = true;
