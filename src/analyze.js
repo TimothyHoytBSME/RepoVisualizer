@@ -62,6 +62,7 @@ const STR_TYPE = { jvm: 'String', swift: 'String', dart: 'String', cs: 'string',
 const PATHSEG = new Set(['rs', 'c', 'rb', 'php']);
 const DECLS = new Set(['c', 'jvm', 'cs']);
 const LOOSE_BARE = new Set(['rb', 'ex', 'gen', 'sh', 'lua', 'sql', 'md', 'html', 'css', 'text']);
+const UNTYPED_RET = new Set(['py', 'js', 'rb', 'php', 'lua']);
 const KEY_COLON = new Set(['js', 'rb', 'swift', 'dart', 'cs', 'php', 'ex']);
 const KEY_EQ = { py: /(?:^|[(,])[ \t]*$/, lua: /[{,][ \t]*$/ };
 const TRAILING = new Set(['swift', 'jvm']);
@@ -741,7 +742,7 @@ export function analyze(files, rootName, progress = () => {}) {
   const localsOf = new Map();
   const macros = new Set(), privC = new Set(), aliasOf = new Map(), retNode = new Map(), closureOf = new Map(), ownerOf = new Map(), selfOf = new Map(), memberish = new Set(), typesOf = new Map(), fieldTypes = new Map(), retOf = new Map(), basesOf = new Map();
   const pkgOf = new Map();
-  const csNs = new Set(), phpNs = new Map();
+  const csNs = new Set(), phpNs = new Map(), fixtures = new Set();
   let done = 0;
   for (const info of infos) {
     if (++done % 50 === 0) progress({ phase: 'Reading code', done, total: infos.length });
@@ -806,6 +807,7 @@ export function analyze(files, rootName, progress = () => {}) {
         const ln = lineAt(starts, m.index + m[0].length - 1), di = fnAt[ln];
         const q = /[.>:][ \t]*$/.test(m[0].slice(0, m[0].lastIndexOf(m[2]))) ? '().' : '()';
         if (q === '().') { const h = /=[ \t]*(?:(?:await|try[!?]?)[ \t]+)*\$?([A-Za-z_$][\w$]*)/.exec(m[0]); if (h) (info.callHead ??= new Map()).set(m[1], h[1]); }
+        if (q === '().') { const r = /=[ \t]*(?:(?:await|try[!?]?)[ \t]+)*\$?([A-Za-z_$][\w$]*)[ \t]*(?:\.|->)[ \t]*[A-Za-z_$][\w$]*[ \t]*(?:<[^<>\n]*>)?[ \t]*\($/.exec(m[0]); if (r) (info.callRecv ??= new Map()).set(m[1], r[1]); }
         const ty = m[3] ? lastSeg(m[3]) : q + m[2];
         if (di >= 0) (defs[di].types ??= new Map()).set(m[1], ty);
         else if (indentOf(lines[ln]) === 0) (info.types ??= new Map()).set(m[1], ty);
@@ -879,6 +881,14 @@ export function analyze(files, rootName, progress = () => {}) {
           if (!rt && L.group === 'go') { const m = RET_GO.exec(rest); if (m) rt = m[1]; }
         }
         if (!rt && L.paramLast) rt = tyOf(lines[d.line].slice(0, d.idx - starts[d.line]).split(/\s+/).filter(w => !FIELD_MODS.has(w)).join(' '));
+        if (!rt && UNTYPED_RET.has(L.group) && d.end > d.line && d.end - d.line < 80) {
+          const body = masked.slice(starts[d.line + 1], d.end + 1 < starts.length ? starts[d.end + 1] : masked.length), all = body.match(/\breturn\b/g);
+          if (all) {
+            const xs = [...body.matchAll(/\breturn[ \t]+(?:new[ \t]+)?([A-Z]\w*)[ \t]*\(/g)].map(x => x[1]);
+            if (xs.length === all.length && xs.every(x => x === xs[0])) rt = xs[0];
+          }
+        }
+        if (L.group === 'py' && /^[ \t]*@(?:pytest\.)?fixture\b/.test(lines[d.line - 1] || '')) fixtures.add(d.name);
         const cls = p && isClassy(p.kind) ? p.name : ownerName;
         if (rt && cls && /^(?:self|Self|this|static)$/.test(rt)) retNode.set(d.node, cls);
         else if (rt && !/^(?:void|Unit|None|Void|[A-Z]\d?)$/.test(rt)) retNode.set(d.node, rt);
@@ -1243,6 +1253,7 @@ export function analyze(files, rootName, progress = () => {}) {
           if (!shadowed && (ft || !local.has(v))) t = ft || gt;
         }
       }
+      if (!t && L.group === 'py' && fixtures.has(v)) for (let o = src; o !== fid && o >= 0; o = nodes[o].parent) if (localsOf.get(o)?.has(v)) { t = '()' + v; break; }
       if (t && t[0] === '@') t = depth < 3 && t.slice(1) !== v ? elemOf(varType(t.slice(1), src, ln, depth + 1, true)) : null;
       if (!raw) t = headOf(t);
       return t;
@@ -1495,7 +1506,10 @@ export function analyze(files, rootName, progress = () => {}) {
           const q = selfT[2] === '.', call = selfT.slice(q ? 3 : 2);
           if (!typeNames.has(call) && !retOf.has(call) && !g.has(call) && !local.has(call) || !q && info.ext && info.ext.has(call) && !local.has(call)) continue;
           if (q && info.ext && recv && info.callHead) { const h = info.callHead.get(recv); if (h && info.ext.has(h) && !local.has(h)) continue; }
-          selfT = typeNames.has(call) ? call : headOf(retOf.get(call)) || null;
+          let viaRecv = null;
+          const cr = q && info.callRecv ? info.callRecv.get(recv) : null;
+          if (cr && cr !== recv) { let T = null; if (SELF.has(cr)) { for (let o = src; o !== fid && o >= 0 && !T; o = nodes[o].parent) T = isClassy(nodes[o].kind) ? nodes[o].name : ownerOf.get(o) || null; } else { T = varType(cr, src, ln, 1); if (T && T.startsWith('()')) T = callT(T.slice(T[2] === '.' ? 3 : 2)); } if (T) viaRecv = retIn(T, call); }
+          selfT = viaRecv || (typeNames.has(call) ? call : headOf(retOf.get(call)) || null);
         }
         if (selfT) {
           const own = ofType(selfT, name, fid) || [];
