@@ -440,7 +440,7 @@ function looseJSON(t) {
 }
 
 let mlNear = null;
-function makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, phpNs, exMods, mlMods, goMods, names, swiftMods, crates, jsPkgs, jsAliases }) {
+function makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, phpNs, phpNsFiles, exMods, mlMods, goMods, names, swiftMods, crates, jsPkgs, jsAliases }) {
   const suffix = suffixMap(fileIds);
   const csFirst = new Set([...csNs].map(n => n.split('.')[0]));
   const dirSuffix = suffixMap([...dirs.keys()].map(d => [d, d]));
@@ -702,7 +702,7 @@ function makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, phpNs, exMods, mlM
       if (phpNs.size) {
         const inNs = (phpNs.get(segs.slice(0, -1).join('\\')) || []).find(id => nodes[id].name === segs[n - 1] + '.php');
         if (inNs != null) return inNs;
-        if (n < 2) return null;
+        if (n < 2) { const r = suf(segs[0] + '.php', info); return typeof r === 'number' && !phpNsFiles.has(r) ? r : null; }
       }
       for (let i = 0; i <= Math.max(0, n - 2); i++) {
         const r = suf(segs.slice(i).join('/') + '.php', info);
@@ -834,7 +834,7 @@ export function analyze(files, rootName, progress = () => {}) {
   const localsOf = new Map();
   const macros = new Set(), privC = new Set(), aliasOf = new Map(), retNode = new Map(), closureOf = new Map(), ownerOf = new Map(), selfOf = new Map(), memberish = new Set(), typesOf = new Map(), fieldTypes = new Map(), retOf = new Map(), basesOf = new Map();
   const pkgOf = new Map();
-  const csNs = new Set(), phpNs = new Map(), exMods = new Map(), mlMods = new Map(), fixtures = new Set();
+  const csNs = new Set(), phpNs = new Map(), phpNsFiles = new Set(), exMods = new Map(), mlMods = new Map(), fixtures = new Set();
   let done = 0;
   const readFile = info => {
     const { f, L } = info;
@@ -851,7 +851,7 @@ export function analyze(files, rootName, progress = () => {}) {
     if (L.group === 'cs' && masked) for (const m of masked.matchAll(/\bnamespace[ \t]+([\w.]+)/g)) csNs.add(m[1]);
     if (L.group === 'ml') { const b = nodes[info.id].name.replace(/\.mli?$/, ''), k = b[0].toUpperCase() + b.slice(1), l = mlMods.get(k); if (!l) mlMods.set(k, [info.id]); else if (!l.includes(info.id)) l.push(info.id); }
     if (L.group === 'ex' && masked) { for (const m of masked.matchAll(/\bdefmodule[ \t]+([A-Z][\w.]*)/g)) if (!exMods.has(m[1])) exMods.set(m[1], info.id); if (L.aliases) info.alias = L.aliases(text); }
-    if (L.group === 'php' && masked) { const m = /^namespace[ \t]+([\w\\]+)/m.exec(masked); if (m) { const l = phpNs.get(m[1]); if (l) l.push(info.id); else phpNs.set(m[1], [info.id]); } }
+    if (L.group === 'php' && masked) { const m = /^namespace[ \t]+([\w\\]+)/m.exec(masked); if (m) { phpNsFiles.add(info.id); const l = phpNs.get(m[1]); if (l) l.push(info.id); else phpNs.set(m[1], [info.id]); } }
     if (L.strip && masked) masked = masked.replace(L.strip, x => ' '.repeat(x.length));
     info.masked = masked;
     if (STR_TYPE[L.group]) info.raw = text;
@@ -1141,7 +1141,7 @@ export function analyze(files, rootName, progress = () => {}) {
     readFile(info);
   }
 
-  const resolve = makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, phpNs, exMods, mlMods, goMods, names, swiftMods, crates, jsPkgs, jsAliases });
+  const resolve = makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, phpNs, phpNsFiles, exMods, mlMods, goMods, names, swiftMods, crates, jsPkgs, jsAliases });
   const libs = new Map();
   for (const info of infos) {
     info.imported = new Set();
