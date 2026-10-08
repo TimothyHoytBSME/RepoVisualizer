@@ -67,7 +67,7 @@ const KEY_EQ = { py: /(?:^|[(,])[ \t]*$/, lua: /[{,][ \t]*$/ };
 const TRAILING = new Set(['swift', 'jvm']);
 const GLOBAL_VARS = new Set(['swift', 'go', 'c', 'jvm', 'cs']);
 const EX_PATH = /^(?:[^/]+\/){0,2}(?:examples?|samples?|demos?|docs?|benchmarks?|bench)\//i;
-const EX_ROOT = /^(?:[^/]+\/){0,2}(?:examples?|samples?|demos?)\/[^/]+\//i;
+const EX_ROOT = /^(?:[^/]+\/){0,2}(?:examples?|samples?|demos?)\/[^/]+(?:\/|$)/i;
 const isFn = k => k === 'function' || k === 'method';
 const SELF = new Set(['this', 'self', 'Self', 'static', 'me']);
 const COMMON = new Set(`each map filter reduce forEach some every indexOf lastIndexOf findIndex includes concat splice flatMap get set put add remove delete has contains size length count keys values entries items push pop shift unshift append insert extend clear close open read write flush call apply bind toString equals hashCode compareTo next hasNext iterator then catch finally emit on off once parse format join split replace trim match test exec find first last sort reverse slice copy clone merge reset cancel value name type id data message error list log debug info warn trace dispose description key path url status result index text constructor prototype String Error Get Set Write Read Close Len Open Value Type Status ToString Equals GetHashCode Add Remove Count Contains Clear Dispose Any Select Where First FirstOrDefault ToList ToArray Single Max Min Sum OrderBy Include unwrap expect as_bytes as_str as_ref as_mut is_none is_some is_ok is_err is_empty iter iter_mut into_iter to_string to_owned unwrap_or map_err ok err lines bytes chars len borrow kind start end to_s to_str to_a to_h to_i to_sym inspect respond_to? include? empty? nil? is_a? kind_of? dup freeze tap merge! fetch __toString __get __set __call toUpperCase toLowerCase toLocaleUpperCase toLocaleLowerCase startsWith endsWith padStart padEnd charAt charCodeAt codePointAt substring substr trimStart trimEnd repeat localeCompare normalize fill flat findLast findLastIndex toFixed toPrecision toISOString toJSON getTime valueOf hasOwnProperty addEventListener removeEventListener dispatchEvent querySelector querySelectorAll appendChild removeChild setAttribute getAttribute removeAttribute preventDefault stopPropagation upper lower strip lstrip rstrip startswith endswith encode decode setdefault popitem appendleft popleft isdigit isalpha splitlines`.split(/\s+/));
@@ -1370,6 +1370,12 @@ export function analyze(files, rootName, progress = () => {}) {
       while (ln + 1 < starts.length && starts[ln + 1] <= at) ln++;
       const src = owner[ln];
       let member = false, recv = '', recvCall = '', recvIdx = '', chainT = null, keyHit = null;
+      if (prev === 64 && L.group === 'rb') {
+        let cls = src;
+        while (cls !== fid && cls >= 0 && !isClassy(nodes[cls].kind)) cls = nodes[cls].parent;
+        keyHit = cls !== fid && cls >= 0 ? memberIn(cls, name) : null;
+        if (!keyHit) continue;
+      }
       const p2 = at > 1 ? masked.charCodeAt(at - 2) : 0;
       if ((prev === 46 && p2 !== 46) || (prev === 62 && p2 === 45) || (prev === 58 && p2 === 58)) {
         member = true;
