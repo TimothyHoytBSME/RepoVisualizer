@@ -542,7 +542,27 @@ const gen = (exts, syntax) => ({ group: 'gen', exts, syntax: { quotes: '"', trip
 const GENS = [
   gen('hs elm purs', { line: ['--'], block: [['{-', '-}']] }),
   gen('ml mli', { block: [['(*', '*)']] }),
-  { ...gen('ex exs', { line: ['#'] }), group: 'ex', bareVars: true },
+  {
+    ...gen('ex exs', { line: ['#'] }), group: 'ex', bareVars: true, resolve: 'ex',
+    id: /[A-Z]\w*(?:\.[A-Z]\w*)*|[A-Za-z_]\w*[?!]?/g,
+    imports: (raw, m) => {
+      const out = [];
+      for (const x of raw.matchAll(/^[ \t]*(?:import|alias|use|require)[ \t]+([A-Z][\w.]*?)(?:\.\{([^}]*)\}|\b)/gm)) {
+        if (m && m.charCodeAt(x.index + x[0].length - x[0].trimStart().length) !== raw.charCodeAt(x.index + x[0].length - x[0].trimStart().length)) continue;
+        if (x[2]) for (const n of x[2].split(',')) { const t = n.trim(); if (/^[A-Z][\w.]*$/.test(t)) out.push(x[1] + '.' + t); }
+        else out.push(x[1]);
+      }
+      return out;
+    },
+    aliases: raw => {
+      const a = new Map();
+      for (const x of raw.matchAll(/^[ \t]*alias[ \t]+([A-Z][\w.]*?)(?:\.\{([^}]*)\}|[ \t]*,[ \t]*as:[ \t]*([A-Z]\w*)|\b)/gm)) {
+        if (x[2]) { for (const n of x[2].split(',')) { const t = n.trim(); if (/^[A-Z][\w.]*$/.test(t)) a.set(t.split('.').pop(), x[1] + '.' + t); } }
+        else a.set(x[3] || x[1].split('.').pop(), x[1]);
+      }
+      return a.size ? a : null;
+    },
+  },
   gen('r jl nim pl pm tf hcl gd cr raku', { line: ['#'] }),
   gen('erl hrl', { line: ['%'] }),
   gen('clj cljs cljc edn lisp el scm rkt', { line: [';'] }),

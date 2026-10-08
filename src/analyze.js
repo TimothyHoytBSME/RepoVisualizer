@@ -402,7 +402,7 @@ function looseJSON(t) {
   try { return JSON.parse(o.replace(/,(\s*[}\]])/g, '$1')); } catch { return null; }
 }
 
-function makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, phpNs, goMods, names, swiftMods, crates, jsPkgs, jsAliases }) {
+function makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, phpNs, exMods, goMods, names, swiftMods, crates, jsPkgs, jsAliases }) {
   const suffix = suffixMap(fileIds);
   const csFirst = new Set([...csNs].map(n => n.split('.')[0]));
   const dirSuffix = suffixMap([...dirs.keys()].map(d => [d, d]));
@@ -657,6 +657,9 @@ function makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, phpNs, goMods, nam
       }
       return n > 1 ? segs[0] : null;
     },
+    ex(spec) {
+      return exMods.get(spec) ?? spec.split('.')[0];
+    },
     lua(spec, info) {
       const p = spec.replace(/\./g, '/');
       return suf(p + '.lua', info) ?? suf(p + '/init.lua', info) ?? spec.split('.')[0];
@@ -763,7 +766,7 @@ export function analyze(files, rootName, progress = () => {}) {
   const localsOf = new Map();
   const macros = new Set(), privC = new Set(), aliasOf = new Map(), retNode = new Map(), closureOf = new Map(), ownerOf = new Map(), selfOf = new Map(), memberish = new Set(), typesOf = new Map(), fieldTypes = new Map(), retOf = new Map(), basesOf = new Map();
   const pkgOf = new Map();
-  const csNs = new Set(), phpNs = new Map(), fixtures = new Set();
+  const csNs = new Set(), phpNs = new Map(), exMods = new Map(), fixtures = new Set();
   let done = 0;
   for (const info of infos) {
     if (++done % 50 === 0) progress({ phase: 'Reading code', done, total: infos.length });
@@ -779,6 +782,7 @@ export function analyze(files, rootName, progress = () => {}) {
       if (pm) info.pkg = pm[1];
     }
     if (L.group === 'cs' && masked) for (const m of masked.matchAll(/\bnamespace[ \t]+([\w.]+)/g)) csNs.add(m[1]);
+    if (L.group === 'ex' && masked) { for (const m of masked.matchAll(/\bdefmodule[ \t]+([A-Z][\w.]*)/g)) if (!exMods.has(m[1])) exMods.set(m[1], info.id); if (L.aliases) info.alias = L.aliases(text); }
     if (L.group === 'php' && masked) { const m = /^namespace[ \t]+([\w\\]+)/m.exec(masked); if (m) { const l = phpNs.get(m[1]); if (l) l.push(info.id); else phpNs.set(m[1], [info.id]); } }
     if (L.strip && masked) masked = masked.replace(L.strip, x => ' '.repeat(x.length));
     info.masked = masked;
@@ -1065,7 +1069,7 @@ export function analyze(files, rootName, progress = () => {}) {
     if (info.pkg != null) pkgOf.set(info.id, info.pkg);
   }
 
-  const resolve = makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, phpNs, goMods, names, swiftMods, crates, jsPkgs, jsAliases });
+  const resolve = makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, phpNs, exMods, goMods, names, swiftMods, crates, jsPkgs, jsAliases });
   const libs = new Map();
   for (const info of infos) {
     info.imported = new Set();
@@ -1450,7 +1454,9 @@ export function analyze(files, rootName, progress = () => {}) {
       const name = m[0];
       if (name.length < 2) continue;
       if (countWords && !L.kw.has(name)) idc.set(name, (idc.get(name) || 0) + 1);
-      const cands = g.get(name) || local.get(name);
+      let look = name;
+      if (info.alias && name.charCodeAt(0) < 91) { const d = name.indexOf('.'), h = info.alias.get(d < 0 ? name : name.slice(0, d)); if (h) look = d < 0 ? h : h + name.slice(d); }
+      const cands = g.get(look) || local.get(look);
       if (!cands) continue;
       if (info.ext && info.ext.has(name) && !local.has(name)) continue;
       const at = m.index;
