@@ -422,7 +422,14 @@ const JVM = {
   ],
   extra: t => cfuncs(t).concat(ctorProps(t)), localDecl: LOCAL_DECL,
   anon: [/\{[ \t]*\(?([A-Za-z_]\w*(?:[ \t]*:[ \t]*[\w.<>?]+)?(?:[ \t]*,[ \t]*[A-Za-z_]\w*(?:[ \t]*:[ \t]*[\w.<>?]+)?)*)\)?[ \t]*->/g],
-  imports: (raw, m) => grab([], /^[ \t]*import[ \t]+(?:static[ \t]+)?([\w.]+(?:\.\*)?)/gm, m),
+  imports: (raw, m) => {
+    const out = [];
+    for (const x of m.matchAll(/^[ \t]*import[ \t]+(?:static[ \t]+)?(\w+(?:\.\w+)*(?:\.\*)?)(?:\.\{([^}\n]*)\})?/gm)) {
+      if (x[2] != null) { for (const n of x[2].split(',')) { const t = n.trim().split(/\s*=>\s*/)[0]; if (t === '_') out.push(x[1] + '.*'); else if (/^\w+$/.test(t)) out.push(x[1] + '.' + t); } }
+      else out.push(x[1].endsWith('._') ? x[1].slice(0, -2) + '.*' : x[1]);
+    }
+    return out;
+  },
   resolve: 'jvm',
 };
 
