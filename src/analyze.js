@@ -70,6 +70,7 @@ const KEY_EQ = { py: /(?:^|[(,])[ \t]*$/, lua: /[{,][ \t]*$/ };
 const TRAILING = new Set(['swift', 'jvm']);
 const GLOBAL_VARS = new Set(['swift', 'go', 'c', 'jvm', 'cs']);
 const EX_PATH = /^(?:[^/]+\/){0,2}(?:examples?|samples?|demos?|docs?|benchmarks?|bench)\//i;
+const GEN_FILE = /\.(?:gen|g|generated|pb|freezed)\.\w+$|_pb2\.py$|_generated\.\w+$/;
 const EX_ROOT = /^(?:[^/]+\/){0,2}(?:examples?|samples?|demos?)\/[^/]+(?:\/|$)/i;
 const isFn = k => k === 'function' || k === 'method';
 const SELF = new Set(['this', 'self', 'Self', 'static', 'me']);
@@ -1708,6 +1709,7 @@ export function analyze(files, rootName, progress = () => {}) {
               : member ? preferImported(cands.filter(c => (memberish.has(c) || (nodes[c].parent >= 0 && isClassy(nodes[nodes[c].parent].kind))) && nf(c)), info)
               : masked.charCodeAt(at + name.length) === 33 ? cands : cands.filter(c => AMBIENT.test(nodes[c].path));
             if (!srcTest) targets = targets.filter(c => !TEST_PATH.test(nodes[c].path));
+            if (!GEN_FILE.test(nodes[fid].path)) targets = targets.filter(c => !GEN_FILE.test(nodes[c].path));
             if (strictBare && !member) targets = targets.filter(c => bareOk(c, src));
             if (!srcEx) targets = targets.filter(c => !EX_PATH.test(nodes[c].path));
             else if (exRoot) targets = targets.filter(c => { const r = EX_ROOT.exec(nodes[c].path); return !r || r[0] === exRoot; });
