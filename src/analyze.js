@@ -62,6 +62,7 @@ const STR_TYPE = { jvm: 'String', swift: 'String', dart: 'String', cs: 'string',
 const PATHSEG = new Set(['rs', 'c', 'rb', 'php']);
 const DECLS = new Set(['c', 'jvm', 'cs']);
 const LOOSE_BARE = new Set(['rb', 'ex', 'gen', 'sh', 'lua', 'sql', 'md', 'html', 'css', 'text']);
+const RET_ANY = /\breturn\b(?:[ \t]+(?:new[ \t]+)?([A-Z]\w*)[ \t]*\(|[ \t]+(this|self)\b[ \t]*;?[ \t]*$)?/gm;
 const MULTI_INIT = new Set(['js', 'jvm', 'swift', 'dart', 'cs', 'rs']);
 const UNTYPED_RET = new Set(['py', 'js', 'rb', 'php', 'lua']);
 const KEY_COLON = new Set(['js', 'rb', 'swift', 'dart', 'cs', 'php', 'ex']);
@@ -911,19 +912,21 @@ export function analyze(files, rootName, progress = () => {}) {
         }
         if (!rt && L.paramLast) rt = tyOf(lines[d.line].slice(0, d.idx - starts[d.line]).split(/\s+/).filter(w => !FIELD_MODS.has(w)).join(' '));
         if (rt && L.kw.has(rt)) rt = null;
-        if (!rt && UNTYPED_RET.has(L.group) && d.end > d.line && d.end - d.line < 80) {
-          const body = masked.slice(starts[d.line + 1], d.end + 1 < starts.length ? starts[d.end + 1] : masked.length), all = body.match(/\breturn\b/g);
-          if (all) {
-            const xs = [...body.matchAll(/\breturn[ \t]+(?:new[ \t]+)?([A-Z]\w*)[ \t]*\(/g)].map(x => x[1]);
-            if (xs.length === all.length && xs.every(x => x === xs[0])) rt = xs[0];
+        if (!rt && d.end > d.line && d.end - d.line < 80) {
+          const a = starts[d.line + 1], b = d.end + 1 < starts.length ? starts[d.end + 1] : masked.length;
+          let n = 0, same = null, self = 0, m;
+          RET_ANY.lastIndex = a;
+          while ((m = RET_ANY.exec(masked)) && m.index < b) {
+            n++;
+            if (m[2]) self++;
+            else if (m[1] && (same === null || same === m[1])) same = m[1];
+            else same = false;
           }
+          if (n && self === n) rt = 'this';
+          else if (n && same && !self && UNTYPED_RET.has(L.group)) rt = same;
         }
         if (L.group === 'py' && /^[ \t]*@(?:pytest\.)?fixture\b/.test(lines[d.line - 1] || '')) fixtures.add(d.name);
         if (!rt && e > 0 && /^\s*=\s*(?:apply|also|this)\b/.test(masked.slice(e, e + 40))) rt = 'this';
-        if (!rt && d.end > d.line && d.end - d.line < 80) {
-          const body = masked.slice(starts[d.line + 1], d.end + 1 < starts.length ? starts[d.end + 1] : masked.length), all = body.match(/\breturn\b/g);
-          if (all && all.length === (body.match(/\breturn[ \t]+(?:this|self)\b[ \t]*;?[ \t]*$/gm) || []).length) rt = 'this';
-        }
         const cls = p && isClassy(p.kind) ? p.name : ownerName;
         if (rt && cls && /^(?:self|Self|this|static)$/.test(rt)) retNode.set(d.node, cls);
         else if (rt && !/^(?:void|Unit|None|Void|[A-Z]\d?)$/.test(rt)) retNode.set(d.node, rt);
@@ -1145,7 +1148,8 @@ export function analyze(files, rootName, progress = () => {}) {
     const a = classByName.get(n.name);
     if (a) a.push(n.id); else classByName.set(n.name, [n.id]);
   }
-  const qn = c => { let q = nodes[c].name; for (let p = nodes[c].parent; p >= 0 && isClassy(nodes[p].kind); p = nodes[p].parent) q = nodes[p].name + '.' + q; return q; };
+  const qnCache = new Map();
+  const qn = c => { let q = qnCache.get(c); if (q === undefined) { q = nodes[c].name; for (let p = nodes[c].parent; p >= 0 && isClassy(nodes[p].kind); p = nodes[p].parent) q = nodes[p].name + '.' + q; qnCache.set(c, q); } return q; };
   for (const n of nodes) if (isClassy(n.kind) && n.parent >= 0 && isClassy(nodes[n.parent].kind) && !n.name.includes('.')) {
     const q = qn(n.id), q2 = nodes[n.parent].name + '.' + n.name;
     for (const k of q === q2 ? [q] : [q, q2]) {
@@ -1408,14 +1412,28 @@ export function analyze(files, rootName, progress = () => {}) {
       }
       return T ? fieldIn(T, w) || (/^(?:shared|default|instance|current|main|standard|sharedInstance|INSTANCE)$/.test(w) && typeNames.has(T) ? T : null) : null;
     };
+    let kAt = -1, kQ = -1;
     const keyTargets = (at, name) => {
-      let d = 0, q = at - 1;
-      for (const lim = Math.max(0, at - 3000); ; q--) {
-        if (q < lim) return null;
-        const c = masked.charCodeAt(q);
-        if (c === 41 || c === 93 || c === 125) d++;
-        else if (c === 40 || c === 91 || c === 123) { if (!d) break; d--; }
+      let d = 0, q = -1;
+      if (kAt >= 0 && kAt < at && at - kAt < 3000) {
+        for (let i = kAt; i < at && d >= 0; i++) {
+          const c = masked.charCodeAt(i);
+          if (c === 40 || c === 91 || c === 123) d++;
+          else if (c === 41 || c === 93 || c === 125) d--;
+        }
+        if (d === 0) q = kQ;
+        d = 0;
       }
+      if (q < 0) {
+        q = at - 1;
+        for (const lim = Math.max(0, at - 3000); ; q--) {
+          if (q < lim) { kAt = -1; return null; }
+          const c = masked.charCodeAt(q);
+          if (c === 41 || c === 93 || c === 125) d++;
+          else if (c === 40 || c === 91 || c === 123) { if (!d) break; d--; }
+        }
+      }
+      kAt = at; kQ = q;
       if (masked.charCodeAt(q) !== 40) return null;
       let b = q;
       while (b > 0 && (isW(masked.charCodeAt(b - 1)) || masked.charCodeAt(b - 1) === 46)) b--;
@@ -1500,7 +1518,7 @@ export function analyze(files, rootName, progress = () => {}) {
       if (!member && (KEY_COLON.has(L.group) || KEY_EQ[L.group])) {
         const nx = masked.slice(at + name.length, at + name.length + 3), ps = masked.slice(Math.max(starts[ln], at - 60), at), whole = at - starts[ln] <= 60;
         if (KEY_COLON.has(L.group) ? (L.group === 'js' ? /^\??:(?!:)/ : /^:(?!:)/).test(nx) && (/[,({][ \t]*$/.test(ps) || (whole && /^[ \t]*(?:(?:readonly|public|private|protected|static|declare|override)[ \t]+)*$/.test(ps)))
-          : /^[ \t]*=(?![=>])/.test(nx) && KEY_EQ[L.group].test(whole ? ps : ps.replace(/^[^(,{]*$/, 'x'))) {
+          : /^[ \t]*=(?![=>])/.test(nx) && KEY_EQ[L.group].test(whole ? ps : ps.replace(/^[^(,{]*$/, 'x')) && (!whole || !/^[ \t]*$/.test(ps) || /[(,][ \t\r\n]*$/.test(masked.slice(Math.max(0, starts[ln] - 200), starts[ln])))) {
           keyHit = keyTargets(at, name);
           if (!keyHit) continue;
         }
