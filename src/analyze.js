@@ -79,6 +79,7 @@ const isStd = (name, group) => {
     case 'jvm': return /^(?:java|javax|kotlin|scala|groovy|jdk|sun)(?:\.|$)/.test(name);
     case 'cs': return /^System(?:\.|$)/.test(name);
     case 'dart': return name.startsWith('dart:');
+    case 'zig': return /^(?:std|builtin|root)$/.test(name);
     case 'hs': return /^(?:Prelude|GHC|Foreign|Numeric|Debug|Unsafe|Type|System\.(?:IO|Exit|Environment|Info|Mem|Timeout|CPUTime)|Control\.(?:Monad|Applicative|Exception|Concurrent|Arrow|Category|DeepSeq)|Text\.(?:Printf|Read|Show)|Data\.(?:List|Maybe|Char|Either|Function|Functor|Foldable|Traversable|IORef|STRef|Word|Int|Bits|Ord|Monoid|Semigroup|Kind|Proxy|Coerce|Void|Typeable|Data|String|Tuple|Ratio|Complex|Fixed|Dynamic|Unique|Version|Bifunctor|Bool|Eq|Type|Array))(?:\.|$)/.test(name);
     case 'js': return name.startsWith('node:') || STD.js.has(name.split('/')[0]);
     default: return !!STD[group]?.has(name.split(/[./]/)[0]);
@@ -722,6 +723,10 @@ function makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, phpNs, exMods, mlM
     lua(spec, info) {
       const p = spec.replace(/\./g, '/');
       return suf(p + '.lua', info) ?? suf(p + '/init.lua', info) ?? spec.split('.')[0];
+    },
+    zig(spec, info) {
+      if (!/\.zig$/.test(spec)) return spec;
+      return exact(join(info.dir, spec)) ?? suf(spec.replace(/^(\.\.?\/)+/, ''), info);
     },
     sh(spec, info) {
       if (spec.includes('$')) return null;

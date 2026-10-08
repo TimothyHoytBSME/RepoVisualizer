@@ -593,7 +593,7 @@ const GENS = [
   gen('r jl nim pl pm tf hcl gd cr raku', { line: ['#'] }),
   gen('erl hrl', { line: ['%'] }),
   gen('clj cljs cljc edn lisp el scm rkt', { line: [';'] }),
-  gen('zig v sol fs fsx wgsl proto graphql gql d', { line: ['//'], block: [['/*', '*/']] }),
+  gen('v sol fs fsx wgsl proto graphql gql d', { line: ['//'], block: [['/*', '*/']] }),
 ];
 
 const HS = {
@@ -641,6 +641,22 @@ const ML = {
   strip: /^[ \t]*(?:open!?|include)[ \t]+[A-Z][\w'.]*/gm,
 };
 
+const ZIG = {
+  group: 'zig', exts: 'zig zon', resolve: 'zig',
+  syntax: { line: ['//', '\\\\'], quotes: '"', charQuote: true },
+  priv: /^[ \t]*(?:export[ \t]+|extern[ \t]+|inline[ \t]+|noinline[ \t]+)*(?:const|var|fn)\b/,
+  kw: kw(`addrspace align allowzero and anyframe anytype asm async await break callconv catch comptime const continue defer else enum errdefer error export extern fn for if inline linksection noalias noinline nosuspend opaque or orelse packed pub resume return struct suspend switch test threadlocal try union unreachable usingnamespace var volatile while true false null undefined void bool type anyerror u8 u16 u32 u64 usize i8 i16 i32 i64 isize f32 f64 comptime_int std self Self`),
+  defs: [
+    [R`\bfn[ \t]+(${N})`, 'function'],
+    [R`^[ \t]*(?:pub[ \t]+)?const[ \t]+(${N})[ \t]*(?::[^=\n]*)?=[ \t]*(?:extern[ \t]+|packed[ \t]+)?(?:struct|enum|union|opaque)\b`, 'class'],
+    [R`^[ \t]*(?:pub[ \t]+)?const[ \t]+(${N})[ \t]*(?::[^=\n]*)?=[ \t]*error[ \t]*\{`, 'type'],
+    [R`^(?:pub[ \t]+)?(?:const|var)[ \t]+(${N})[ \t]*(?::[^=\n]*)?=(?![ \t]*@import\b)(?![ \t]*(?:extern[ \t]+|packed[ \t]+)?(?:struct|enum|union|opaque)\b)`, 'variable'],
+    [R`^[ \t]+(${N})[ \t]*:[ \t]*[^,\n]+,[ \t]*$`, 'field'],
+  ],
+  imports: (raw, m) => grab([], /@import\(\s*"([^"]+)"\s*\)/g, raw, m),
+  binds: raw => [...raw.matchAll(/\b(?:const|var)[ \t]+([A-Za-z_]\w*)[ \t]*=[ \t]*@import\(\s*"([^"]+)"\s*\)[ \t]*;/g)].map(x => [x[1], x[2], true]),
+};
+
 const MD = {
   group: 'md', exts: 'md mdx markdown rst', linkType: 'ref', resolve: 'md',
   imports: raw => grab(grab([], /\]\(\s*<?([^)\s>]+)/g, raw), /^\s*\[[^\]]+\]:\s*<?(\S+?)>?\s*$/gm, raw),
@@ -655,7 +671,7 @@ const TEXT = {
   names: ['makefile', 'dockerfile', 'license', 'readme', 'procfile', 'justfile', 'containerfile', 'go.mod'],
 };
 
-export const LANGS = [JS, PY, GO, RS, C, JVM, CS, SWIFT, DART, RB, PHP, LUA, SH, SQL, HS, ML, ...GENS, MD, HTML, CSS, TEXT];
+export const LANGS = [JS, PY, GO, RS, C, JVM, CS, SWIFT, DART, RB, PHP, LUA, SH, SQL, HS, ML, ZIG, ...GENS, MD, HTML, CSS, TEXT];
 const BY_EXT = new Map(), BY_NAME = new Map();
 for (const L of LANGS) {
   for (const e of L.exts.split(' ')) BY_EXT.set(e, L);
