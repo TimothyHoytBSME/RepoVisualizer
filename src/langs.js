@@ -146,11 +146,11 @@ function goMethods(t) {
 
 function pyBinds(raw) {
   const out = [];
-  for (const x of raw.matchAll(/^[ \t]*import[ \t]+([\w.]+)[ \t]+as[ \t]+(\w+)/gm)) out.push([x[2], x[1]]);
+  for (const x of raw.matchAll(/^[ \t]*import[ \t]+([\w.]+)[ \t]+as[ \t]+(\w+)/gm)) out.push([x[2], x[1], true]);
   for (const x of raw.matchAll(/^[ \t]*from[ \t]+(\.*[\w.]*)[ \t]+import[ \t]*\(?([^)\n]*)/gm)) {
     for (const part of x[2].split(',')) {
       const m = /^\s*(\w+)(?:\s+as\s+(\w+))?\s*$/.exec(part);
-      if (m) out.push([m[2] || m[1], x[1].endsWith('.') ? x[1] + m[1] : x[1] + '.' + m[1]]);
+      if (m) out.push([m[2] || m[1], x[1].endsWith('.') ? x[1] + m[1] : x[1] + '.' + m[1], m[1]]);
     }
   }
   return out;
@@ -272,14 +272,14 @@ function notSig(t, i) {
 function jsBinds(raw) {
   const out = [];
   const names = list => list.split(',').map(p => p.trim().split(/\s+as\s+|\s*:\s*/).pop().trim()).filter(n => /^[A-Za-z_$][\w$]*$/.test(n));
-  for (const m of raw.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*require\s*\(\s*['"]([^'"]+)['"]\s*\)/g)) out.push([m[1], m[2]]);
+  for (const m of raw.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*require\s*\(\s*['"]([^'"]+)['"]\s*\)/g)) out.push([m[1], m[2], true]);
   for (const m of raw.matchAll(/\b(?:const|let|var)\s*\{([^}]*)\}\s*=\s*require\s*\(\s*['"]([^'"]+)['"]\s*\)/g)) for (const n of names(m[1])) out.push([n, m[2]]);
   for (const m of raw.matchAll(/\bimport\s+(?:type\s+)?([\w$*{},\s]+?)\s+from\s*['"]([^'"]+)['"]/g)) {
     const c = m[1], b = /\{([^}]*)\}/.exec(c);
     if (b) for (const n of names(b[1])) out.push([n, m[2]]);
     const rest = c.replace(/\{[^}]*\}/, '');
     const star = /\*\s*as\s+([A-Za-z_$][\w$]*)/.exec(rest);
-    if (star) out.push([star[1], m[2]]);
+    if (star) out.push([star[1], m[2], true]);
     const def = /^\s*([A-Za-z_$][\w$]*)/.exec(rest);
     if (def && def[1] !== 'type') out.push([def[1], m[2]]);
   }
@@ -509,7 +509,9 @@ const LUA = {
     [R`^([\w.]+)[ \t]*=[ \t]*function\b`, 'function'],
   ],
   clean: s => s.split(/[.:]/).pop(),
+  priv: /^[ \t]*local\b/,
   imports: (raw, m) => grab([], /\brequire[ \t(]*['"]([^'"]+)['"]/g, raw, m),
+  binds: raw => [...raw.matchAll(/\blocal[ \t]+([A-Za-z_]\w*)[ \t]*=[ \t]*require[ \t(]*['"]([^'"]+)['"]/g)].map(x => [x[1], x[2], true]),
   resolve: 'lua',
 };
 

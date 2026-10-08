@@ -1103,11 +1103,12 @@ export function analyze(files, rootName, progress = () => {}) {
 
   for (const info of infos) {
     if (!info.binds) continue;
-    for (const [n, sp] of info.binds) {
+    for (const [n, sp, ns] of info.binds) {
       if (!info.specs.includes(sp)) continue;
       let r;
       try { r = resolve(info.L.resolve, sp.trim(), info); } catch { r = null; }
       if (typeof r === 'string' || r == null) (info.ext ??= new Set()).add(n);
+      else if (typeof r === 'number' && (ns === true || (typeof ns === 'string' && new RegExp(`(?:^|/)${ns}(?:\\.py|/__init__\\.py)$`).test(nodes[r].path)))) (info.modBind ??= new Map()).set(n, r);
     }
     info.binds = null;
   }
@@ -1251,6 +1252,7 @@ export function analyze(files, rootName, progress = () => {}) {
   }
   done = 0;
   const testFile = new Map();
+  let fileIdx = null;
   for (const info of infos) {
     if (++done % 50 === 0) progress({ phase: 'Linking', done, total: infos.length });
     if (!info.owner || /\.gradle(?:\.kts)?$/.test(info.f.path)) continue;
@@ -1570,6 +1572,20 @@ export function analyze(files, rootName, progress = () => {}) {
         if (cls !== fid && cls >= 0) for (const b of basesOf.get(cls) || []) for (const c of classes(b, fid)) for (const h of memberIn(c, name) || []) hit.add(h);
         if (!hit.size) continue;
         keyHit = [...hit];
+      }
+      if (member && recv && !keyHit && info.modBind) {
+        const mf = info.modBind.get(recv);
+        if (mf !== undefined) {
+          if (!fileIdx) { fileIdx = new Map(); for (const n of nodes) if (n.kind !== 'file' && n.kind !== 'dir' && n.file >= 0) { let m = fileIdx.get(n.file); if (!m) fileIdx.set(n.file, (m = new Map())); const l = m.get(n.name); if (l) l.push(n.id); else m.set(n.name, [n.id]); } }
+          const hit = fileIdx.get(mf)?.get(name);
+          if (hit) keyHit = hit;
+          else if (L.group === 'lua') continue;
+        }
+      }
+      if (member && recv && !keyHit && L.group === 'lua' && (recv === 'self' || local.get(recv)?.some(c => nodes[c].file === fid && nodes[c].parent === fid))) {
+        const hit = local.get(name)?.filter(c => nodes[c].file === fid);
+        if (!hit?.length) continue;
+        keyHit = hit;
       }
       let targets = null;
       let type = 'dep';
