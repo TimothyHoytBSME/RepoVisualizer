@@ -446,7 +446,7 @@ const DART = {
   kw: kw(`abstract as assert async await break case catch class const continue covariant default deferred do dynamic else enum export extends extension external factory false final finally for get hide if implements import in interface is late library mixin new null on operator part required rethrow return set show static super switch sync this throw true try typedef var void while with yield int double num String bool List Map Set Future Stream Widget`),
   defs: [
     [R`\b(?:class|mixin|enum|extension|typedef)[ \t]+(${N})`, 'class'],
-    [R`^[ \t]*(?:(?:static|final|const|late)[ \t]+)+(?:[\w<>?,]+[ \t]+)?(${N})[ \t]*=`, 'variable'],
+    [R`^[ \t]*(?:(?:static|final|const|late)[ \t]+)+(?:[\w<>?,]+[ \t]+)?(${N})[ \t]*[=;]`, 'variable'],
     [R`^[ \t]*(?:(?:static|external)[ \t]+)*[A-Za-z_][\w.]*(?:<[^>\n]*>)?\??[ \t]+(${N})[ \t]*(?:<[^>\n]*>)?\((?:[^()]|\([^()]*\))*\)[ \t]*(?:async\*?|sync\*)?[ \t]*=>`, 'function'],
     [R`^[ \t]*(?:(?:static|external)[ \t]+)*(?:[A-Za-z_][\w.]*(?:<[^>\n]*>)?\??[ \t]+)?get[ \t]+(${N})[ \t]*(?:=>|\{|async\b)`, 'function'],
   ],

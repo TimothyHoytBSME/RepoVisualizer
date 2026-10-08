@@ -1472,10 +1472,16 @@ export function analyze(files, rootName, progress = () => {}) {
         let j = at - (prev === 46 ? 1 : 2);
         const q = masked.charCodeAt(j - 1);
         if (q === 63 || q === 33) j--;
-        else if (q === 62 && prev === 58) {
+        else if (q === 62 && (prev === 58 || prev === 46)) {
           let d = 0, r = j - 1;
           for (const lim = Math.max(0, j - 200); r >= lim; r--) { const c = masked.charCodeAt(r); if (c === 62) d++; else if (c === 60 && --d === 0) break; else if (c === 59 || c === 123 || c === 125) { r = -1; break; } }
-          if (r > 0 && d === 0) { j = r; if (masked.charCodeAt(j - 1) === 58 && masked.charCodeAt(j - 2) === 58) j -= 2; }
+          if (r > 0 && d === 0) {
+            let r2 = r;
+            if (masked.charCodeAt(r2 - 1) === 58 && masked.charCodeAt(r2 - 2) === 58) r2 -= 2;
+            let w = r2;
+            while (w > 0 && isW(masked.charCodeAt(w - 1))) w--;
+            if (prev === 58 || (w < r2 && masked.charCodeAt(w) >= 65 && masked.charCodeAt(w) <= 90)) j = r2;
+          }
         }
         let k = j;
         while (k > 0 && isW(masked.charCodeAt(k - 1))) k--;
@@ -1551,6 +1557,14 @@ export function analyze(files, rootName, progress = () => {}) {
         }
         if (shadow) continue;
       }
+      if (member && !keyHit && (recv === 'super' || recvCall === 'super' || (recv === 'base' && L.group === 'cs'))) {
+        let cls = src;
+        while (cls !== fid && cls >= 0 && !isClassy(nodes[cls].kind)) cls = nodes[cls].parent;
+        const hit = new Set();
+        if (cls !== fid && cls >= 0) for (const b of basesOf.get(cls) || []) for (const c of classes(b, fid)) for (const h of memberIn(c, name) || []) hit.add(h);
+        if (!hit.size) continue;
+        keyHit = [...hit];
+      }
       let targets = null;
       let type = 'dep';
       if (keyHit) targets = keyHit;
@@ -1574,7 +1588,7 @@ export function analyze(files, rootName, progress = () => {}) {
           if (multi(hit)) type = 'ref';
         }
       }
-      if (member && (recv || recvIdx || chainT)) {
+      if (!targets && member && (recv || recvIdx || chainT)) {
         let selfT = chainT || (recvIdx ? headOf(elemOf(varType(recvIdx, src, ln, 0, true))) : SELF.has(recv) ? null : varType(recv, src, ln, 0));
         if (!selfT) for (let o = src; o !== fid && o >= 0; o = nodes[o].parent) {
           if (SELF.has(recv)) { if (isClassy(nodes[o].kind)) break; if (ownerOf.has(o)) { selfT = ownerOf.get(o); break; } continue; }
@@ -1623,7 +1637,7 @@ export function analyze(files, rootName, progress = () => {}) {
           } else if (CAP_TYPES.has(L.group) && !typeNames.has(recv)) continue;
           else if (COMMON.has(name)) continue;
         } else if (COMMON.has(name)) continue;
-      } else if (member && recvCall) {
+      } else if (!targets && member && recvCall) {
         if (!typeNames.has(recvCall) && !retOf.has(recvCall) && !g.has(recvCall) && !local.has(recvCall)) continue;
         const rt = typeNames.has(recvCall) ? recvCall : headOf(retOf.get(recvCall));
         if (rt) {
@@ -1631,7 +1645,7 @@ export function analyze(files, rootName, progress = () => {}) {
           if (own.length) targets = own;
           else if (!typeNames.has(rt) || COMMON.has(name)) continue;
         } else if (COMMON.has(name)) continue;
-      } else if (member && COMMON.has(name)) continue;
+      } else if (!targets && member && COMMON.has(name)) continue;
       if (!targets && !member && IMPLICIT_THIS.has(L.group)) {
         let cls = src;
         while (cls !== fid && cls >= 0 && !isClassy(nodes[cls].kind)) cls = nodes[cls].parent;
