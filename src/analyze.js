@@ -89,7 +89,7 @@ const RET_ANY = /\breturn\b(?:[ \t]+(?:new[ \t]+)?([A-Z]\w*)[ \t]*\(|[ \t]+(this
 const MULTI_INIT = new Set(['js', 'jvm', 'swift', 'dart', 'cs', 'rs']);
 const UNTYPED_RET = new Set(['py', 'js', 'rb', 'php', 'lua']);
 const KEY_COLON = new Set(['js', 'rb', 'swift', 'dart', 'cs', 'php', 'ex']);
-const KEY_EQ = { py: /(?:^|[(,])[ \t]*$/, lua: /[{,][ \t]*$/ };
+const KEY_EQ = { py: /(?:^|[(,])[ \t]*$/, r: /(?:^|[(,])[ \t]*$/, lua: /[{,][ \t]*$/ };
 const TRAILING = new Set(['swift', 'jvm']);
 const GLOBAL_VARS = new Set(['swift', 'go', 'c', 'jvm', 'cs']);
 const EX_PATH = /^(?:[^/]+\/){0,2}(?:examples?|samples?|demos?|docs?|benchmarks?|bench)\//i;
@@ -723,6 +723,10 @@ function makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, phpNs, exMods, mlM
     lua(spec, info) {
       const p = spec.replace(/\./g, '/');
       return suf(p + '.lua', info) ?? suf(p + '/init.lua', info) ?? spec.split('.')[0];
+    },
+    r(spec, info) {
+      if (!/\.[Rr]$/.test(spec)) return spec;
+      return exact(join(info.dir, spec)) ?? suf(spec.replace(/^(\.\.?\/)+/, ''), info);
     },
     zig(spec, info) {
       if (!/\.zig$/.test(spec)) return spec;
@@ -1796,6 +1800,7 @@ export function analyze(files, rootName, progress = () => {}) {
               : masked.charCodeAt(at + name.length) === 33 ? cands : cands.filter(c => AMBIENT.test(nodes[c].path));
             if (!srcTest) targets = targets.filter(c => !TEST_PATH.test(nodes[c].path));
             if (!GEN_FILE.test(nodes[fid].path)) targets = targets.filter(c => !GEN_FILE.test(nodes[c].path));
+            if (srcTest) targets = targets.filter(c => nodes[c].kind !== 'variable' || nodes[c].file === fid || !TEST_PATH.test(nodes[c].path));
             if (strictBare && !member) targets = targets.filter(c => bareOk(c, src));
             if (!srcEx) targets = targets.filter(c => !EX_PATH.test(nodes[c].path));
             else if (exRoot) targets = targets.filter(c => { const r = EX_ROOT.exec(nodes[c].path); return !r || r[0] === exRoot; });

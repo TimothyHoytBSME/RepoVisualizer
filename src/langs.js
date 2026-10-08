@@ -590,7 +590,7 @@ const GENS = [
       return a.size ? a : null;
     },
   },
-  gen('r jl nim pl pm tf hcl gd cr raku', { line: ['#'] }),
+  gen('jl nim pl pm tf hcl gd cr raku', { line: ['#'] }),
   gen('erl hrl', { line: ['%'] }),
   gen('clj cljs cljc edn lisp el scm rkt', { line: [';'] }),
   gen('v sol fs fsx wgsl proto graphql gql d', { line: ['//'], block: [['/*', '*/']] }),
@@ -657,6 +657,21 @@ const ZIG = {
   binds: raw => [...raw.matchAll(/\b(?:const|var)[ \t]+([A-Za-z_]\w*)[ \t]*=[ \t]*@import\(\s*"([^"]+)"\s*\)[ \t]*;/g)].map(x => [x[1], x[2], true]),
 };
 
+const RLANG = {
+  group: 'r', exts: 'r R rmd Rmd', resolve: 'r',
+  syntax: { line: ['#'], quotes: '\'"`' },
+  id: /[A-Za-z_.][\w.]*/g,
+  kw: kw(`if else repeat while function for in next break TRUE FALSE NULL Inf NaN NA NA_integer_ NA_real_ NA_character_ return library require c list print paste paste0 length is.null stop warning message invisible`),
+  defs: [
+    [R`^[ \t]*([A-Za-z_.][\w.]*)[ \t]*(?:<<?-|=)[ \t]*function\b`, 'function'],
+    [R`^([A-Za-z_.][\w.]*)[ \t]*(?:<<?-|=)(?![ \t]*function\b)`, 'variable'],
+    [R`\bsetClass\([ \t]*["']([\w.]+)["']`, 'class'],
+    [R`\bsetGeneric\([ \t]*["']([\w.]+)["']`, 'function'],
+    [R`^[ \t]*([A-Za-z_.][\w.]*)[ \t]*(?:<-|=)[ \t]*R6Class\b`, 'class'],
+  ],
+  imports: (raw, m) => grab(grab([], /\b(?:library|require|requireNamespace)\([ \t]*["']?([\w.]+)/g, raw, m), /\bsource\([ \t]*["']([^"']+)["']/g, raw),
+};
+
 const MD = {
   group: 'md', exts: 'md mdx markdown rst', linkType: 'ref', resolve: 'md',
   imports: raw => grab(grab([], /\]\(\s*<?([^)\s>]+)/g, raw), /^\s*\[[^\]]+\]:\s*<?(\S+?)>?\s*$/gm, raw),
@@ -671,7 +686,7 @@ const TEXT = {
   names: ['makefile', 'dockerfile', 'license', 'readme', 'procfile', 'justfile', 'containerfile', 'go.mod'],
 };
 
-export const LANGS = [JS, PY, GO, RS, C, JVM, CS, SWIFT, DART, RB, PHP, LUA, SH, SQL, HS, ML, ZIG, ...GENS, MD, HTML, CSS, TEXT];
+export const LANGS = [JS, PY, GO, RS, C, JVM, CS, SWIFT, DART, RB, PHP, LUA, SH, SQL, HS, ML, ZIG, RLANG, ...GENS, MD, HTML, CSS, TEXT];
 const BY_EXT = new Map(), BY_NAME = new Map();
 for (const L of LANGS) {
   for (const e of L.exts.split(' ')) BY_EXT.set(e, L);
