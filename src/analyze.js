@@ -1009,7 +1009,7 @@ export function analyze(files, rootName, progress = () => {}) {
         const rest = lines[d.line].slice(d.idx - starts[d.line] + d.name.length);
         let m, list = null;
         if (L.group === 'py') { if ((m = /^\s*\(([^)]*)\)/.exec(rest))) list = m[1].split(',').filter(x => !x.includes('=')); }
-        else if ((m = /^\s*(?:<[^>{]*>)?\s*(?:\([^)]*\)\s*)?(?:extends|implements|:|<)\s*([^{]*)/.exec(rest))) {
+        else if ((m = /^\s*(?:<[^>{]*>)?\s*(?:\([^)]*\)\s*)?(?:extends|implements|:|<|on\b)\s*([^{]*)/.exec(rest))) {
           list = m[1].replace(/<[^<>]*(?:<[^<>]*>[^<>]*)*>/g, '').replace(/\b(?:implements|extends|public|private|protected|virtual|where|with)\b/g, ',').split(',');
         }
         if (list) {
