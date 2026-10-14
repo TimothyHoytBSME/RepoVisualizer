@@ -590,7 +590,7 @@ const GENS = [
     },
   },
   gen('raku', { line: ['#'] }),
-  gen('edn lisp el scm rkt', { line: [';'] }),
+  gen('edn', { line: [';'] }),
   gen('v wgsl d', { line: ['//'], block: [['/*', '*/']] }),
 ];
 
@@ -962,6 +962,26 @@ const CR = {
   imports: (raw, m) => grab([], /\brequire[ \t(]+"([^"]+)"/g, raw, m),
 };
 
+const LISP_ID = String.raw`[A-Za-z_*+!?<>=$&%^~-][\w*+!?<>=$&%^~./-]*`;
+const LISP = {
+  group: 'lisp', exts: 'lisp lsp cl el scm ss sld rkt', resolve: 'lisp',
+  syntax: { line: [';'], block: [['#|', '|#']], quotes: '"', multi: '"', charPre: '\\' },
+  id: new RegExp(LISP_ID, 'g'),
+  kw: kw(`defun defmacro defvar defconst defcustom defparameter define lambda let let* letrec if when unless cond case and or not progn prog1 setq setf quote function nil t else begin do loop while dolist dotimes return require provide load car cdr cons list apply funcall mapcar format message error interactive declare save-excursion with-current-buffer condition-case unwind-protect catch throw eq equal null`),
+  defs: [
+    [R`^[ \t]*\((?:defun|defmacro|defsubst|define-inline|cl-defun|cl-defmacro|cl-defsubst|cl-defgeneric|cl-defmethod|defgeneric|defmethod|define-syntax|define-syntax-rule|define-macro|define-derived-mode|define-minor-mode|define-globalized-minor-mode|evil-define-command|evil-define-motion|evil-define-operator|evil-define-text-object)[ \t]+(${LISP_ID})`, 'function'],
+    [R`^[ \t]*\((?:define|define\*|define-public)[ \t]+\((${LISP_ID})`, 'function'],
+    [R`^[ \t]*\((?:define|define-public)[ \t]+(${LISP_ID})`, 'variable'],
+    [R`^[ \t]*\((?:defvar|defvar-local|defparameter|defconst|defconstant|defcustom|defface|defgroup)[ \t]+(${LISP_ID})`, 'variable'],
+    [R`^[ \t]*\((?:defclass|defstruct|cl-defstruct|struct|define-struct|define-record-type|defrecord)[ \t]+\(?(${LISP_ID})`, 'class'],
+  ],
+  imports: (raw, m) => {
+    const out = grab([], /\((?:require|load|load-file)[ \t]+'?["]?([\w./+-]+)/g, raw, m);
+    for (const x of (m || raw).matchAll(/\(require[ \t]+((?:[\w./-]+|\([^()]*\)|[ \t\n])+)\)/g)) for (const t of x[1].match(/(?<![(\w.\/-])[a-z][\w-]*\/[\w./-]+/g) || []) out.push(t);
+    return out;
+  },
+};
+
 const RLANG = {
   group: 'r', exts: 'r R rmd Rmd', resolve: 'r',
   syntax: { line: ['#'], quotes: '\'"`' },
@@ -991,7 +1011,7 @@ const TEXT = {
   names: ['makefile', 'dockerfile', 'license', 'readme', 'procfile', 'justfile', 'containerfile', 'go.mod'],
 };
 
-export const LANGS = [JS, PY, GO, RS, C, JVM, CS, SWIFT, DART, RB, PHP, LUA, SH, SQL, HS, PURS, ELM, ML, ZIG, RLANG, ERL, CLJ, SOL, JL, PL, FS, TF, GD, PROTO, GQL, NIM, CR, ...GENS, MD, HTML, CSS, TEXT];
+export const LANGS = [JS, PY, GO, RS, C, JVM, CS, SWIFT, DART, RB, PHP, LUA, SH, SQL, HS, PURS, ELM, ML, ZIG, RLANG, ERL, CLJ, SOL, JL, PL, FS, TF, GD, PROTO, GQL, NIM, CR, LISP, ...GENS, MD, HTML, CSS, TEXT];
 const BY_EXT = new Map(), BY_NAME = new Map();
 for (const L of LANGS) {
   for (const e of L.exts.split(' ')) BY_EXT.set(e, L);

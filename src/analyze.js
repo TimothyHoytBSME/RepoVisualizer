@@ -72,6 +72,7 @@ const STD_SETS = {
   lua: 'string table math io os coroutine debug utf8 package bit jit ffi',
   erl: 'kernel stdlib erts compiler crypto ssl public_key inets ssh sasl mnesia observer runtime_tools tools common_test eunit xmerl asn1 os_mon syntax_tools parsetools lists maps proplists io io_lib erlang gen_server gen_statem gen_event gen_fsm supervisor application ets dets string binary file filename filelib os timer re math logger sys proc_lib unicode calendar queue sets ordsets orddict dict gb_trees gb_sets array code rand persistent_term atomics counters gen_tcp gen_udp inet uri_string base64 zlib erl_eval erl_scan erl_parse error_logger rpc net_kernel global pg digraph epp',
   clj: 'clojure cljs java javax goog',
+  lisp: 'cl-lib cl subr-x seq map pcase rx eieio ert json url org gv nadvice cl-macs cl-generic ring thingatpt easymenu custom racket rackunit scheme srfi rnrs ice-9 typed uiop asdf',
   nim: 'std system os strutils sequtils tables sets times math options json streams strformat strscans asyncdispatch asyncnet asyncfutures net nativesockets hashes algorithm unittest macros typetraits locks deques heapqueue random terminal parseutils uri httpclient re nre osproc oids monotimes posix winlean endians bitops atomics typeinfo sugar logging parseopt cpuinfo md5 sha1 base64 unicode critbits lists sharedtables rlocks threadpool selectors',
   elm: 'Basics List Maybe Result String Char Tuple Debug Platform Cmd Sub Html Json Browser Http Url Time Task Process Array Dict Set Bitwise Svg File Random Parser VirtualDom Markdown',
   proto: 'google',
@@ -369,6 +370,17 @@ function params(t, from, L, types) {
     const e = t.indexOf('=', from), head = t.slice(from, e < 0 || e - from > 600 ? from : e);
     if (types) for (const m of head.matchAll(/\([ \t]*([a-z_][\w']*)[ \t]*:[ \t]*([^()=]+)\)/g)) { const ty = tyOf(m[2]); if (ty) types.set(m[1], ty); }
     return (head.replace(/:[^()=]*/g, '').match(/[a-z_][\w']*/g) || []).filter(w => !L.kw.has(w));
+  }
+  if (L.group === 'lisp') {
+    let i = from;
+    while (i < t.length && !/[\s()]/.test(t[i])) i++;
+    let j = from - 1;
+    while (j > 0 && (t[j] === ' ' || t[j] === '\t')) j--;
+    let d = t[j] === '(' ? 1 : 0;
+    if (!d) { while (i < t.length && /\s/.test(t[i])) i++; if (t[i] !== '(') return []; d = 1; i++; }
+    const s0 = i;
+    for (const end = Math.min(t.length, i + 800); i < end && d > 0; i++) { if (t[i] === '(') d++; else if (t[i] === ')') d--; }
+    return (t.slice(s0, i).match(/(?<![\w*+!?<>=$&%^~./:-])[A-Za-z_*+!?<>=$%^~-][\w*+!?<>=$&%^~./-]*/g) || []).filter(w => w[0] !== '&');
   }
   if (L.group === 'clj') {
     const out = [], end = Math.min(t.length, from + 1500);
@@ -825,6 +837,10 @@ function makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, phpNs, phpNsFiles,
       if (/^\.\.?\//.test(spec)) { const b = join(info.dir, spec); return exact(b + '.nim') ?? exact(b); }
       if (spec.startsWith('std/') || spec.startsWith('pkg/')) return spec.startsWith('std/') ? 'std' : suf(spec.slice(4) + '.nim', info) ?? spec.slice(4).split('/')[0];
       return exact(join(info.dir, spec + '.nim')) ?? suf(spec + '.nim', info) ?? spec.split('/')[0];
+    },
+    lisp(spec, info) {
+      const b = spec.replace(/\.(?:el|rkt|scm|lisp)$/, '');
+      return exact(join(info.dir, spec)) ?? suf(b + '.el', info) ?? suf(b + '.rkt', info) ?? suf(b + '.scm', info) ?? suf(b + '.lisp', info) ?? b.split('/')[0];
     },
     ex(spec) {
       return exMods.get(spec) ?? spec.split('.')[0];
@@ -1676,6 +1692,7 @@ export function analyze(files, rootName, progress = () => {}) {
         if (segs.length < 2) continue;
         look = segs.slice(0, segs[0] === 'data' ? 3 : 2).join('.');
       }
+      if (L.group === 'lisp' && m.index > 0 && masked.charCodeAt(m.index - 1) === 58) continue;
       if (L.group === 'clj') {
         const pc = m.index > 0 ? masked.charCodeAt(m.index - 1) : 0;
         if (pc === 58 || pc === 46) continue;
