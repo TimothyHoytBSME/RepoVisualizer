@@ -82,6 +82,7 @@ const isStd = (name, group) => {
     case 'rs': return /^(?:std|core|alloc|proc_macro|test)$/.test(name);
     case 'jvm': return /^(?:java|javax|kotlin|scala|groovy|jdk|sun)(?:\.|$)/.test(name);
     case 'cs': return /^System(?:\.|$)/.test(name);
+    case 'fs': return /^(?:System|Microsoft|FSharp)(?:\.|$)/.test(name);
     case 'dart': return name.startsWith('dart:');
     case 'zig': return /^(?:std|builtin|root)$/.test(name);
     case 'hs': return /^(?:Prelude|GHC|Foreign|Numeric|Debug|Unsafe|Type|System\.(?:IO|Exit|Environment|Info|Mem|Timeout|CPUTime)|Control\.(?:Monad|Applicative|Exception|Concurrent|Arrow|Category|DeepSeq)|Text\.(?:Printf|Read|Show)|Data\.(?:List|Maybe|Char|Either|Function|Functor|Foldable|Traversable|IORef|STRef|Word|Int|Bits|Ord|Monoid|Semigroup|Kind|Proxy|Coerce|Void|Typeable|Data|String|Tuple|Ratio|Complex|Fixed|Dynamic|Unique|Version|Bifunctor|Bool|Eq|Type|Array))(?:\.|$)/.test(name);
@@ -357,6 +358,11 @@ const VAR_TYPES = [
 ];
 
 function params(t, from, L, types) {
+  if (L.group === 'fs') {
+    const e = t.indexOf('=', from), head = t.slice(from, e < 0 || e - from > 600 ? from : e);
+    if (types) for (const m of head.matchAll(/\([ \t]*([a-z_][\w']*)[ \t]*:[ \t]*([^()=]+)\)/g)) { const ty = tyOf(m[2]); if (ty) types.set(m[1], ty); }
+    return (head.replace(/:[^()=]*/g, '').match(/[a-z_][\w']*/g) || []).filter(w => !L.kw.has(w));
+  }
   if (L.group === 'clj') {
     const out = [], end = Math.min(t.length, from + 1500);
     let d = 1, open = false;
@@ -778,6 +784,10 @@ function makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, phpNs, phpNsFiles,
       if (/\.p[lm]$|\//.test(spec)) return exact(join(info.dir, spec)) ?? suf(spec.replace(/^(\.\.?\/)+/, ''), info);
       return suf(spec.replace(/::/g, '/') + '.pm', info) ?? spec.split('::')[0];
     },
+    fs(spec, info) {
+      if (csNs.has(spec)) { (info.uses ??= new Set()).add(spec); return null; }
+      return /\.fsx?$/.test(spec) ? exact(join(info.dir, spec)) : spec.split('.')[0];
+    },
     ex(spec) {
       return exMods.get(spec) ?? spec.split('.')[0];
     },
@@ -898,7 +908,7 @@ export function analyze(files, rootName, progress = () => {}) {
   const names = new Map();
   const localsOf = new Map();
   const macros = new Set(), privC = new Set(), aliasOf = new Map(), retNode = new Map(), closureOf = new Map(), ownerOf = new Map(), selfOf = new Map(), memberish = new Set(), typesOf = new Map(), fieldTypes = new Map(), retOf = new Map(), basesOf = new Map();
-  const pkgOf = new Map();
+  const pkgOf = new Map(), fsMods = new Set();
   const csNs = new Set(), phpNs = new Map(), phpNsFiles = new Set(), exMods = new Map(), mlMods = new Map(), fixtures = new Set();
   let done = 0;
   const readFile = info => {
@@ -914,6 +924,13 @@ export function analyze(files, rootName, progress = () => {}) {
       if (pm) info.pkg = pm[1];
     }
     if (L.group === 'jl') info.pkg = jlPkg(f.path);
+    if (L.group === 'fs' && masked) {
+      let ns = '';
+      for (const m of masked.matchAll(/^([ \t]*)(namespace|module)[ \t]+(?:(?:rec|private|internal)[ \t]+)*([\w.]+)[ \t]*(=?)/gm)) {
+        if (m[2] === 'namespace' || !m[4]) { ns = m[3]; csNs.add(ns); }
+        else csNs.add(ns ? ns + '.' + m[3] : m[3]);
+      }
+    }
     if (L.group === 'cs' && masked) for (const m of masked.matchAll(/\bnamespace[ \t]+([\w.]+)/g)) csNs.add(m[1]);
     if (L.group === 'ml' || (L.group === 'erl' && /\.erl$/.test(nodes[info.id].name))) { const b = nodes[info.id].name.replace(/\.(?:mli?|erl)$/, ''), k = L.group === 'erl' ? b : b[0].toUpperCase() + b.slice(1), l = mlMods.get(k); if (!l) mlMods.set(k, [info.id]); else if (!l.includes(info.id)) l.push(info.id); }
     if (L.group === 'clj' && masked) { const m = /^\((?:ns|in-ns)[ \t\n]+'?(?:\^(?:\{[^}\n]*\}|\S+)\s+)*([\w.*+!?-]+)/m.exec(masked); if (m && !exMods.has(m[1])) exMods.set(m[1], info.id); info.alias = L.aliases(text); }
@@ -1072,6 +1089,7 @@ export function analyze(files, rootName, progress = () => {}) {
         if (rt && !/^(?:void|Unit|None|Void|self|Self|this|[A-Z]\d?)$/.test(rt)) retOf.set(d.name, retOf.has(d.name) && retOf.get(d.name) !== rt ? null : rt);
         else if (retOf.has(d.name)) retOf.set(d.name, null);
       }
+      if (L.group === 'fs' && d.kind === 'class' && /^[ \t]*module\b/.test(lines[d.line])) fsMods.add(d.node);
       if (isClassy(d.kind)) {
         const rest = lines[d.line].slice(d.idx - starts[d.line] + d.name.length);
         let m, list = null;
@@ -1892,9 +1910,9 @@ export function analyze(files, rootName, progress = () => {}) {
           const viaImport = targets.length > 0;
           if (!targets.length && L.pkgDir) {
             const pk = info.pkg, uses = info.uses;
-            const nsOk = ns => ns != null && (ns === pk || (uses != null && uses.has(ns)) || (L.group === 'cs' && pk != null && pk.startsWith(ns + '.')));
+            const nsOk = ns => ns != null && (ns === pk || (uses != null && uses.has(ns)) || ((L.group === 'cs' || L.group === 'fs') && pk != null && pk.startsWith(ns + '.')));
             targets = pk != null || uses
-              ? cands.filter(c => nsOk(pkgOf.get(nodes[c].file)) && (member ? nf(c) : nodes[c].parent === nodes[c].file))
+              ? cands.filter(c => nsOk(pkgOf.get(nodes[c].file)) && (member ? nf(c) : nodes[c].parent === nodes[c].file || fsMods.has(nodes[c].parent)))
               : cands.filter(c => nodes[nodes[c].file].parent === fdir && (!member || nf(c)));
             if (!srcTest && targets.length) targets = targets.filter(c => !TEST_PATH.test(nodes[c].path));
           }

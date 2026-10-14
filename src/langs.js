@@ -592,7 +592,7 @@ const GENS = [
   },
   gen('nim tf hcl gd cr raku', { line: ['#'] }),
   gen('edn lisp el scm rkt', { line: [';'] }),
-  gen('v fs fsx wgsl proto graphql gql d', { line: ['//'], block: [['/*', '*/']] }),
+  gen('v wgsl proto graphql gql d', { line: ['//'], block: [['/*', '*/']] }),
 ];
 
 const HS = {
@@ -783,6 +783,40 @@ const PL = {
   },
 };
 
+const fsTop = (t, i) => {
+  let s = i;
+  while (s > 0 && t[s - 1] !== '\n') s--;
+  let w = 0;
+  while (t[s + w] === ' ' || t[s + w] === '\t') w++;
+  for (let e = s - 1, lim = Math.max(0, s - 20000); e > lim;) {
+    let b = e;
+    while (b > 0 && t[b - 1] !== '\n') b--;
+    let k = 0;
+    while (b + k < e && (t[b + k] === ' ' || t[b + k] === '\t')) k++;
+    if (b + k < e && k < w) return /^[ \t]*(?:\[<[^\n]*>\][ \t]*)?(?:module|type|namespace|and|static|inherit)\b|^[ \t]*\{|^[ \t]*\[<[^\n]*>\][ \t]*$/.test(t.slice(b, e));
+    e = b - 1;
+  }
+  return true;
+};
+const FS = {
+  group: 'fs', exts: 'fs fsi fsx', pkgDir: true, resolve: 'fs', priv: /^[ \t]*(?:let|member|module|type)[ \t]+(?:rec[ \t]+|inline[ \t]+)*private\b/,
+  syntax: { line: ['//'], block: [['(*', '*)']], quotes: '"', triple: true, verbatim: true },
+  pkg: /^(?:namespace|module)[ \t]+(?:rec[ \t]+)?([\w.]+)[ \t]*$/m,
+  localDecl: /\b(?:let|use|and)!?[ \t]+(?:mutable[ \t]+)?()([a-z_][\w']*)(?=[ \t]*(?::[^=\n]*)?=)/gm,
+  id: /[A-Za-z_][\w']*/g,
+  kw: kw(`abstract and as assert base begin class default delegate do done downcast downto elif else end exception extern false finally fixed for fun function global if in inherit inline interface internal lazy let match member module mutable namespace new not null of open or override private public rec return select sig static struct then to true try type upcast use val void when while with yield async task int string bool float unit option list seq array obj Some None Ok Error printfn sprintf failwith ignore id fst snd raise this`),
+  defs: [
+    [R`^[ \t]*(?:let|and)[ \t]+(?:(?:rec|inline|private|internal|public|mutable)[ \t]+)*([A-Za-z_][\w']*)(?=[ \t]+[(A-Za-z_])(?![ \t]*:)`, 'function', fsTop],
+    [R`^[ \t]*(?:\[<[^\n]*>\][ \t]*)?(?:let|and)[ \t]+(?:(?:rec|inline|private|internal|public|mutable)[ \t]+)*([A-Za-z_][\w']*)[ \t]*(?::[^=\n]*)?=`, 'variable', fsTop],
+    [R`^[ \t]*(?:static[ \t]+|abstract[ \t]+|default[ \t]+|override[ \t]+)*member[ \t]+(?:inline[ \t]+|private[ \t]+|internal[ \t]+)*(?:(?:[a-z_]\w*|__)\.)?([A-Za-z_]\w*)`, 'function'],
+    [R`^[ \t]*(?:\[<[^\n]*>\][ \t]*)?(?:type|and)[ \t]+(?:private[ \t]+|internal[ \t]+)?([A-Z]\w*)(?=[^\n]*=|[ \t]*\(|[ \t]*$)`, 'class'],
+    [R`^[ \t]*module[ \t]+(?:(?:rec|private|internal)[ \t]+)*([A-Z]\w*)[ \t]*=`, 'class'],
+    [R`^[ \t]*exception[ \t]+([A-Z]\w*)`, 'type'],
+  ],
+  imports: (raw, m) => grab([], /^[ \t]*open[ \t]+(?:type[ \t]+)?([\w.]+)/gm, raw, m),
+  strip: /^[ \t]*open[ \t]+[\w. \t]*|^(?:namespace|module)[ \t]+[\w. \t]*$/gm,
+};
+
 const RLANG = {
   group: 'r', exts: 'r R rmd Rmd', resolve: 'r',
   syntax: { line: ['#'], quotes: '\'"`' },
@@ -812,7 +846,7 @@ const TEXT = {
   names: ['makefile', 'dockerfile', 'license', 'readme', 'procfile', 'justfile', 'containerfile', 'go.mod'],
 };
 
-export const LANGS = [JS, PY, GO, RS, C, JVM, CS, SWIFT, DART, RB, PHP, LUA, SH, SQL, HS, ML, ZIG, RLANG, ERL, CLJ, SOL, JL, PL, ...GENS, MD, HTML, CSS, TEXT];
+export const LANGS = [JS, PY, GO, RS, C, JVM, CS, SWIFT, DART, RB, PHP, LUA, SH, SQL, HS, ML, ZIG, RLANG, ERL, CLJ, SOL, JL, PL, FS, ...GENS, MD, HTML, CSS, TEXT];
 const BY_EXT = new Map(), BY_NAME = new Map();
 for (const L of LANGS) {
   for (const e of L.exts.split(' ')) BY_EXT.set(e, L);
