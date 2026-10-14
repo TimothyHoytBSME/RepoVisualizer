@@ -71,6 +71,7 @@ const STD_SETS = {
   lua: 'string table math io os coroutine debug utf8 package bit jit ffi',
   erl: 'kernel stdlib erts compiler crypto ssl public_key inets ssh sasl mnesia observer runtime_tools tools common_test eunit xmerl asn1 os_mon syntax_tools parsetools lists maps proplists io io_lib erlang gen_server gen_statem gen_event gen_fsm supervisor application ets dets string binary file filename filelib os timer re math logger sys proc_lib unicode calendar queue sets ordsets orddict dict gb_trees gb_sets array code rand persistent_term atomics counters gen_tcp gen_udp inet uri_string base64 zlib erl_eval erl_scan erl_parse error_logger rpc net_kernel global pg digraph epp',
   clj: 'clojure cljs java javax goog',
+  jl: 'Base Core Main LinearAlgebra Statistics Random Printf Dates Test Distributed SparseArrays Serialization Sockets InteractiveUtils Markdown Unicode SHA UUIDs Logging Pkg Libdl Mmap FileWatching DelimitedFiles REPL SharedArrays Profile LibGit2 Downloads TOML Artifacts Future',
   ex: 'Kernel Enum Map MapSet String List Keyword GenServer Supervisor DynamicSupervisor Agent Task Logger Application Process Registry IO File Path System Code Module Atom Integer Float Tuple Stream Access Inspect Protocol Exception ExUnit Mix Regex URI Base Bitwise Calendar Date DateTime NaiveDateTime Time Version Node Port Function Range StringIO OptionParser EEx',
 };
 const STD = Object.fromEntries(Object.entries(STD_SETS).map(([k, v]) => [k, new Set(v.split(' '))]));
@@ -387,11 +388,20 @@ function params(t, from, L, types) {
     const c = inner[k];
     if (OPEN.includes(c)) d++;
     else if (CLOSE.includes(c)) d--;
-    else if (c === ',' && d === 0) { parts.push(inner.slice(s, k)); s = k + 1; }
+    else if ((c === ',' || (c === ';' && L.group === 'jl')) && d === 0) { parts.push(inner.slice(s, k)); s = k + 1; }
   }
   parts.push(inner.slice(s));
   const out = [];
   for (const p of parts) {
+    if (L.group === 'jl') {
+      if (/^\s*\(/.test(p)) { out.push(...(p.split(')')[0].match(/[A-Za-z_]\w*/g) || [])); continue; }
+      const m = /^\s*([A-Za-z_]\w*!?)\s*(?:::\s*([^=]+))?/.exec(p);
+      if (!m) continue;
+      out.push(m[1]);
+      const ty = types && m[2] ? tyOf(m[2]) : null;
+      if (ty) types.set(m[1], ty);
+      continue;
+    }
     const head = p.split('=')[0];
     let colon = -1;
     for (let k = 0; k < head.length; k++) {
@@ -463,6 +473,7 @@ function looseJSON(t) {
 }
 
 let mlNear = null;
+const jlPkg = p => { const i = ('/' + p).lastIndexOf('/src/'); return 'jl:' + (i >= 0 ? p.slice(0, i) : p.slice(0, Math.max(0, p.lastIndexOf('/')))); };
 function makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, phpNs, phpNsFiles, exMods, mlMods, goMods, names, swiftMods, crates, jsPkgs, jsAliases }) {
   const suffix = suffixMap(fileIds);
   const csFirst = new Set([...csNs].map(n => n.split('.')[0]));
@@ -750,6 +761,13 @@ function makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, phpNs, phpNsFiles,
       for (let i = 0; i < segs.length - 1; i++) { const r = suf(segs.slice(i).join('/'), info); if (r != null) return r; }
       return spec[0] === '@' ? segs.slice(0, 2).join('/') : segs[0];
     },
+    jl(spec, info) {
+      if (/\.jl$/.test(spec)) return exact(join(info.dir, spec)) ?? suf(spec.replace(/^(\.\.?\/)+/, ''), info);
+      const r = suf(spec + '/src/' + spec + '.jl', info) ?? suf('src/' + spec + '.jl', info);
+      if (r == null) return spec;
+      (info.uses ??= new Set()).add(jlPkg(nodes[r].path));
+      return r;
+    },
     ex(spec) {
       return exMods.get(spec) ?? spec.split('.')[0];
     },
@@ -885,6 +903,7 @@ export function analyze(files, rootName, progress = () => {}) {
       const pm = L.pkg.exec(masked);
       if (pm) info.pkg = pm[1];
     }
+    if (L.group === 'jl') info.pkg = jlPkg(f.path);
     if (L.group === 'cs' && masked) for (const m of masked.matchAll(/\bnamespace[ \t]+([\w.]+)/g)) csNs.add(m[1]);
     if (L.group === 'ml' || (L.group === 'erl' && /\.erl$/.test(nodes[info.id].name))) { const b = nodes[info.id].name.replace(/\.(?:mli?|erl)$/, ''), k = L.group === 'erl' ? b : b[0].toUpperCase() + b.slice(1), l = mlMods.get(k); if (!l) mlMods.set(k, [info.id]); else if (!l.includes(info.id)) l.push(info.id); }
     if (L.group === 'clj' && masked) { const m = /^\((?:ns|in-ns)[ \t\n]+'?(?:\^(?:\{[^}\n]*\}|\S+)\s+)*([\w.*+!?-]+)/m.exec(masked); if (m && !exMods.has(m[1])) exMods.set(m[1], info.id); info.alias = L.aliases(text); }

@@ -590,7 +590,7 @@ const GENS = [
       return a.size ? a : null;
     },
   },
-  gen('jl nim pl pm tf hcl gd cr raku', { line: ['#'] }),
+  gen('nim pl pm tf hcl gd cr raku', { line: ['#'] }),
   gen('edn lisp el scm rkt', { line: [';'] }),
   gen('v fs fsx wgsl proto graphql gql d', { line: ['//'], block: [['/*', '*/']] }),
 ];
@@ -739,6 +739,31 @@ const SOL = {
   imports: (raw, m) => grab([], /^[ \t]*import[ \t]+(?:[^"';]*?\bfrom[ \t]+)?["']([^"']+)["']/gm, raw, m),
 };
 
+const JN = String.raw`[A-Za-z_]\w*!?`;
+const JL = {
+  group: 'jl', exts: 'jl', explicit: true, pkgDir: true, resolve: 'jl',
+  syntax: { line: ['#'], block: [['#=', '=#']], quotes: '"', triple: true, multi: '"', charQuote: true },
+  id: /[A-Za-z_]\w*(?:!(?!=))?/g,
+  kw: kw(`function end if else elseif for while return begin let local global const struct mutable abstract type primitive module baremodule using import export public macro quote do try catch finally true false nothing missing isa where in new break continue Int Int64 Float64 String Bool Any Nothing Vector Dict Symbol Base Core println print length push! error throw typeof convert`),
+  defs: [
+    [R`^[ \t]*(?:@\w+[ \t]+)*function[ \t]+(?:[\w.]+\.)?(${JN})`, 'function'],
+    [R`^[ \t]*(?:@\w+[ \t]+)*(?:[A-Z]\w*\.)*(${JN})(?:\{[^}\n]*\})?\((?:[^()\n]|\((?:[^()\n]|\([^()\n]*\))*\))*\)[ \t]*(?:::[ \t]*[\w.{}, ]+?[ \t]*)?(?:where\b[^=\n]*)?=(?![=>])`, 'function'],
+    [R`^[ \t]*(?:@\w+[ \t]+)*(?:mutable[ \t]+)?struct[ \t]+(${N})`, 'class'],
+    [R`^[ \t]*(?:abstract|primitive)[ \t]+type[ \t]+(${N})`, 'class'],
+    [R`^[ \t]*macro[ \t]+(${N})`, 'function'],
+    [R`^(?:const[ \t]+)?(${N})[ \t]*(?:::[^=\n]*)?=(?![=>])`, 'variable'],
+    [R`^[ \t]+(${N})[ \t]*::[ \t]*[^=\n]*$`, 'field'],
+  ],
+  imports: (raw, m) => {
+    const out = grab([], /^[ \t]*include\([ \t]*"([^"]+)"[ \t]*\)/gm, raw, m);
+    for (const x of (m || raw).matchAll(/^[ \t]*(?:@\w+[ \t]+)?(?:using|import)[ \t]+((?:[^\n]*,[ \t]*\n)*[^\n]*)/gm)) {
+      const items = x[1].includes(':') ? [x[1].split(':')[0]] : x[1].split(',');
+      for (const it of items) { const t = it.trim(); if (/^[A-Za-z_]/.test(t)) out.push(t.split(/[.\s]/)[0]); }
+    }
+    return out;
+  },
+};
+
 const RLANG = {
   group: 'r', exts: 'r R rmd Rmd', resolve: 'r',
   syntax: { line: ['#'], quotes: '\'"`' },
@@ -768,7 +793,7 @@ const TEXT = {
   names: ['makefile', 'dockerfile', 'license', 'readme', 'procfile', 'justfile', 'containerfile', 'go.mod'],
 };
 
-export const LANGS = [JS, PY, GO, RS, C, JVM, CS, SWIFT, DART, RB, PHP, LUA, SH, SQL, HS, ML, ZIG, RLANG, ERL, CLJ, SOL, ...GENS, MD, HTML, CSS, TEXT];
+export const LANGS = [JS, PY, GO, RS, C, JVM, CS, SWIFT, DART, RB, PHP, LUA, SH, SQL, HS, ML, ZIG, RLANG, ERL, CLJ, SOL, JL, ...GENS, MD, HTML, CSS, TEXT];
 const BY_EXT = new Map(), BY_NAME = new Map();
 for (const L of LANGS) {
   for (const e of L.exts.split(' ')) BY_EXT.set(e, L);
