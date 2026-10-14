@@ -616,6 +616,7 @@ const HS = {
     }
     return out;
   },
+  anon: [/^[ \t]+((?:[A-Za-z_][\w.']*(?![\w.'])|[(),_ \t]|\[\])+?)[ \t]*->/gm, /\\([^\n]*?)->/g],
   sameName: true,
   imports: (raw, m) => grab([], /^import[ \t]+(?:safe[ \t]+)?(?:qualified[ \t]+)?(?:"[^"\n]*"[ \t]+)?([A-Z][\w.]*)/gm, raw, m),
   binds: raw => [...raw.matchAll(/^import[ \t]+(?:safe[ \t]+)?(?:qualified[ \t]+)?(?:"[^"\n]*"[ \t]+)?([A-Z][\w.]*)[^\n]*?\bas[ \t]+([A-Z][\w.]*)/gm)].map(x => [x[2], x[1], true]),
@@ -642,6 +643,7 @@ const ELM = {
     }
     return out;
   },
+  anon: [/^[ \t]+((?:[A-Za-z_][\w.']*(?![\w.'])|[(),_ \t]|\[\])+?)[ \t]*->/gm, /\\([^\n]*?)->/g],
   imports: (raw, m) => grab([], /^import[ \t]+([A-Z][\w.]*)/gm, raw, m),
   binds: raw => [...raw.matchAll(/^import[ \t]+([A-Z][\w.]*)(?:[ \t]+as[ \t]+([A-Z]\w*))?/gm)].map(x => [x[2] || x[1].split('.').pop(), x[1], true]),
 };
@@ -660,6 +662,7 @@ const ML = {
     [R`^[ \t]*module[ \t]+(?:type[ \t]+)?(?:rec[ \t]+)?([A-Z][\w']*)`, 'class'],
     [R`^[ \t]*exception[ \t]+([A-Z][\w']*)`, 'type'],
   ],
+  anon: [/^[ \t]*\|[ \t]*([^\n]*?)(?:\bwhen\b[^\n]*?)?->/gm, /\bfun(?:ction)?[ \t]+([^\n|]*?)->/g],
   imports: (raw, m) => grab([], /^[ \t]*(?:open!?|include)[ \t]+([A-Z][\w']*)/gm, raw, m),
   strip: /^[ \t]*(?:open!?|include)[ \t]+[A-Z][\w'.]*/gm,
 };
@@ -837,6 +840,7 @@ const FS = {
     [R`^[ \t]*module[ \t]+(?:(?:rec|private|internal)[ \t]+)*([A-Z]\w*)[ \t]*=`, 'class'],
     [R`^[ \t]*exception[ \t]+([A-Z]\w*)`, 'type'],
   ],
+  anon: [/^[ \t]*\|[ \t]*([^\n]*?)(?:\bwhen\b[^\n]*?)?->/gm, /\bfun(?:ction)?[ \t]+([^\n|]*?)->/g],
   imports: (raw, m) => grab([], /^[ \t]*open[ \t]+(?:type[ \t]+)?([\w.]+)/gm, raw, m),
   strip: /^[ \t]*open[ \t]+[\w. \t]*|^(?:namespace|module)[ \t]+[\w. \t]*$/gm,
 };

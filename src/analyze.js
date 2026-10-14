@@ -61,6 +61,7 @@ const C_HEADER = /\.(?:h|hh|hpp|hxx|h\+\+|cuh|inc|inl)$/i;
 const STR_TYPE = { jvm: 'String', swift: 'String', dart: 'String', cs: 'string', js: 'String', py: 'str', rs: 'str' };
 const PATHSEG = new Set(['rs', 'c', 'rb', 'php']);
 const DECLS = new Set(['c', 'jvm', 'cs']);
+const FUNCTIONAL = new Set(['fs', 'ml', 'hs', 'elm']);
 const LOOSE_BARE = new Set(['rb', 'ex', 'gen', 'sh', 'lua', 'sql', 'md', 'html', 'css', 'text']);
 const STD_SETS = {
   py: '__future__ _typeshed abc argparse array ast asyncio atexit base64 binascii bisect builtins bz2 calendar cgi cmath cmd code codecs collections colorsys concurrent configparser contextlib contextvars copy copyreg cProfile csv ctypes curses dataclasses datetime dbm decimal difflib dis doctest email encodings enum errno faulthandler fcntl filecmp fileinput fnmatch fractions ftplib functools gc getopt getpass gettext glob graphlib grp gzip hashlib heapq hmac html http imaplib importlib inspect io ipaddress itertools json keyword linecache locale logging lzma mailbox marshal math mimetypes mmap multiprocessing netrc numbers operator optparse os pathlib pdb pickle pkgutil platform plistlib poplib posixpath pprint profile pstats pty pwd py_compile queue quopri random re readline reprlib resource rlcompleter runpy sched secrets select selectors shelve shlex shutil signal site smtplib socket socketserver sqlite3 ssl stat statistics string stringprep struct subprocess symtable sys sysconfig syslog tarfile tempfile termios textwrap threading time timeit tkinter token tokenize tomllib trace traceback tracemalloc tty types typing unicodedata unittest urllib uuid venv warnings wave weakref webbrowser winreg wsgiref xml xmlrpc zipapp zipfile zipimport zlib zoneinfo _thread',
@@ -1195,7 +1196,7 @@ export function analyze(files, rootName, progress = () => {}) {
         for (const m of masked.matchAll(re)) {
           let ns, tm = null;
           if (m[1] === undefined) ns = params(masked, m.index, L, (tm = new Map()));
-          else ns = (m[1].replace(/:[^,]*/g, '').match(L.idAll) || []).filter(w => !L.kw.has(w));
+          else ns = (m[1].replace(FUNCTIONAL.has(L.group) ? /:[^,()]*/g : /:[^,]*/g, '').match(L.idAll) || []).filter(w => !L.kw.has(w) && !(FUNCTIONAL.has(L.group) && !/^[a-z_]/.test(w)));
           if (!ns.length) continue;
           const at0 = m[1] !== undefined && L.group === 'js' ? m.index + m[0].indexOf(m[1]) : m.index, cb = CB.exec(masked.slice(Math.max(0, at0 - 120), at0));
           if (cb && !(tm && tm.has(ns[0]))) (tm ??= new Map()).set(ns[0], '@' + cb[1]);
