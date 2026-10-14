@@ -991,7 +991,7 @@ export function analyze(files, rootName, progress = () => {}) {
     if (L.group === 'clj' && masked) { const m = /^\((?:ns|in-ns)[ \t\n]+'?(?:\^(?:\{[^}\n]*\}|\S+)\s+)*([\w.*+!?-]+)/m.exec(masked); if (m && !exMods.has(m[1])) exMods.set(m[1], info.id); info.alias = L.aliases(text); }
     if (L.group === 'ex' && masked) { for (const m of masked.matchAll(/\bdefmodule[ \t]+([A-Z][\w.]*)/g)) if (!exMods.has(m[1])) exMods.set(m[1], info.id); if (L.aliases) info.alias = L.aliases(text); }
     if (L.group === 'php' && masked) { const m = /^namespace[ \t]+([\w\\]+)/m.exec(masked); if (m) { phpNsFiles.add(info.id); const l = phpNs.get(m[1]); if (l) l.push(info.id); else phpNs.set(m[1], [info.id]); } }
-    if (L.strip && masked) masked = masked.replace(L.strip, x => ' '.repeat(x.length));
+    if (L.strip && masked) masked = masked.replace(L.strip, x => x.replace(/[^\n]/g, ' '));
     info.masked = masked;
     if (STR_TYPE[L.group]) info.raw = text;
     if (!L.defs || !masked) return;
