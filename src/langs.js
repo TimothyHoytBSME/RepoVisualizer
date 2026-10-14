@@ -590,7 +590,7 @@ const GENS = [
       return a.size ? a : null;
     },
   },
-  gen('nim tf hcl gd cr raku', { line: ['#'] }),
+  gen('nim gd cr raku', { line: ['#'] }),
   gen('edn lisp el scm rkt', { line: [';'] }),
   gen('v wgsl proto graphql gql d', { line: ['//'], block: [['/*', '*/']] }),
 ];
@@ -817,6 +817,37 @@ const FS = {
   strip: /^[ \t]*open[ \t]+[\w. \t]*|^(?:namespace|module)[ \t]+[\w. \t]*$/gm,
 };
 
+function tfDefs(raw, m) {
+  const out = [];
+  const at = (x, g) => x.index + x[0].indexOf(x[g], x[0].length - x[0].trimStart().length);
+  for (const x of raw.matchAll(/^(resource|data|variable|output|module)[ \t]+"([\w-]+)"(?:[ \t]+"([\w-]+)")?[ \t]*\{/gm)) {
+    if (m && m.charCodeAt(x.index) !== raw.charCodeAt(x.index)) continue;
+    const k = x[1], name = k === 'resource' ? x[3] && x[2] + '.' + x[3] : k === 'data' ? x[3] && 'data.' + x[2] + '.' + x[3] : (k === 'variable' ? 'var' : k) + '.' + x[2];
+    if (name) out.push({ name, idx: x.index + x[0].indexOf('"'), kind: k === 'resource' || k === 'data' || k === 'module' ? 'class' : 'variable' });
+  }
+  for (const x of raw.matchAll(/^locals[ \t]*\{[ \t]*\n/gm)) {
+    let d = 1, i = x.index + x[0].length;
+    while (i < raw.length && d > 0) {
+      const e = raw.indexOf('\n', i), ln = raw.slice(i, e < 0 ? raw.length : e);
+      if (d === 1) { const v = /^[ \t]*([A-Za-z_][\w-]*)[ \t]*=/.exec(ln); if (v) out.push({ name: 'local.' + v[1], idx: i + ln.indexOf(v[1]), kind: 'variable' }); }
+      const t = m ? m.slice(i, e < 0 ? raw.length : e) : ln;
+      for (const c of t) { if (c === '{' || c === '[' || c === '(') d++; else if (c === '}' || c === ']' || c === ')') d--; }
+      if (e < 0) break;
+      i = e + 1;
+    }
+  }
+  return out;
+}
+const TF = {
+  group: 'tf', exts: 'tf hcl', explicit: true, pkgDir: true, resolve: 'tf',
+  syntax: { line: ['#', '//'], block: [['/*', '*/']], quotes: '"', template: '"', heredoc: /<<-?(['"]?)([A-Za-z_]\w*)\1/g },
+  id: /[A-Za-z_][\w-]*(?:\.[A-Za-z_][\w-]*)*/g,
+  kw: kw(`resource data variable output module locals provider terraform for_each count each self depends_on lifecycle dynamic content true false null for in if`),
+  defs: [],
+  extraRaw: tfDefs,
+  imports: (raw, m) => grab([], /^[ \t]*source[ \t]*=[ \t]*"([^"]+)"/gm, raw, m),
+};
+
 const RLANG = {
   group: 'r', exts: 'r R rmd Rmd', resolve: 'r',
   syntax: { line: ['#'], quotes: '\'"`' },
@@ -842,11 +873,11 @@ const CSS = {
   imports: raw => grab([], /@(?:import|use|forward)[ \t]+(?:url\()?[ \t]*['"]?([^'")\s;]+)/g, raw),
 };
 const TEXT = {
-  group: 'text', exts: 'txt json jsonc json5 yaml yml toml ini cfg conf xml plist properties env cmake mk',
+  group: 'text', exts: 'txt json jsonc json5 yaml yml toml ini cfg conf xml plist properties env cmake mk tfvars',
   names: ['makefile', 'dockerfile', 'license', 'readme', 'procfile', 'justfile', 'containerfile', 'go.mod'],
 };
 
-export const LANGS = [JS, PY, GO, RS, C, JVM, CS, SWIFT, DART, RB, PHP, LUA, SH, SQL, HS, ML, ZIG, RLANG, ERL, CLJ, SOL, JL, PL, FS, ...GENS, MD, HTML, CSS, TEXT];
+export const LANGS = [JS, PY, GO, RS, C, JVM, CS, SWIFT, DART, RB, PHP, LUA, SH, SQL, HS, ML, ZIG, RLANG, ERL, CLJ, SOL, JL, PL, FS, TF, ...GENS, MD, HTML, CSS, TEXT];
 const BY_EXT = new Map(), BY_NAME = new Map();
 for (const L of LANGS) {
   for (const e of L.exts.split(' ')) BY_EXT.set(e, L);

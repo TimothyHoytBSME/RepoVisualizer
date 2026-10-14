@@ -173,7 +173,7 @@ function blockEnd(lines, d, skip, cont) {
 
 const skipOf = L => SKIP_SAME[L.group];
 
-function extractDefs(masked, L, starts, lines) {
+function extractDefs(masked, L, starts, lines, raw) {
   const found = [], seen = new Set();
   let pdepth = null;
   const nested = line => {
@@ -213,6 +213,7 @@ function extractDefs(masked, L, starts, lines) {
     }
   }
   if (L.extra) for (const d of L.extra(masked)) push(d.name, d.idx, d.kind, true, d.owner, d.self, d.ty);
+  if (L.extraRaw) for (const d of L.extraRaw(raw, masked)) push(d.name, d.idx, d.kind, true);
   found.sort((a, b) => a.idx - b.idx);
   const skip = SKIP_SAME[L.group];
   for (let fi = 0; fi < found.length; fi++) {
@@ -788,6 +789,10 @@ function makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, phpNs, phpNsFiles,
       if (csNs.has(spec)) { (info.uses ??= new Set()).add(spec); return null; }
       return /\.fsx?$/.test(spec) ? exact(join(info.dir, spec)) : spec.split('.')[0];
     },
+    tf(spec, info) {
+      if (/^\.\.?\//.test(spec)) { const d = join(info.dir, spec.replace(/\/$/, '')); const l = d != null && (dirFiles.get(d) || []).filter(id => /\.tf$/.test(nodes[id].path)); return l && l.length ? l.find(id => nodes[id].name === 'main.tf') ?? l[0] : null; }
+      return spec.replace(/^git::|^https?:\/\//, '').split(/[?]|\/\//)[0];
+    },
     ex(spec) {
       return exMods.get(spec) ?? spec.split('.')[0];
     },
@@ -924,6 +929,7 @@ export function analyze(files, rootName, progress = () => {}) {
       if (pm) info.pkg = pm[1];
     }
     if (L.group === 'jl') info.pkg = jlPkg(f.path);
+    if (L.group === 'tf') info.pkg = 'tf:' + f.path.slice(0, Math.max(0, f.path.lastIndexOf('/')));
     if (L.group === 'fs' && masked) {
       let ns = '';
       for (const m of masked.matchAll(/^([ \t]*)(namespace|module)[ \t]+(?:(?:rec|private|internal)[ \t]+)*([\w.]+)[ \t]*(=?)/gm)) {
@@ -944,7 +950,7 @@ export function analyze(files, rootName, progress = () => {}) {
     const starts = lineStarts(masked);
     if (masked.length > 20000 && starts.length * 400 < masked.length) return;
     const lines = masked.split('\n');
-    const defs = extractDefs(masked, L, starts, lines);
+    const defs = extractDefs(masked, L, starts, lines, text);
     const stack = [];
     for (const d of defs) {
       while (stack.length && (stack[stack.length - 1].end < d.line || (stack[stack.length - 1].kind === 'field' && stack[stack.length - 1].line === d.line))) stack.pop();
@@ -1260,7 +1266,7 @@ export function analyze(files, rootName, progress = () => {}) {
       for (const t of Array.isArray(r) ? r : [r]) {
         if (t === info.id || seen.has(t)) continue;
         seen.add(t);
-        info.imported.add(t);
+        if (info.L.group !== 'tf') info.imported.add(t);
         edges.push({ s: info.id, t, type: info.L.linkType || 'dep' });
       }
     }
@@ -1624,6 +1630,12 @@ export function analyze(files, rootName, progress = () => {}) {
       if (name.length < 2) continue;
       if (countWords && !L.kw.has(name)) idc.set(name, (idc.get(name) || 0) + 1);
       let look = name, cljHit = null;
+      if (L.group === 'tf') {
+        if (m.index > 0 && masked.charCodeAt(m.index - 1) === 46) continue;
+        const segs = name.split('.');
+        if (segs.length < 2) continue;
+        look = segs.slice(0, segs[0] === 'data' ? 3 : 2).join('.');
+      }
       if (L.group === 'clj') {
         const pc = m.index > 0 ? masked.charCodeAt(m.index - 1) : 0;
         if (pc === 58 || pc === 46) continue;
@@ -1917,7 +1929,7 @@ export function analyze(files, rootName, progress = () => {}) {
             if (!srcTest && targets.length) targets = targets.filter(c => !TEST_PATH.test(nodes[c].path));
           }
           if (!targets.length) {
-            if (cands.length > MAXC) continue;
+            if (cands.length > MAXC || L.group === 'tf') continue;
             targets = L.group === 'c' ? cands.filter(c => isFn(nodes[c].kind) && !privC.has(c) && (!member || prev === 58 || nodes[c].kind === 'method'))
               : !info.module || (L.pkgDir && info.pkg != null) ? cands
               : member ? preferImported(cands.filter(c => (memberish.has(c) || (nodes[c].parent >= 0 && isClassy(nodes[nodes[c].parent].kind))) && nf(c)), info)
