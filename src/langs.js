@@ -591,7 +591,6 @@ const GENS = [
     },
   },
   gen('jl nim pl pm tf hcl gd cr raku', { line: ['#'] }),
-  gen('erl hrl', { line: ['%'] }),
   gen('clj cljs cljc edn lisp el scm rkt', { line: [';'] }),
   gen('v sol fs fsx wgsl proto graphql gql d', { line: ['//'], block: [['/*', '*/']] }),
 ];
@@ -657,6 +656,19 @@ const ZIG = {
   binds: raw => [...raw.matchAll(/\b(?:const|var)[ \t]+([A-Za-z_]\w*)[ \t]*=[ \t]*@import\(\s*"([^"]+)"\s*\)[ \t]*;/g)].map(x => [x[1], x[2], true]),
 };
 
+const ERL = {
+  group: 'erl', exts: 'erl hrl escript', explicit: true, resolve: 'erl', sameName: true,
+  syntax: { line: ['%'], quotes: '"\'', multi: '"', dollarChar: true },
+  kw: kw(`after and andalso band begin bnot bor bsl bsr bxor case catch cond div end fun if let maybe not of or orelse receive rem try when xor ok error true false undefined self spawn spawn_link exit throw length element setelement hd tl abs min max apply node erlang`),
+  defs: [
+    [R`^([a-z][\w@]*)\(`, 'function'],
+    [R`^-record\([ \t]*([a-z][\w@]*)`, 'class'],
+    [R`^-define\([ \t]*([A-Za-z_][\w@]*)\(`, 'function'],
+    [R`^-define\([ \t]*([A-Za-z_][\w@]*)[ \t]*,`, 'variable'],
+  ],
+  imports: (raw, m) => grab(grab([], /^-include(?:_lib)?\([ \t]*"([^"]+)"/gm, raw), /^-(?:behaviou?r|import)\([ \t]*([a-z][\w@]*)/gm, raw, m),
+};
+
 const RLANG = {
   group: 'r', exts: 'r R rmd Rmd', resolve: 'r',
   syntax: { line: ['#'], quotes: '\'"`' },
@@ -686,7 +698,7 @@ const TEXT = {
   names: ['makefile', 'dockerfile', 'license', 'readme', 'procfile', 'justfile', 'containerfile', 'go.mod'],
 };
 
-export const LANGS = [JS, PY, GO, RS, C, JVM, CS, SWIFT, DART, RB, PHP, LUA, SH, SQL, HS, ML, ZIG, RLANG, ...GENS, MD, HTML, CSS, TEXT];
+export const LANGS = [JS, PY, GO, RS, C, JVM, CS, SWIFT, DART, RB, PHP, LUA, SH, SQL, HS, ML, ZIG, RLANG, ERL, ...GENS, MD, HTML, CSS, TEXT];
 const BY_EXT = new Map(), BY_NAME = new Map();
 for (const L of LANGS) {
   for (const e of L.exts.split(' ')) BY_EXT.set(e, L);
@@ -789,6 +801,7 @@ export function mask(text, L, cls) {
   scan: while (i < n) {
     const code = out[i];
     if (code >= 128 || !first[code]) { i++; continue; }
+    if (S.dollarChar && i > 0 && (text[i - 1] === '$' || (text[i - 1] === '\\' && text[i - 2] === '$'))) { i++; continue; }
     for (const [o, c] of block) {
       if (text.startsWith(o, i)) {
         const j = text.indexOf(c, i + o.length);

@@ -69,6 +69,7 @@ const STD_SETS = {
   c: 'assert complex ctype errno fenv float inttypes iso646 limits locale math setjmp signal stdalign stdarg stdatomic stdbool stddef stdint stdio stdlib stdnoreturn string tgmath threads time uchar wchar wctype unistd fcntl pthread sys dirent dlfcn poll sched semaphore strings termios netdb netinet arpa windows algorithm any array atomic bitset cassert cctype cerrno cfloat charconv chrono cinttypes climits clocale cmath codecvt complex condition_variable csetjmp csignal cstdarg cstddef cstdint cstdio cstdlib cstring ctime cwchar deque exception execution filesystem forward_list fstream functional future initializer_list iomanip ios iosfwd iostream istream iterator limits list map memory memory_resource mutex new numeric optional ostream queue random ratio regex scoped_allocator set shared_mutex span sstream stack stdexcept streambuf string_view system_error thread tuple type_traits typeindex typeinfo unordered_map unordered_set utility valarray variant vector',
   swift: 'Foundation UIKit SwiftUI AppKit Combine Dispatch os Darwin Glibc CoreGraphics CoreFoundation CoreServices XCTest Network Security CoreImage AVFoundation QuartzCore ObjectiveC MobileCoreServices UniformTypeIdentifiers FoundationNetworking FoundationEssentials SystemConfiguration CoreData CoreLocation MapKit WebKit Photos StoreKit UserNotifications Accelerate Metal MetalKit SceneKit SpriteKit GameKit CryptoKit OSLog Observation',
   lua: 'string table math io os coroutine debug utf8 package bit jit ffi',
+  erl: 'kernel stdlib erts compiler crypto ssl public_key inets ssh sasl mnesia observer runtime_tools tools common_test eunit xmerl asn1 os_mon syntax_tools parsetools lists maps proplists io io_lib erlang gen_server gen_statem gen_event gen_fsm supervisor application ets dets string binary file filename filelib os timer re math logger sys proc_lib unicode calendar queue sets ordsets orddict dict gb_trees gb_sets array code rand persistent_term atomics counters gen_tcp gen_udp inet uri_string base64 zlib erl_eval erl_scan erl_parse error_logger rpc net_kernel global pg digraph epp',
   ex: 'Kernel Enum Map MapSet String List Keyword GenServer Supervisor DynamicSupervisor Agent Task Logger Application Process Registry IO File Path System Code Module Atom Integer Float Tuple Stream Access Inspect Protocol Exception ExUnit Mix Regex URI Base Bitwise Calendar Date DateTime NaiveDateTime Time Version Node Port Function Range StringIO OptionParser EEx',
 };
 const STD = Object.fromEntries(Object.entries(STD_SETS).map(([k, v]) => [k, new Set(v.split(' '))]));
@@ -210,7 +211,9 @@ function extractDefs(masked, L, starts, lines) {
   if (L.extra) for (const d of L.extra(masked)) push(d.name, d.idx, d.kind, true, d.owner, d.self, d.ty);
   found.sort((a, b) => a.idx - b.idx);
   const skip = SKIP_SAME[L.group];
-  for (const d of found) {
+  for (let fi = 0; fi < found.length; fi++) {
+    const d = found[fi];
+    if (d.dup) continue;
     if (L.group === 'c' && /^[ \t]*#[ \t]*define\b/.test(lines[d.line])) {
       let e = d.line;
       while (e + 1 < lines.length && /\\[ \t]*$/.test(lines[e])) e++;
@@ -224,9 +227,10 @@ function extractDefs(masked, L, starts, lines) {
         if (re.test(t)) { d.end = blockEnd(lines, k, skip, null); k = d.end; continue; }
         break;
       }
+      for (let j = fi + 1; j < found.length && found[j].line <= d.end; j++) if (found[j].name === d.name && found[j].line > d.line) found[j].dup = true;
     }
   }
-  return found;
+  return found.filter(d => !d.dup);
 }
 
 const OPEN = '([{<', CLOSE = ')]}>';
@@ -345,6 +349,7 @@ const VAR_TYPES = [
 ];
 
 function params(t, from, L, types) {
+  if (L.group === 'erl') { const e = t.indexOf('->', from); return e < 0 || e - from > 400 ? [] : t.slice(from, e).match(/\b[A-Z_]\w*/g) || []; }
   if (L.group === 'ml' || L.group === 'hs') {
     const e = t.indexOf('\n', from), head = t.slice(from, e < 0 ? t.length : e).split(/=|->/)[0];
     return (head.match(/[a-z_][\w']*/g) || []).filter(w => !L.kw.has(w));
@@ -728,6 +733,10 @@ function makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, phpNs, phpNsFiles,
       if (!/\.[Rr]$/.test(spec)) return spec;
       return exact(join(info.dir, spec)) ?? suf(spec.replace(/^(\.\.?\/)+/, ''), info);
     },
+    erl(spec, info) {
+      if (!/\.[eh]rl$/.test(spec)) return nearMl(spec, info.id) ?? spec;
+      return exact(join(info.dir, spec)) ?? suf(spec.replace(/^(\.\.?\/)+/, ''), info) ?? (spec.includes('/') ? spec.split('/')[0] : null);
+    },
     zig(spec, info) {
       if (!/\.zig$/.test(spec)) return spec;
       return exact(join(info.dir, spec)) ?? suf(spec.replace(/^(\.\.?\/)+/, ''), info);
@@ -849,7 +858,7 @@ export function analyze(files, rootName, progress = () => {}) {
       if (pm) info.pkg = pm[1];
     }
     if (L.group === 'cs' && masked) for (const m of masked.matchAll(/\bnamespace[ \t]+([\w.]+)/g)) csNs.add(m[1]);
-    if (L.group === 'ml') { const b = nodes[info.id].name.replace(/\.mli?$/, ''), k = b[0].toUpperCase() + b.slice(1), l = mlMods.get(k); if (!l) mlMods.set(k, [info.id]); else if (!l.includes(info.id)) l.push(info.id); }
+    if (L.group === 'ml' || (L.group === 'erl' && /\.erl$/.test(nodes[info.id].name))) { const b = nodes[info.id].name.replace(/\.(?:mli?|erl)$/, ''), k = L.group === 'erl' ? b : b[0].toUpperCase() + b.slice(1), l = mlMods.get(k); if (!l) mlMods.set(k, [info.id]); else if (!l.includes(info.id)) l.push(info.id); }
     if (L.group === 'ex' && masked) { for (const m of masked.matchAll(/\bdefmodule[ \t]+([A-Z][\w.]*)/g)) if (!exMods.has(m[1])) exMods.set(m[1], info.id); if (L.aliases) info.alias = L.aliases(text); }
     if (L.group === 'php' && masked) { const m = /^namespace[ \t]+([\w\\]+)/m.exec(masked); if (m) { phpNsFiles.add(info.id); const l = phpNs.get(m[1]); if (l) l.push(info.id); else phpNs.set(m[1], [info.id]); } }
     if (L.strip && masked) masked = masked.replace(L.strip, x => ' '.repeat(x.length));
@@ -1560,7 +1569,19 @@ export function analyze(files, rootName, progress = () => {}) {
         if (!keyHit) continue;
       }
       const p2 = at > 1 ? masked.charCodeAt(at - 2) : 0;
-      if ((prev === 46 && p2 !== 46) || (prev === 62 && p2 === 45) || (prev === 58 && p2 === 58)) {
+      if (L.group === 'erl') {
+        if (/^[ \t]*-(?!define\b|record\b)/.test(masked.slice(starts[ln], at))) continue;
+        if (prev === 58 && p2 !== 58) {
+          let k = at - 1;
+          while (k > 0 && isW(masked.charCodeAt(k - 1))) k--;
+          const mod = masked.slice(k, at - 1), f = mod === 'MODULE' && masked.charCodeAt(k - 1) === 63 ? fid : mlNear(mod, fid);
+          const hit = f != null ? inFile(f, name) : null;
+          if (!hit) continue;
+          member = true; recv = mod; keyHit = hit;
+        } else if (prev === 46 || masked.charCodeAt(at + name.length) === 58) continue;
+        else if (prev !== 63 && prev !== 35 && (name.charCodeAt(0) < 91 || !/^[ \t]*(?:\(|\/[ \t]*\d)/.test(masked.slice(at + name.length, at + name.length + 4)))) continue;
+      }
+      if (!member && ((prev === 46 && p2 !== 46) || (prev === 62 && p2 === 45) || (prev === 58 && p2 === 58))) {
         member = true;
         let j = at - (prev === 46 ? 1 : 2);
         const q = masked.charCodeAt(j - 1);
