@@ -568,7 +568,6 @@ const GEN_DEFS = [
 ];
 const gen = (exts, syntax) => ({ group: 'gen', exts, syntax: { quotes: '"', triple: true, multi: '"', ...syntax }, defs: GEN_DEFS });
 const GENS = [
-  gen('purs', { line: ['--'], block: [['{-', '-}']] }),
   {
     ...gen('ex exs', { line: ['#'] }), group: 'ex', bareVars: true, resolve: 'ex',
     id: /[A-Z]\w*(?:\.[A-Z]\w*)*|[A-Za-z_]\w*[?!]?/g,
@@ -590,7 +589,7 @@ const GENS = [
       return a.size ? a : null;
     },
   },
-  gen('cr raku', { line: ['#'] }),
+  gen('raku', { line: ['#'] }),
   gen('edn lisp el scm rkt', { line: [';'] }),
   gen('v wgsl d', { line: ['//'], block: [['/*', '*/']] }),
 ];
@@ -622,6 +621,7 @@ const HS = {
   binds: raw => [...raw.matchAll(/^import[ \t]+(?:safe[ \t]+)?(?:qualified[ \t]+)?(?:"[^"\n]*"[ \t]+)?([A-Z][\w.]*)[^\n]*?\bas[ \t]+([A-Z][\w.]*)/gm)].map(x => [x[2], x[1], true]),
 };
 
+const PURS = { ...HS, exts: 'purs', label: 'purs', syntax: { ...HS.syntax, triple: true } };
 const ELM = {
   group: 'elm', exts: 'elm', explicit: true, resolve: 'elm', sameName: true,
   syntax: { line: ['--'], block: [['{-', '-}']], quotes: '"\'', triple: true },
@@ -944,6 +944,20 @@ const NIM = {
   imports: nimImports,
 };
 
+const CR = {
+  ...RB, exts: 'cr', names: [], resolve: 'cr', label: 'cr',
+  kw: new Set([...RB.kw, ...kw(`abstract annotation alias as asm enum forall fun getter include instance_sizeof is_a? lib macro nil? of offsetof out pointerof private protected property require responds_to? select setter sizeof struct typeof uninitialized union verbatim with yield Int32 Int64 Float64 String Bool Nil Array Hash Char Symbol puts`)]),
+  defs: [
+    ...RB.defs,
+    [R`^[ \t]*(?:abstract[ \t]+)?(?:struct|enum|lib|annotation)[ \t]+(?:[\w:]+::)?([A-Z]\w*)`, 'class'],
+    [R`^[ \t]*alias[ \t]+([A-Z]\w*)[ \t]*=`, 'type'],
+    [R`^[ \t]*(?:class_)?(?:property|getter|setter)[?!]?[ \t]+(${N})`, 'field'],
+    [R`^[ \t]*macro[ \t]+(${N})`, 'function'],
+    [R`^[ \t]*fun[ \t]+(${N})`, 'function'],
+  ],
+  imports: (raw, m) => grab([], /\brequire[ \t(]+"([^"]+)"/g, raw, m),
+};
+
 const RLANG = {
   group: 'r', exts: 'r R rmd Rmd', resolve: 'r',
   syntax: { line: ['#'], quotes: '\'"`' },
@@ -973,7 +987,7 @@ const TEXT = {
   names: ['makefile', 'dockerfile', 'license', 'readme', 'procfile', 'justfile', 'containerfile', 'go.mod'],
 };
 
-export const LANGS = [JS, PY, GO, RS, C, JVM, CS, SWIFT, DART, RB, PHP, LUA, SH, SQL, HS, ELM, ML, ZIG, RLANG, ERL, CLJ, SOL, JL, PL, FS, TF, GD, PROTO, GQL, NIM, ...GENS, MD, HTML, CSS, TEXT];
+export const LANGS = [JS, PY, GO, RS, C, JVM, CS, SWIFT, DART, RB, PHP, LUA, SH, SQL, HS, PURS, ELM, ML, ZIG, RLANG, ERL, CLJ, SOL, JL, PL, FS, TF, GD, PROTO, GQL, NIM, CR, ...GENS, MD, HTML, CSS, TEXT];
 const BY_EXT = new Map(), BY_NAME = new Map();
 for (const L of LANGS) {
   for (const e of L.exts.split(' ')) BY_EXT.set(e, L);

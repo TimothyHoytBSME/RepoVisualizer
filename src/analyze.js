@@ -744,6 +744,15 @@ function makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, phpNs, phpNsFiles,
       const list = (suffix.get(tail) || []).filter(id => { const pre = prefixOf(id, tail); return pre === '' || /(^|\/)(lib|test|spec)\/$/.test(pre); });
       return pick(list.length ? list : null, info) ?? spec.split('/')[0];
     },
+    cr(spec, info) {
+      if (/^\.\.?\//.test(spec)) {
+        const b = join(info.dir, spec.replace(/\.cr$/, ''));
+        if (b == null) return null;
+        if (/\/\*\*?$/.test(b)) { const d = b.replace(/\/\*\*?$/, ''), l = (b.endsWith('**') ? [...dirFiles.entries()].filter(([k]) => k === d || k.startsWith(d + '/')).flatMap(([, v]) => v) : dirFiles.get(d) || []).filter(id => nodes[id].path.endsWith('.cr')); return l.length ? l.slice(0, 200) : null; }
+        return exact(b + '.cr') ?? exact(b + '/' + b.split('/').pop() + '.cr');
+      }
+      return suf(spec.replace(/\.cr$/, '') + '.cr', info) ?? spec.split('/')[0];
+    },
     php(spec, info) {
       if (/\/|\.php$/.test(spec)) {
         const s = spec.replace(/^\.\//, '');
@@ -767,7 +776,7 @@ function makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, phpNs, phpNsFiles,
     },
     hs(spec, info) {
       const p = spec.replace(/\./g, '/');
-      return suf(p + '.hs', info) ?? suf(p + '.lhs', info) ?? spec.split('.').slice(0, 2).join('.');
+      return suf(p + '.hs', info) ?? suf(p + '.lhs', info) ?? suf(p + '.purs', info) ?? spec.split('.').slice(0, 2).join('.');
     },
     clj(spec, info) {
       const p = spec.replace(/\./g, '/').replace(/-/g, '_');
@@ -900,7 +909,7 @@ export function analyze(files, rootName, progress = () => {}) {
     const dir = i < 0 ? '' : f.path.slice(0, i);
     const parent = dirNode(dir);
     const L = langOf(f.path);
-    const id = add({ kind: 'file', key: 'f:' + f.path, name: f.path.slice(i + 1), path: f.path, parent, file: -1, line: 0, end: countLines(f.text) - 1, group: L ? L.group : '' });
+    const id = add({ kind: 'file', key: 'f:' + f.path, name: f.path.slice(i + 1), path: f.path, parent, file: -1, line: 0, end: countLines(f.text) - 1, group: L ? L.label || L.group : '' });
     nodes[id].file = id;
     fileIds.set(f.path, id);
     dirFiles.get(dir).push(id);
