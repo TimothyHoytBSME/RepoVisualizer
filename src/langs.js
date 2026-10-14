@@ -590,7 +590,7 @@ const GENS = [
       return a.size ? a : null;
     },
   },
-  gen('nim cr raku', { line: ['#'] }),
+  gen('cr raku', { line: ['#'] }),
   gen('edn lisp el scm rkt', { line: [';'] }),
   gen('v wgsl d', { line: ['//'], block: [['/*', '*/']] }),
 ];
@@ -915,6 +915,35 @@ const GQL = {
   imports: (raw, m) => grab([], /^#[ \t]*import[ \t]+(?:[^\n]*?from[ \t]+)?["']([^"']+)["']/gm, raw),
 };
 
+function nimImports(raw, m) {
+  const out = [];
+  for (const x of (m || raw).matchAll(/^[ \t]*(import|include|from)[ \t]+([^\n]+(?:,[ \t]*\n[^\n]+)*)/gm)) {
+    let list = x[2];
+    if (x[1] === 'from') list = list.split(/[ \t]+import\b/)[0];
+    list = list.replace(/[ \t]+except\b.*$/s, '');
+    for (const part of list.match(/[^,\[]+\[[^\]]*\]|[^,]+/g) || []) {
+      const p = part.trim().replace(/[ \t]+as[ \t]+\w+$/, '').replace(/"/g, '');
+      const b = /^(.*?)\/?\[([^\]]*)\]$/.exec(p);
+      if (b) for (const n of b[2].split(',')) { const t = n.trim(); if (t) out.push(b[1] ? b[1] + '/' + t : t); }
+      else if (/^[\w./-]+$/.test(p)) out.push(p);
+    }
+  }
+  return out;
+}
+const NIM = {
+  group: 'nim', exts: 'nim nims nimble', explicit: true, resolve: 'nim',
+  syntax: { line: ['#'], block: [['#[', ']#']], quotes: '"', triple: true, charQuote: true },
+  kw: kw(`addr and as asm bind block break case cast concept const continue converter defer discard distinct div do elif else end enum except export finally for from func if import in include interface is isnot iterator let macro method mixin mod nil not notin object of or out proc ptr raise ref return shl shr static template try tuple type using var when while xor yield result true false echo int string bool float seq void auto untyped typed array openArray uint8 byte cstring pointer`),
+  defs: [
+    [R`^[ \t]*(?:proc|func|method|iterator|converter|template|macro)[ \t]+\`?(${N})`, 'function'],
+    [R`^(?:type[ \t]+|[ \t]+)(${N})\*?(?:\[[^\]\n]*\])?[ \t]*(?:\{\.[^}\n]*\.\}[ \t]*)?=[ \t]*(?:ref[ \t]+|ptr[ \t]+)?(?:object|enum|tuple|concept|distinct)\b`, 'class'],
+    [R`^(?:type[ \t]+|[ \t]+)(${N})\*?(?:\[[^\]\n]*\])?[ \t]*(?:\{\.[^}\n]*\.\}[ \t]*)?=(?![ \t]*(?:ref[ \t]+|ptr[ \t]+)?(?:object|enum|tuple|concept|distinct)\b)(?=[^\n]*\S)`, 'type', (t, i) => { let s = i; while (s > 0 && t[s - 1] !== '\n') s--; if (t.startsWith('type', s)) return true; for (let e = s - 1; e > 0;) { let b = e; while (b > 0 && t[b - 1] !== '\n') b--; const l = t.slice(b, e); if (/\S/.test(l)) { if (!/^[ \t]/.test(l)) return /^type\b/.test(l); } e = b - 1; } return false; }],
+    [R`^(?:const|let|var)[ \t]+(${N})`, 'variable'],
+    [R`^[ \t]+(${N})\*?[ \t]*(?:,[ \t]*\w+\*?[ \t]*)*:[ \t]*[^=\n]+$`, 'field'],
+  ],
+  imports: nimImports,
+};
+
 const RLANG = {
   group: 'r', exts: 'r R rmd Rmd', resolve: 'r',
   syntax: { line: ['#'], quotes: '\'"`' },
@@ -944,7 +973,7 @@ const TEXT = {
   names: ['makefile', 'dockerfile', 'license', 'readme', 'procfile', 'justfile', 'containerfile', 'go.mod'],
 };
 
-export const LANGS = [JS, PY, GO, RS, C, JVM, CS, SWIFT, DART, RB, PHP, LUA, SH, SQL, HS, ELM, ML, ZIG, RLANG, ERL, CLJ, SOL, JL, PL, FS, TF, GD, PROTO, GQL, ...GENS, MD, HTML, CSS, TEXT];
+export const LANGS = [JS, PY, GO, RS, C, JVM, CS, SWIFT, DART, RB, PHP, LUA, SH, SQL, HS, ELM, ML, ZIG, RLANG, ERL, CLJ, SOL, JL, PL, FS, TF, GD, PROTO, GQL, NIM, ...GENS, MD, HTML, CSS, TEXT];
 const BY_EXT = new Map(), BY_NAME = new Map();
 for (const L of LANGS) {
   for (const e of L.exts.split(' ')) BY_EXT.set(e, L);

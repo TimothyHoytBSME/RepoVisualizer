@@ -71,7 +71,7 @@ export function lineOf(text, ln) {
   return text.slice(s, e < 0 ? text.length : e).replace(/\r$/, '');
 }
 
-const LANG_NAMES = { js: 'JavaScript/TypeScript', py: 'Python', go: 'Go', rs: 'Rust', c: 'C/C++', jvm: 'Java/Kotlin/Scala', cs: 'C#', swift: 'Swift', dart: 'Dart', rb: 'Ruby', php: 'PHP', lua: 'Lua', ex: 'Elixir', hs: 'Haskell', elm: 'Elm', ml: 'OCaml', zig: 'Zig', r: 'R', erl: 'Erlang', clj: 'Clojure', sol: 'Solidity', jl: 'Julia', pl: 'Perl', fs: 'F#', tf: 'Terraform', gd: 'GDScript', proto: 'Protocol Buffers', gql: 'GraphQL', sh: 'Shell', sql: 'SQL', gen: 'Other code', md: 'Docs', html: 'HTML', css: 'Styles', text: 'Config & text', other: 'Other' };
+const LANG_NAMES = { js: 'JavaScript/TypeScript', py: 'Python', go: 'Go', rs: 'Rust', c: 'C/C++', jvm: 'Java/Kotlin/Scala', cs: 'C#', swift: 'Swift', dart: 'Dart', rb: 'Ruby', php: 'PHP', lua: 'Lua', ex: 'Elixir', hs: 'Haskell', elm: 'Elm', ml: 'OCaml', zig: 'Zig', r: 'R', erl: 'Erlang', clj: 'Clojure', sol: 'Solidity', jl: 'Julia', pl: 'Perl', fs: 'F#', tf: 'Terraform', gd: 'GDScript', nim: 'Nim', proto: 'Protocol Buffers', gql: 'GraphQL', sh: 'Shell', sql: 'SQL', gen: 'Other code', md: 'Docs', html: 'HTML', css: 'Styles', text: 'Config & text', other: 'Other' };
 
 export class Panel {
   constructor(el, peek, app) {

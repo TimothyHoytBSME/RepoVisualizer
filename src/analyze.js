@@ -71,6 +71,7 @@ const STD_SETS = {
   lua: 'string table math io os coroutine debug utf8 package bit jit ffi',
   erl: 'kernel stdlib erts compiler crypto ssl public_key inets ssh sasl mnesia observer runtime_tools tools common_test eunit xmerl asn1 os_mon syntax_tools parsetools lists maps proplists io io_lib erlang gen_server gen_statem gen_event gen_fsm supervisor application ets dets string binary file filename filelib os timer re math logger sys proc_lib unicode calendar queue sets ordsets orddict dict gb_trees gb_sets array code rand persistent_term atomics counters gen_tcp gen_udp inet uri_string base64 zlib erl_eval erl_scan erl_parse error_logger rpc net_kernel global pg digraph epp',
   clj: 'clojure cljs java javax goog',
+  nim: 'std system os strutils sequtils tables sets times math options json streams strformat strscans asyncdispatch asyncnet asyncfutures net nativesockets hashes algorithm unittest macros typetraits locks deques heapqueue random terminal parseutils uri httpclient re nre osproc oids monotimes posix winlean endians bitops atomics typeinfo sugar logging parseopt cpuinfo md5 sha1 base64 unicode critbits lists sharedtables rlocks threadpool selectors',
   elm: 'Basics List Maybe Result String Char Tuple Debug Platform Cmd Sub Html Json Browser Http Url Time Task Process Array Dict Set Bitwise Svg File Random Parser VirtualDom Markdown',
   proto: 'google',
   pl: 'strict warnings utf8 feature parent base constant lib vars overload integer bytes Carp Exporter Scalar List Data POSIX File IO Time Storable Encode Getopt Test Test2 Socket Sys Cwd Fcntl Errno Benchmark Digest MIME Math Term Text Tie Hash Unicode B mro re version subs if open sort bigint FindBin JSON HTTP Config Symbol SelectSaver Pod Safe Thread threads attributes fields locale charnames diagnostics autodie experimental',
@@ -810,6 +811,11 @@ function makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, phpNs, phpNsFiles,
     elm(spec, info) {
       return suf(spec.replace(/\./g, '/') + '.elm', info) ?? spec.split('.')[0];
     },
+    nim(spec, info) {
+      if (/^\.\.?\//.test(spec)) { const b = join(info.dir, spec); return exact(b + '.nim') ?? exact(b); }
+      if (spec.startsWith('std/') || spec.startsWith('pkg/')) return spec.startsWith('std/') ? 'std' : suf(spec.slice(4) + '.nim', info) ?? spec.slice(4).split('/')[0];
+      return exact(join(info.dir, spec + '.nim')) ?? suf(spec + '.nim', info) ?? spec.split('/')[0];
+    },
     ex(spec) {
       return exMods.get(spec) ?? spec.split('.')[0];
     },
@@ -939,7 +945,7 @@ export function analyze(files, rootName, progress = () => {}) {
     let masked = L.syntax ? mask(text, L) : null;
     info.specs = L.imports ? L.imports(text, masked) : [];
     if (L.binds) info.binds = L.binds(text);
-    if ((L.group === 'dart' && /^export[ \t]+['"]/m.test(text)) || (L.group === 'js' && /^export[ \t]+(?:type[ \t]+)?(?:\*|\{[^}]*\})[ \t]*from[ \t]/m.test(text))) info.facade = true;
+    if ((L.group === 'dart' && /^export[ \t]+['"]/m.test(text)) || (L.group === 'nim' && /^export[ \t]+\w/m.test(text)) || (L.group === 'js' && /^export[ \t]+(?:type[ \t]+)?(?:\*|\{[^}]*\})[ \t]*from[ \t]/m.test(text))) info.facade = true;
     info.module = L.explicit && (L.group !== 'js' || (masked != null && /\b(?:import|export|require)\b/.test(masked)));
     if (L.pkg && masked) {
       const pm = L.pkg.exec(masked);
@@ -1123,6 +1129,7 @@ export function analyze(files, rootName, progress = () => {}) {
           for (const x of body.matchAll(/^[ \t]*(?:use[ \t]+(?:parent|base|Mojo::Base)[ \t]+(?:-norequire[ \t]*,[ \t]*)?(?:qw[(/{[][ \t]*([\w: \t]+)|["']([\w:]+)["'])|(?:our[ \t]+)?@ISA[ \t]*=[ \t]*(?:qw[(/{[][ \t]*([\w: \t]+)|\(?[ \t]*["']([\w:]+)["']))/gm)) bs.push(...(x[1] || x[2] || x[3] || x[4]).trim().split(/\s+/));
           if (bs.length) list = bs;
         }
+        else if (L.group === 'nim') { if ((m = /\bobject[ \t]+of[ \t]+([\w.]+)/.exec(rest))) list = [m[1]]; }
         else if (L.group === 'gd') { if ((m = /^\s+extends\s+(\w+)/.exec(rest) || (/^class_name\b/.test(lines[d.line]) && /^extends[ \t]+([A-Za-z_]\w*)/m.exec(masked)))) list = [m[1]]; }
         else if (L.group === 'sol') { if ((m = /^\s+is\s+([^{]*)/.exec(rest))) list = m[1].replace(/\([^()]*(?:\([^()]*\)[^()]*)*\)/g, '').split(','); }
         else if ((m = /^\s*(?:<[^>{]*>)?\s*(?:\([^)]*\)\s*)?(?:extends|implements|:|<|on\b)\s*([^{]*)/.exec(rest))) {
@@ -1810,6 +1817,7 @@ export function analyze(files, rootName, progress = () => {}) {
         if (!hit.size) continue;
         keyHit = [...hit];
       }
+      if (member && !keyHit && L.group === 'nim' && cands.some(c => isFn(nodes[c].kind) && nodes[c].parent === nodes[c].file)) member = false;
       if (member && L.group === 'sol' && recv && L.kw.has(recv) && recv !== 'super' && recv !== 'this') continue;
       if (member && !keyHit && L.group === 'sol' && recv !== 'super' && !(recv && classByName.has(recv))) {
         info.solUsing ??= [...masked.matchAll(/\busing[ \t]+([A-Za-z_][\w.]*)[ \t]+for\b/g)].map(x => lastSeg(x[1]));
@@ -1953,7 +1961,7 @@ export function analyze(files, rootName, progress = () => {}) {
           }
           if (!targets.length && L.group === 'gd' && !member) targets = cands.filter(c => isClassy(nodes[c].kind) && nodes[c].parent === nodes[c].file);
           if (!targets.length) {
-            if (cands.length > MAXC || L.group === 'tf') continue;
+            if (cands.length > MAXC || L.group === 'tf' || (member && L.group === 'nim')) continue;
             targets = L.group === 'c' ? cands.filter(c => isFn(nodes[c].kind) && !privC.has(c) && (!member || prev === 58 || nodes[c].kind === 'method'))
               : !info.module || (L.pkgDir && info.pkg != null) ? cands
               : member ? preferImported(cands.filter(c => (memberish.has(c) || (nodes[c].parent >= 0 && isClassy(nodes[nodes[c].parent].kind))) && nf(c)), info)
