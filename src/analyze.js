@@ -71,6 +71,7 @@ const STD_SETS = {
   lua: 'string table math io os coroutine debug utf8 package bit jit ffi',
   erl: 'kernel stdlib erts compiler crypto ssl public_key inets ssh sasl mnesia observer runtime_tools tools common_test eunit xmerl asn1 os_mon syntax_tools parsetools lists maps proplists io io_lib erlang gen_server gen_statem gen_event gen_fsm supervisor application ets dets string binary file filename filelib os timer re math logger sys proc_lib unicode calendar queue sets ordsets orddict dict gb_trees gb_sets array code rand persistent_term atomics counters gen_tcp gen_udp inet uri_string base64 zlib erl_eval erl_scan erl_parse error_logger rpc net_kernel global pg digraph epp',
   clj: 'clojure cljs java javax goog',
+  pl: 'strict warnings utf8 feature parent base constant lib vars overload integer bytes Carp Exporter Scalar List Data POSIX File IO Time Storable Encode Getopt Test Test2 Socket Sys Cwd Fcntl Errno Benchmark Digest MIME Math Term Text Tie Hash Unicode B mro re version subs if open sort bigint FindBin JSON HTTP Config Symbol SelectSaver Pod Safe Thread threads attributes fields locale charnames diagnostics autodie experimental',
   jl: 'Base Core Main LinearAlgebra Statistics Random Printf Dates Test Distributed SparseArrays Serialization Sockets InteractiveUtils Markdown Unicode SHA UUIDs Logging Pkg Libdl Mmap FileWatching DelimitedFiles REPL SharedArrays Profile LibGit2 Downloads TOML Artifacts Future',
   ex: 'Kernel Enum Map MapSet String List Keyword GenServer Supervisor DynamicSupervisor Agent Task Logger Application Process Registry IO File Path System Code Module Atom Integer Float Tuple Stream Access Inspect Protocol Exception ExUnit Mix Regex URI Base Bitwise Calendar Date DateTime NaiveDateTime Time Version Node Port Function Range StringIO OptionParser EEx',
 };
@@ -221,6 +222,11 @@ function extractDefs(masked, L, starts, lines) {
       while (e + 1 < lines.length && /\\[ \t]*$/.test(lines[e])) e++;
       d.end = e;
     } else d.end = d.kind === 'field' || (L.group === 'c' && d.kind === 'type') ? d.line : blockEnd(lines, d.line, skip, d.kind === 'class' ? L.head : null);
+    if (L.group === 'pl' && d.kind === 'class' && /;[ \t]*$/.test(lines[d.line])) {
+      let e = lines.length - 1;
+      for (let j = fi + 1; j < found.length; j++) if (found[j].kind === 'class' && /;[ \t]*$/.test(lines[found[j].line])) { e = found[j].line - 1; break; }
+      d.end = e;
+    }
     if (L.sameName && isFn(d.kind) && indentOf(lines[d.line]) === 0) {
       const re = new RegExp(`^${d.name}(?![\\w'])`);
       for (let k = d.end + 1; k < lines.length; k++) {
@@ -768,6 +774,10 @@ function makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, phpNs, phpNsFiles,
       (info.uses ??= new Set()).add(jlPkg(nodes[r].path));
       return r;
     },
+    pl(spec, info) {
+      if (/\.p[lm]$|\//.test(spec)) return exact(join(info.dir, spec)) ?? suf(spec.replace(/^(\.\.?\/)+/, ''), info);
+      return suf(spec.replace(/::/g, '/') + '.pm', info) ?? spec.split('::')[0];
+    },
     ex(spec) {
       return exMods.get(spec) ?? spec.split('.')[0];
     },
@@ -1066,6 +1076,12 @@ export function analyze(files, rootName, progress = () => {}) {
         const rest = lines[d.line].slice(d.idx - starts[d.line] + d.name.length);
         let m, list = null;
         if (L.group === 'py') { if ((m = /^\s*\(([^)]*)\)/.exec(rest))) list = m[1].split(',').filter(x => !x.includes('=')); }
+        else if (L.group === 'pl') {
+          const body = text.slice(starts[d.line], d.end + 1 < starts.length ? starts[d.end + 1] : text.length);
+          const bs = [];
+          for (const x of body.matchAll(/^[ \t]*(?:use[ \t]+(?:parent|base|Mojo::Base)[ \t]+(?:-norequire[ \t]*,[ \t]*)?(?:qw[(/{[][ \t]*([\w: \t]+)|["']([\w:]+)["'])|(?:our[ \t]+)?@ISA[ \t]*=[ \t]*(?:qw[(/{[][ \t]*([\w: \t]+)|\(?[ \t]*["']([\w:]+)["']))/gm)) bs.push(...(x[1] || x[2] || x[3] || x[4]).trim().split(/\s+/));
+          if (bs.length) list = bs;
+        }
         else if (L.group === 'sol') { if ((m = /^\s+is\s+([^{]*)/.exec(rest))) list = m[1].replace(/\([^()]*(?:\([^()]*\)[^()]*)*\)/g, '').split(','); }
         else if ((m = /^\s*(?:<[^>{]*>)?\s*(?:\([^)]*\)\s*)?(?:extends|implements|:|<|on\b)\s*([^{]*)/.exec(rest))) {
           list = m[1].replace(/<[^<>]*(?:<[^<>]*>[^<>]*)*>/g, '').replace(/\b(?:implements|extends|public|private|protected|virtual|where|with)\b/g, ',').split(',');
@@ -1630,6 +1646,7 @@ export function analyze(files, rootName, progress = () => {}) {
         if (!keyHit) continue;
       }
       const p2 = at > 1 ? masked.charCodeAt(at - 2) : 0;
+      if (L.group === 'pl' && (prev === 64 || prev === 37 || (masked.charCodeAt(at + name.length) === 58 && masked.charCodeAt(at + name.length + 1) === 58) || (prev === 45 && p2 !== 45) || /^[ \t]*=>/.test(masked.slice(at + name.length, at + name.length + 4)) || (prev === 123 && masked.charCodeAt(at + name.length) === 125))) continue;
       if (L.group === 'erl') {
         if (/^[ \t]*-(?!define\b|record\b)/.test(masked.slice(starts[ln], at))) continue;
         if (prev === 58 && p2 !== 58) {
