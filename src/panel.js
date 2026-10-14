@@ -17,9 +17,30 @@ function classes(path, text) {
   return cls;
 }
 
+const ID_RE = /[A-Za-z_$][\w$]*/g, idRes = new Map();
+const idRe = L => {
+  if (!L || !L.id) return ID_RE;
+  let r = idRes.get(L);
+  if (!r) idRes.set(L, (r = new RegExp(L.id.source, 'g')));
+  return r;
+};
+const plain = s => esc(s).replace(/(^|[^\w$])(\d[\w.]*)/g, '$1<span class="tn">$2</span>');
+
+function wordHTML(w, L, links, defName) {
+  if (w === defName) return `<span class="td">${esc(w)}</span>`;
+  const tl = x => `<span class="tl" data-n="${links.get(x)}">${esc(x)}</span>`;
+  if (links && links.has(w)) return tl(w);
+  if (links && /[./]./.test(w)) {
+    for (let i = w.length - 1; i > 0; i--) if ((w[i] === '.' || w[i] === '/') && links.has(w.slice(0, i))) return tl(w.slice(0, i)) + esc(w.slice(i));
+    for (let i = 1; i < w.length - 1; i++) if ((w[i] === '.' || w[i] === '/') && links.has(w.slice(i + 1))) return esc(w.slice(0, i + 1)) + tl(w.slice(i + 1));
+  }
+  return L && L.kw.has(w) ? `<span class="tk">${esc(w)}</span>` : esc(w);
+}
+
 function lineHTML(text, cls, start, end, L, links, defName) {
   let html = '';
   let i = start;
+  const re = idRe(L);
   while (i < end) {
     const c = cls[i];
     let j = i + 1;
@@ -28,16 +49,14 @@ function lineHTML(text, cls, start, end, L, links, defName) {
     if (c === 1) html += `<span class="tc">${esc(seg)}</span>`;
     else if (c === 2) html += `<span class="ts">${esc(seg)}</span>`;
     else {
-      for (const m of seg.matchAll(/([A-Za-z_$][\w$]*)|(\d[\w.]*)|([^A-Za-z_$\d]+)/g)) {
-        if (m[1]) {
-          const w = m[1];
-          if (w === defName) html += `<span class="td">${w}</span>`;
-          else if (links && links.has(w)) html += `<span class="tl" data-n="${links.get(w)}">${w}</span>`;
-          else if (L && L.kw.has(w)) html += `<span class="tk">${w}</span>`;
-          else html += w;
-        } else if (m[2]) html += `<span class="tn">${esc(m[2])}</span>`;
-        else html += esc(m[3]);
+      let p = 0;
+      for (const m of seg.matchAll(re)) {
+        if (!m[0] || (m.index > 0 && /[\w$]/.test(seg[m.index - 1]))) continue;
+        if (m.index > p) html += plain(seg.slice(p, m.index));
+        html += wordHTML(m[0], L, links, defName);
+        p = m.index + m[0].length;
       }
+      if (p < seg.length) html += plain(seg.slice(p));
     }
     i = j;
   }
