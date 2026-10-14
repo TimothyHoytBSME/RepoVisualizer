@@ -592,7 +592,7 @@ const GENS = [
   },
   gen('nim cr raku', { line: ['#'] }),
   gen('edn lisp el scm rkt', { line: [';'] }),
-  gen('v wgsl proto graphql gql d', { line: ['//'], block: [['/*', '*/']] }),
+  gen('v wgsl d', { line: ['//'], block: [['/*', '*/']] }),
 ];
 
 const HS = {
@@ -864,6 +864,33 @@ const GD = {
   imports: (raw, m) => grab(grab([], /\b(?:preload|load)\([ \t]*["']([^"']+\.gd)["']/g, raw), /^extends[ \t]+["']([^"']+)["']/gm, raw),
 };
 
+const PROTO = {
+  group: 'proto', exts: 'proto', explicit: true, pkgDir: true, resolve: 'proto',
+  syntax: { line: ['//'], block: [['/*', '*/']], quotes: '\'"' },
+  pkg: /^[ \t]*package[ \t]+([\w.]+)/m,
+  id: /\.?[A-Za-z_][\w.]*/g,
+  kw: kw(`syntax edition package import public weak option message enum service rpc returns stream repeated optional required oneof map reserved extend extensions to max true false double float int32 int64 uint32 uint64 sint32 sint64 fixed32 fixed64 sfixed32 sfixed64 bool string bytes group`),
+  defs: [
+    [R`^[ \t]*(?:message|enum|service)[ \t]+(${N})`, 'class'],
+    [R`^[ \t]*rpc[ \t]+(${N})`, 'function'],
+    [R`^[ \t]+(?:(?:repeated|optional|required)[ \t]+)?(?:map[ \t]*<[^>\n]*>|\.?[A-Za-z_][\w.]*)[ \t]+(${N})[ \t]*=[ \t]*\d+`, 'field'],
+    [R`^[ \t]+([A-Z][A-Z0-9_]*)[ \t]*=[ \t]*-?\d+`, 'field'],
+  ],
+  imports: (raw, m) => grab([], /^[ \t]*import[ \t]+(?:public[ \t]+|weak[ \t]+)?["']([^"']+)["']/gm, raw, m),
+};
+const GQL = {
+  group: 'gql', exts: 'graphql gql graphqls', resolve: 'gql',
+  syntax: { line: ['#'], quotes: '"', triple: true },
+  kw: kw(`type input interface enum union scalar schema directive extend implements query mutation subscription fragment on repeat true false null String Int Float Boolean ID`),
+  defs: [
+    [R`^(?:extend[ \t]+)?(?:type|input|interface|enum)[ \t]+(${N})`, 'class'],
+    [R`^(?:extend[ \t]+)?(?:union|scalar)[ \t]+(${N})`, 'type'],
+    [R`^(?:query|mutation|subscription|fragment)[ \t]+(${N})`, 'function'],
+    [R`^[ \t]+(${N})[ \t]*(?:\([^)]*\))?[ \t]*:`, 'field'],
+  ],
+  imports: (raw, m) => grab([], /^#[ \t]*import[ \t]+(?:[^\n]*?from[ \t]+)?["']([^"']+)["']/gm, raw),
+};
+
 const RLANG = {
   group: 'r', exts: 'r R rmd Rmd', resolve: 'r',
   syntax: { line: ['#'], quotes: '\'"`' },
@@ -893,7 +920,7 @@ const TEXT = {
   names: ['makefile', 'dockerfile', 'license', 'readme', 'procfile', 'justfile', 'containerfile', 'go.mod'],
 };
 
-export const LANGS = [JS, PY, GO, RS, C, JVM, CS, SWIFT, DART, RB, PHP, LUA, SH, SQL, HS, ML, ZIG, RLANG, ERL, CLJ, SOL, JL, PL, FS, TF, GD, ...GENS, MD, HTML, CSS, TEXT];
+export const LANGS = [JS, PY, GO, RS, C, JVM, CS, SWIFT, DART, RB, PHP, LUA, SH, SQL, HS, ML, ZIG, RLANG, ERL, CLJ, SOL, JL, PL, FS, TF, GD, PROTO, GQL, ...GENS, MD, HTML, CSS, TEXT];
 const BY_EXT = new Map(), BY_NAME = new Map();
 for (const L of LANGS) {
   for (const e of L.exts.split(' ')) BY_EXT.set(e, L);
