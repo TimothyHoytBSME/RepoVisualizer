@@ -32,6 +32,8 @@ export function edgesOf(g, id, dir) {
 
 export const TEST_PATH = /(^|\/)(tests?|__tests__|spec|specs|testing|testdata|e2e)\/|[._-](test|spec)s?\.[^/]+$|(^|\/)test_[^/]*$|(^|\/)conftest\.py$/i;
 
+export const isDoc = n => n.kind === 'file' && (n.group === 'md' || n.group === 'text');
+
 export function isTest(n) {
   return n.kind !== 'lib' && !!n.path && TEST_PATH.test(n.kind === 'dir' ? n.path + '/' : n.path);
 }
@@ -43,7 +45,8 @@ export function buildView(g, type, filters = {}) {
     && !(filters.tests === false && isTest(n))
     && !(filters.vars === false && n.kind === 'variable')
     && !(filters.libs === false && n.kind === 'lib')
-    && !(filters.std === false && n.std);
+    && !(filters.std === false && n.std)
+    && !(filters.docs === false && isDoc(n));
   const local = new Int32Array(g.nodes.length).fill(-1);
   const ids = [];
   for (const n of g.nodes) if (shown(n)) { local[n.id] = ids.length; ids.push(n.id); }

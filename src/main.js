@@ -1,5 +1,5 @@
 import { parseRepo, loadGitHub, loadLocal, dropEntries, scanEntries, saveLocal, loadSaved, recent } from './source.js';
-import { indexGraph, buildView, neighborhood, defaultNode, isTest, shortestPath, withPath, edgeBetween } from './graph.js';
+import { indexGraph, buildView, neighborhood, defaultNode, isTest, isDoc, shortestPath, withPath, edgeBetween } from './graph.js';
 import { LayoutHost } from './layout-host.js';
 import { Renderer, FlatRenderer, readPalette, nodeStyle, GROUP_COLORS } from './render.js';
 import { attachControls, makeGamepad } from './controls.js';
@@ -29,7 +29,7 @@ const app = {
   follow: false, goto: null, dirty: true, pal: readPalette(), ver: 0,
   dir: ['out', 'in'].includes(store.get('rv:dir')) ? store.get('rv:dir') : 'both',
   limit: (() => { const v = store.get('rv:limit'); return v === null ? (narrow() ? 300 : 1200) : +v; })(),
-  filters: Object.assign({ tests: false, vars: true, libs: true, std: false, refs: true }, (() => { try { return JSON.parse(store.get('rv:filters')) || {}; } catch { return {}; } })()),
+  filters: Object.assign({ tests: false, vars: true, libs: true, std: false, docs: true, refs: true }, (() => { try { return JSON.parse(store.get('rv:filters')) || {}; } catch { return {}; } })()),
 };
 const panel = new Panel(panelEl, $('#peek'), app);
 
@@ -248,6 +248,7 @@ function hiddenBy(n) {
   if (f.vars === false && n.kind === 'variable') return ['vars', 'variables'];
   if (f.libs === false && n.kind === 'lib') return ['libs', 'libraries'];
   if (f.std === false && n.std) return ['std', 'standard library modules'];
+  if (f.docs === false && isDoc(n)) return ['docs', 'docs and config files'];
   return null;
 }
 
