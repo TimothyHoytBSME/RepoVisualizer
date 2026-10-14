@@ -592,7 +592,7 @@ const GENS = [
   },
   gen('jl nim pl pm tf hcl gd cr raku', { line: ['#'] }),
   gen('edn lisp el scm rkt', { line: [';'] }),
-  gen('v sol fs fsx wgsl proto graphql gql d', { line: ['//'], block: [['/*', '*/']] }),
+  gen('v fs fsx wgsl proto graphql gql d', { line: ['//'], block: [['/*', '*/']] }),
 ];
 
 const HS = {
@@ -711,6 +711,34 @@ const CLJ = {
   aliases: raw => { const a = new Map(); cljRequires(raw, a); return a.size ? a : null; },
 };
 
+const solField = (t, i) => {
+  let s = i, w = 0;
+  while (s > 0 && t[s - 1] !== '\n') s--;
+  for (let k = s; k < i && (t[k] === ' ' || t[k] === '\t'); k++) w += t[k] === '\t' ? 4 : 1;
+  if (w < 5) return true;
+  for (let k = s - 1, d = 0, lim = Math.max(0, s - 4000); k >= lim; k--) {
+    if (t[k] === '}') d++;
+    else if (t[k] === '{' && d-- === 0) return /\bstruct[ \t]+\w+\s*$/.test(t.slice(Math.max(0, k - 80), k));
+  }
+  return false;
+};
+const SOL = {
+  paramLast: true, group: 'sol', explicit: true, exts: 'sol', resolve: 'sol',
+  localDecl: /(?:^|[;{}(,])[ \t]*([A-Za-z_][\w.]*(?:\[[^\]\n]*\])*)[ \t]+(?:(?:memory|storage|calldata|payable)[ \t]+)?([A-Za-z_]\w*)[ \t]*(?=[=;,)])/gm,
+  syntax: { line: ['//'], block: [['/*', '*/']], quotes: '\'"' },
+  kw: kw(`abstract address anonymous as assembly bool break bytes bytes4 bytes32 calldata catch constant constructor continue contract delete do else emit enum error event external fallback false for function if immutable import indexed interface internal is library mapping memory modifier new override payable pragma private public pure receive return returns revert require assert storage string struct this true try type uint uint8 uint16 uint32 uint64 uint128 uint256 int int8 int64 int128 int256 unchecked using view virtual while msg block tx abi keccak256 sha256 ecrecover super selfdestruct wei gwei ether seconds minutes hours days weeks transient`),
+  defs: [
+    [R`^[ \t]*(?:abstract[ \t]+)?(?:contract|interface|library)[ \t]+(${N})`, 'class'],
+    [R`^[ \t]*struct[ \t]+(${N})`, 'class'],
+    [R`^[ \t]*enum[ \t]+(${N})`, 'type'],
+    [R`^[ \t]*(?:event|error)[ \t]+(${N})[ \t]*\(`, 'type'],
+    [R`^[ \t]*type[ \t]+(${N})[ \t]+is\b`, 'type'],
+    [R`\b(?:function|modifier)[ \t]+(${N})`, 'function'],
+    [R`^[ \t]*(?!return\b|emit\b|delete\b|using\b|import\b|pragma\b|revert\b|else\b)(?:mapping[ \t]*\((?:[^()\n]|\([^()\n]*\))*\)|[A-Za-z_][\w.]*(?:\[[^\]\n]*\])*)[ \t]+(?:(?:public|private|internal|constant|immutable|override|transient)[ \t]+)*(${N})[ \t]*(?:=(?!=)|;)`, 'variable', solField],
+  ],
+  imports: (raw, m) => grab([], /^[ \t]*import[ \t]+(?:[^"';]*?\bfrom[ \t]+)?["']([^"']+)["']/gm, raw, m),
+};
+
 const RLANG = {
   group: 'r', exts: 'r R rmd Rmd', resolve: 'r',
   syntax: { line: ['#'], quotes: '\'"`' },
@@ -740,7 +768,7 @@ const TEXT = {
   names: ['makefile', 'dockerfile', 'license', 'readme', 'procfile', 'justfile', 'containerfile', 'go.mod'],
 };
 
-export const LANGS = [JS, PY, GO, RS, C, JVM, CS, SWIFT, DART, RB, PHP, LUA, SH, SQL, HS, ML, ZIG, RLANG, ERL, CLJ, ...GENS, MD, HTML, CSS, TEXT];
+export const LANGS = [JS, PY, GO, RS, C, JVM, CS, SWIFT, DART, RB, PHP, LUA, SH, SQL, HS, ML, ZIG, RLANG, ERL, CLJ, SOL, ...GENS, MD, HTML, CSS, TEXT];
 const BY_EXT = new Map(), BY_NAME = new Map();
 for (const L of LANGS) {
   for (const e of L.exts.split(' ')) BY_EXT.set(e, L);

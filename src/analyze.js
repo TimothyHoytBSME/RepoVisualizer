@@ -54,8 +54,8 @@ function keywords(infos, nodes, edges, add) {
 const EDGE_CODE = { ref: 1, contain: 2, dep: 3 };
 export const EDGE_NAMES = ['', 'ref', 'contain', 'dep'];
 const PROP_FN = /(?:\.[\w$]+\s*=|[\w$]+\s*:)\s*(?:async\s+)?function\s*\*?\s*$|\.prototype\.$/;
-const CAP_TYPES = new Set(['jvm', 'cs', 'swift', 'dart', 'py', 'rs', 'rb', 'php']);
-const IMPLICIT_THIS = new Set(['jvm', 'cs', 'swift', 'dart', 'c', 'rb']);
+const CAP_TYPES = new Set(['jvm', 'cs', 'swift', 'dart', 'py', 'rs', 'rb', 'php', 'sol']);
+const IMPLICIT_THIS = new Set(['jvm', 'cs', 'swift', 'dart', 'c', 'rb', 'sol']);
 const AMBIENT = /\.d\.[mc]?ts$/;
 const C_HEADER = /\.(?:h|hh|hpp|hxx|h\+\+|cuh|inc|inl)$/i;
 const STR_TYPE = { jvm: 'String', swift: 'String', dart: 'String', cs: 'string', js: 'String', py: 'str', rs: 'str' };
@@ -744,6 +744,12 @@ function makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, phpNs, phpNsFiles,
       const p = spec.replace(/\./g, '/').replace(/-/g, '_');
       return exMods.get(spec) ?? suf(p + '.clj', info) ?? suf(p + '.cljc', info) ?? suf(p + '.cljs', info) ?? spec.split('.')[0];
     },
+    sol(spec, info) {
+      if (/^\.\.?\//.test(spec)) return exact(join(info.dir, spec));
+      const segs = spec.split('/');
+      for (let i = 0; i < segs.length - 1; i++) { const r = suf(segs.slice(i).join('/'), info); if (r != null) return r; }
+      return spec[0] === '@' ? segs.slice(0, 2).join('/') : segs[0];
+    },
     ex(spec) {
       return exMods.get(spec) ?? spec.split('.')[0];
     },
@@ -1041,6 +1047,7 @@ export function analyze(files, rootName, progress = () => {}) {
         const rest = lines[d.line].slice(d.idx - starts[d.line] + d.name.length);
         let m, list = null;
         if (L.group === 'py') { if ((m = /^\s*\(([^)]*)\)/.exec(rest))) list = m[1].split(',').filter(x => !x.includes('=')); }
+        else if (L.group === 'sol') { if ((m = /^\s+is\s+([^{]*)/.exec(rest))) list = m[1].replace(/\([^()]*(?:\([^()]*\)[^()]*)*\)/g, '').split(','); }
         else if ((m = /^\s*(?:<[^>{]*>)?\s*(?:\([^)]*\)\s*)?(?:extends|implements|:|<|on\b)\s*([^{]*)/.exec(rest))) {
           list = m[1].replace(/<[^<>]*(?:<[^<>]*>[^<>]*)*>/g, '').replace(/\b(?:implements|extends|public|private|protected|virtual|where|with)\b/g, ',').split(',');
         }
@@ -1713,6 +1720,13 @@ export function analyze(files, rootName, progress = () => {}) {
         if (cls !== fid && cls >= 0) for (const b of basesOf.get(cls) || []) for (const c of classes(b, fid)) for (const h of memberIn(c, name) || []) hit.add(h);
         if (!hit.size) continue;
         keyHit = [...hit];
+      }
+      if (member && L.group === 'sol' && recv && L.kw.has(recv) && recv !== 'super' && recv !== 'this') continue;
+      if (member && !keyHit && L.group === 'sol' && recv !== 'super' && !(recv && classByName.has(recv))) {
+        info.solUsing ??= [...masked.matchAll(/\busing[ \t]+([A-Za-z_][\w.]*)[ \t]+for\b/g)].map(x => lastSeg(x[1]));
+        const hit = new Set();
+        for (const lib of info.solUsing) for (const c of classes(lib, fid)) for (const h of memberIn(c, name) || []) hit.add(h);
+        if (hit.size) keyHit = [...hit];
       }
       if (member && recv && !keyHit && info.modBind) {
         const mf = info.modBind.get(recv);
