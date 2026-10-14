@@ -339,7 +339,7 @@ const JS = {
 };
 
 const PY = {
-  group: 'py', explicit: true, flatVars: true, shadowExt: true, exts: 'py pyi pyw', strip: /^[ \t]*(?:from[ \t]+\.*[\w.]*(?=[ \t]+import\b)|import[ \t]+[\w., \t]+$)/gm,
+  group: 'py', explicit: true, flatVars: true, shadowExt: true, exts: 'py pyi pyw ipynb', strip: /^[ \t]*(?:from[ \t]+\.*[\w.]*(?=[ \t]+import\b)|import[ \t]+[\w., \t]+$)/gm,
   syntax: { line: ['#'], quotes: '\'"', triple: true },
   kw: kw(`False None True and as assert async await break class continue def del elif else except finally for from global if import in is lambda nonlocal not or pass raise return try while with yield self cls print len range str int float list dict set tuple bool object super isinstance type match case`),
   defs: [
@@ -1017,6 +1017,15 @@ const SKIP_DIRS = new Set(['node_modules', 'vendor', 'dist', 'build', 'out', 'ta
 const SKIP_FILES = new Set(['package-lock.json', 'yarn.lock', 'pnpm-lock.yaml', 'cargo.lock', 'poetry.lock', 'go.sum', 'composer.lock', 'gemfile.lock', 'pipfile.lock', 'bun.lockb', 'flake.lock']);
 const TEXT_GROUPS = new Set(['text', 'md', 'html', 'css']);
 
+export function notebookText(text) {
+  let nb;
+  try { nb = JSON.parse(text); } catch { return text; }
+  const cells = nb && (nb.cells || nb.worksheets?.[0]?.cells);
+  if (!Array.isArray(cells)) return text;
+  const src = c => { const s = c.source ?? c.input ?? ''; return (Array.isArray(s) ? s.join('') : String(s)).replace(/\r\n?/g, '\n').replace(/\n$/, ''); };
+  return cells.map(c => c.cell_type === 'code' ? '# %%\n' + src(c).replace(/^([ \t]*)([!%])/gm, '$1# $2') : '# %% [' + (c.cell_type || 'raw') + ']\n' + src(c).replace(/^/gm, '# ')).join('\n\n') + '\n';
+}
+
 export function wanted(path, size = 0) {
   const segs = path.split('/');
   for (let i = 0; i < segs.length - 1; i++) {
@@ -1027,7 +1036,7 @@ export function wanted(path, size = 0) {
   if (SKIP_FILES.has(base) || /\.min\.(js|css)$|\.map$|\.bundle\.js$|\.lock$|^(?:jquery|typeahead|lunr|underscore|doctools|searchtools|require)(?:[.-][\w.-]*)?\.js$/.test(base)) return false;
   const L = langOf(path);
   if (!L) return false;
-  return size <= (TEXT_GROUPS.has(L.group) ? 250e3 : 800e3);
+  return size <= (TEXT_GROUPS.has(L.group) ? 250e3 : base.endsWith('.ipynb') ? 5e6 : 800e3);
 }
 
 const RE_PREV = new Set('(,=:[!&|?{};+-*%>~^'.split(''));

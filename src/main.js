@@ -4,6 +4,7 @@ import { LayoutHost } from './layout-host.js';
 import { Renderer, FlatRenderer, readPalette, nodeStyle, GROUP_COLORS } from './render.js';
 import { attachControls, makeGamepad } from './controls.js';
 import { Panel } from './panel.js';
+import { notebookText } from './langs.js';
 
 const $ = s => document.querySelector(s);
 const store = {
@@ -127,6 +128,7 @@ async function load(getSource, nodeKey) {
     const src = await getSource(live, signal);
     if (seq !== loadSeq) return;
     if (!src.files.length) throw new Error('No readable files were found there.');
+    src.files = src.files.map(f => (f.path.endsWith('.ipynb') ? { ...f, text: notebookText(f.text) } : f));
     live({ phase: 'Analyzing' });
     const g = await analyzeAsync(src.files, src.name, live, signal);
     if (seq !== loadSeq) return;

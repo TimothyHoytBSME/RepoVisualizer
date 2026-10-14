@@ -13,14 +13,14 @@ if (!dir) {
   diff <old src dir>   links added/removed compared with another copy of src/`);
   process.exit(0);
 }
-const { wanted } = await import(path.join(SRC, 'langs.js'));
+const { wanted, notebookText } = await import(path.join(SRC, 'langs.js'));
 const files = [];
 const walk = d => {
   for (const e of fs.readdirSync(d, { withFileTypes: true })) {
     if (e.name === '.git') continue;
     const p = path.join(d, e.name);
     if (e.isDirectory()) walk(p);
-    else { const rel = path.relative(dir, p); if (wanted(rel, fs.statSync(p).size)) files.push({ path: rel, text: fs.readFileSync(p, 'utf8') }); }
+    else { const rel = path.relative(dir, p); if (wanted(rel, fs.statSync(p).size)) { const t = fs.readFileSync(p, 'utf8'); files.push({ path: rel, text: rel.endsWith('.ipynb') ? notebookText(t) : t }); } }
   }
 };
 walk(dir);
