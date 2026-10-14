@@ -71,6 +71,7 @@ const STD_SETS = {
   lua: 'string table math io os coroutine debug utf8 package bit jit ffi',
   erl: 'kernel stdlib erts compiler crypto ssl public_key inets ssh sasl mnesia observer runtime_tools tools common_test eunit xmerl asn1 os_mon syntax_tools parsetools lists maps proplists io io_lib erlang gen_server gen_statem gen_event gen_fsm supervisor application ets dets string binary file filename filelib os timer re math logger sys proc_lib unicode calendar queue sets ordsets orddict dict gb_trees gb_sets array code rand persistent_term atomics counters gen_tcp gen_udp inet uri_string base64 zlib erl_eval erl_scan erl_parse error_logger rpc net_kernel global pg digraph epp',
   clj: 'clojure cljs java javax goog',
+  elm: 'Basics List Maybe Result String Char Tuple Debug Platform Cmd Sub Html Json Browser Http Url Time Task Process Array Dict Set Bitwise Svg File Random Parser VirtualDom Markdown',
   proto: 'google',
   pl: 'strict warnings utf8 feature parent base constant lib vars overload integer bytes Carp Exporter Scalar List Data POSIX File IO Time Storable Encode Getopt Test Test2 Socket Sys Cwd Fcntl Errno Benchmark Digest MIME Math Term Text Tie Hash Unicode B mro re version subs if open sort bigint FindBin JSON HTTP Config Symbol SelectSaver Pod Safe Thread threads attributes fields locale charnames diagnostics autodie experimental',
   jl: 'Base Core Main LinearAlgebra Statistics Random Printf Dates Test Distributed SparseArrays Serialization Sockets InteractiveUtils Markdown Unicode SHA UUIDs Logging Pkg Libdl Mmap FileWatching DelimitedFiles REPL SharedArrays Profile LibGit2 Downloads TOML Artifacts Future',
@@ -385,7 +386,7 @@ function params(t, from, L, types) {
     return out;
   }
   if (L.group === 'erl') { const e = t.indexOf('->', from); return e < 0 || e - from > 400 ? [] : t.slice(from, e).match(/\b[A-Z_]\w*/g) || []; }
-  if (L.group === 'ml' || L.group === 'hs') {
+  if (L.group === 'ml' || L.group === 'hs' || L.group === 'elm') {
     const e = t.indexOf('\n', from), head = t.slice(from, e < 0 ? t.length : e).split(/=|->/)[0];
     return (head.match(/[a-z_][\w']*/g) || []).filter(w => !L.kw.has(w));
   }
@@ -805,6 +806,9 @@ function makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, phpNs, phpNsFiles,
     },
     gql(spec, info) {
       return exact(join(info.dir, spec)) ?? suf(spec.replace(/^(\.\.?\/)+/, ''), info);
+    },
+    elm(spec, info) {
+      return suf(spec.replace(/\./g, '/') + '.elm', info) ?? spec.split('.')[0];
     },
     ex(spec) {
       return exMods.get(spec) ?? spec.split('.')[0];

@@ -568,7 +568,7 @@ const GEN_DEFS = [
 ];
 const gen = (exts, syntax) => ({ group: 'gen', exts, syntax: { quotes: '"', triple: true, multi: '"', ...syntax }, defs: GEN_DEFS });
 const GENS = [
-  gen('elm purs', { line: ['--'], block: [['{-', '-}']] }),
+  gen('purs', { line: ['--'], block: [['{-', '-}']] }),
   {
     ...gen('ex exs', { line: ['#'] }), group: 'ex', bareVars: true, resolve: 'ex',
     id: /[A-Z]\w*(?:\.[A-Z]\w*)*|[A-Za-z_]\w*[?!]?/g,
@@ -620,6 +620,30 @@ const HS = {
   sameName: true,
   imports: (raw, m) => grab([], /^import[ \t]+(?:safe[ \t]+)?(?:qualified[ \t]+)?(?:"[^"\n]*"[ \t]+)?([A-Z][\w.]*)/gm, raw, m),
   binds: raw => [...raw.matchAll(/^import[ \t]+(?:safe[ \t]+)?(?:qualified[ \t]+)?(?:"[^"\n]*"[ \t]+)?([A-Z][\w.]*)[^\n]*?\bas[ \t]+([A-Z][\w.]*)/gm)].map(x => [x[2], x[1], true]),
+};
+
+const ELM = {
+  group: 'elm', exts: 'elm', explicit: true, resolve: 'elm', sameName: true,
+  syntax: { line: ['--'], block: [['{-', '-}']], quotes: '"\'', triple: true },
+  id: /[A-Za-z_]\w*/g,
+  kw: kw(`if then else case of let in type alias module exposing import as port where infix True False Just Nothing Ok Err Int Float String Bool Char List Maybe Result Cmd Sub Never not identity always`),
+  defs: [
+    [R`^type[ \t]+alias[ \t]+([A-Z]\w*)`, 'type'],
+    [R`^type[ \t]+(?!alias\b)([A-Z]\w*)`, 'class'],
+    [R`^port[ \t]+([a-z]\w*)[ \t]*:`, 'function'],
+  ],
+  extra: t => {
+    const out = [], seen = new Set();
+    for (const m of t.matchAll(/^([a-z_]\w*)[ \t]*:(?!:)/gm)) if (!seen.has(m[1])) { seen.add(m[1]); out.push({ name: m[1], idx: m.index, kind: 'function' }); }
+    for (const m of t.matchAll(/^([a-z_]\w*)\b[^\n=:]*=/gm)) if (!seen.has(m[1]) && !/^(?:import|module|port|type|infix)$/.test(m[1])) { seen.add(m[1]); out.push({ name: m[1], idx: m.index, kind: 'function' }); }
+    for (const m of t.matchAll(/(?:^|\n)type[ \t]+(?!alias\b)[A-Z]\w*[^\n=]*\n?[ \t]*=([^]*?)(?=\n\S|(?![^]))/g)) {
+      const base = m.index + m[0].length - m[1].length;
+      for (const v of m[1].matchAll(/(?:^|[=|])[ \t\n]*([A-Z]\w*)/g)) out.push({ name: v[1], idx: base + v.index + v[0].length - v[1].length, kind: 'field' });
+    }
+    return out;
+  },
+  imports: (raw, m) => grab([], /^import[ \t]+([A-Z][\w.]*)/gm, raw, m),
+  binds: raw => [...raw.matchAll(/^import[ \t]+([A-Z][\w.]*)(?:[ \t]+as[ \t]+([A-Z]\w*))?/gm)].map(x => [x[2] || x[1].split('.').pop(), x[1], true]),
 };
 
 const ML = {
@@ -920,7 +944,7 @@ const TEXT = {
   names: ['makefile', 'dockerfile', 'license', 'readme', 'procfile', 'justfile', 'containerfile', 'go.mod'],
 };
 
-export const LANGS = [JS, PY, GO, RS, C, JVM, CS, SWIFT, DART, RB, PHP, LUA, SH, SQL, HS, ML, ZIG, RLANG, ERL, CLJ, SOL, JL, PL, FS, TF, GD, PROTO, GQL, ...GENS, MD, HTML, CSS, TEXT];
+export const LANGS = [JS, PY, GO, RS, C, JVM, CS, SWIFT, DART, RB, PHP, LUA, SH, SQL, HS, ELM, ML, ZIG, RLANG, ERL, CLJ, SOL, JL, PL, FS, TF, GD, PROTO, GQL, ...GENS, MD, HTML, CSS, TEXT];
 const BY_EXT = new Map(), BY_NAME = new Map();
 for (const L of LANGS) {
   for (const e of L.exts.split(' ')) BY_EXT.set(e, L);
