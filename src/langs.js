@@ -590,7 +590,7 @@ const GENS = [
       return a.size ? a : null;
     },
   },
-  gen('nim gd cr raku', { line: ['#'] }),
+  gen('nim cr raku', { line: ['#'] }),
   gen('edn lisp el scm rkt', { line: [';'] }),
   gen('v wgsl proto graphql gql d', { line: ['//'], block: [['/*', '*/']] }),
 ];
@@ -848,6 +848,22 @@ const TF = {
   imports: (raw, m) => grab([], /^[ \t]*source[ \t]*=[ \t]*"([^"]+)"/gm, raw, m),
 };
 
+const GD = {
+  group: 'gd', exts: 'gd', explicit: true, resolve: 'gd', sigil: true,
+  syntax: { line: ['#'], quotes: '\'"', triple: true },
+  kw: kw(`if elif else for while match when break continue pass return class class_name extends is in as self signal func static const enum var onready export setget breakpoint preload load await yield assert void true false null and or not PI TAU INF NAN print printerr push_error push_warning int float bool String StringName Vector2 Vector2i Vector3 Vector3i Color Rect2 Transform2D Transform3D Basis Quaternion Array Dictionary Callable Object Node RefCounted Resource super get_node queue_free emit_signal connect range len str abs min max clamp lerp randf randi`),
+  defs: [
+    [R`^class_name[ \t]+(${N})`, 'class'],
+    [R`^[ \t]*class[ \t]+(${N})`, 'class'],
+    [R`^[ \t]*(?:@rpc(?:\([^)\n]*\))?[ \t]+)?(?:static[ \t]+)?func[ \t]+(${N})`, 'function'],
+    [R`^[ \t]*(?:@\w+(?:\([^)\n]*\))?[ \t\n]+)*(?:static[ \t]+)?var[ \t]+(${N})`, 'variable'],
+    [R`^[ \t]*const[ \t]+(${N})`, 'variable'],
+    [R`^[ \t]*signal[ \t]+(${N})`, 'variable'],
+    [R`^[ \t]*enum[ \t]+(${N})`, 'type'],
+  ],
+  imports: (raw, m) => grab(grab([], /\b(?:preload|load)\([ \t]*["']([^"']+\.gd)["']/g, raw), /^extends[ \t]+["']([^"']+)["']/gm, raw),
+};
+
 const RLANG = {
   group: 'r', exts: 'r R rmd Rmd', resolve: 'r',
   syntax: { line: ['#'], quotes: '\'"`' },
@@ -877,7 +893,7 @@ const TEXT = {
   names: ['makefile', 'dockerfile', 'license', 'readme', 'procfile', 'justfile', 'containerfile', 'go.mod'],
 };
 
-export const LANGS = [JS, PY, GO, RS, C, JVM, CS, SWIFT, DART, RB, PHP, LUA, SH, SQL, HS, ML, ZIG, RLANG, ERL, CLJ, SOL, JL, PL, FS, TF, ...GENS, MD, HTML, CSS, TEXT];
+export const LANGS = [JS, PY, GO, RS, C, JVM, CS, SWIFT, DART, RB, PHP, LUA, SH, SQL, HS, ML, ZIG, RLANG, ERL, CLJ, SOL, JL, PL, FS, TF, GD, ...GENS, MD, HTML, CSS, TEXT];
 const BY_EXT = new Map(), BY_NAME = new Map();
 for (const L of LANGS) {
   for (const e of L.exts.split(' ')) BY_EXT.set(e, L);

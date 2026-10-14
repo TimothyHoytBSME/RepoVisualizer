@@ -54,8 +54,8 @@ function keywords(infos, nodes, edges, add) {
 const EDGE_CODE = { ref: 1, contain: 2, dep: 3 };
 export const EDGE_NAMES = ['', 'ref', 'contain', 'dep'];
 const PROP_FN = /(?:\.[\w$]+\s*=|[\w$]+\s*:)\s*(?:async\s+)?function\s*\*?\s*$|\.prototype\.$/;
-const CAP_TYPES = new Set(['jvm', 'cs', 'swift', 'dart', 'py', 'rs', 'rb', 'php', 'sol']);
-const IMPLICIT_THIS = new Set(['jvm', 'cs', 'swift', 'dart', 'c', 'rb', 'sol']);
+const CAP_TYPES = new Set(['jvm', 'cs', 'swift', 'dart', 'py', 'rs', 'rb', 'php', 'sol', 'gd']);
+const IMPLICIT_THIS = new Set(['jvm', 'cs', 'swift', 'dart', 'c', 'rb', 'sol', 'gd']);
 const AMBIENT = /\.d\.[mc]?ts$/;
 const C_HEADER = /\.(?:h|hh|hpp|hxx|h\+\+|cuh|inc|inl)$/i;
 const STR_TYPE = { jvm: 'String', swift: 'String', dart: 'String', cs: 'string', js: 'String', py: 'str', rs: 'str' };
@@ -224,6 +224,7 @@ function extractDefs(masked, L, starts, lines, raw) {
       while (e + 1 < lines.length && /\\[ \t]*$/.test(lines[e])) e++;
       d.end = e;
     } else d.end = d.kind === 'field' || (L.group === 'c' && d.kind === 'type') ? d.line : blockEnd(lines, d.line, skip, d.kind === 'class' ? L.head : null);
+    if (L.group === 'gd' && d.kind === 'class' && /^class_name\b/.test(lines[d.line])) d.end = lines.length - 1;
     if (L.group === 'pl' && d.kind === 'class' && /;[ \t]*$/.test(lines[d.line])) {
       let e = lines.length - 1;
       for (let j = fi + 1; j < found.length; j++) if (found[j].kind === 'class' && /;[ \t]*$/.test(lines[found[j].line])) { e = found[j].line - 1; break; }
@@ -793,6 +794,10 @@ function makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, phpNs, phpNsFiles,
       if (/^\.\.?\//.test(spec)) { const d = join(info.dir, spec.replace(/\/$/, '')); const l = d != null && (dirFiles.get(d) || []).filter(id => /\.tf$/.test(nodes[id].path)); return l && l.length ? l.find(id => nodes[id].name === 'main.tf') ?? l[0] : null; }
       return spec.replace(/^git::|^https?:\/\//, '').split(/[?]|\/\//)[0];
     },
+    gd(spec, info) {
+      if (spec.startsWith('res://')) return suf(spec.slice(6), info);
+      return exact(join(info.dir, spec)) ?? suf(spec.replace(/^(\.\.?\/)+/, ''), info);
+    },
     ex(spec) {
       return exMods.get(spec) ?? spec.split('.')[0];
     },
@@ -1106,6 +1111,7 @@ export function analyze(files, rootName, progress = () => {}) {
           for (const x of body.matchAll(/^[ \t]*(?:use[ \t]+(?:parent|base|Mojo::Base)[ \t]+(?:-norequire[ \t]*,[ \t]*)?(?:qw[(/{[][ \t]*([\w: \t]+)|["']([\w:]+)["'])|(?:our[ \t]+)?@ISA[ \t]*=[ \t]*(?:qw[(/{[][ \t]*([\w: \t]+)|\(?[ \t]*["']([\w:]+)["']))/gm)) bs.push(...(x[1] || x[2] || x[3] || x[4]).trim().split(/\s+/));
           if (bs.length) list = bs;
         }
+        else if (L.group === 'gd') { if ((m = /^\s+extends\s+(\w+)/.exec(rest) || (/^class_name\b/.test(lines[d.line]) && /^extends[ \t]+([A-Za-z_]\w*)/m.exec(masked)))) list = [m[1]]; }
         else if (L.group === 'sol') { if ((m = /^\s+is\s+([^{]*)/.exec(rest))) list = m[1].replace(/\([^()]*(?:\([^()]*\)[^()]*)*\)/g, '').split(','); }
         else if ((m = /^\s*(?:<[^>{]*>)?\s*(?:\([^)]*\)\s*)?(?:extends|implements|:|<|on\b)\s*([^{]*)/.exec(rest))) {
           list = m[1].replace(/<[^<>]*(?:<[^<>]*>[^<>]*)*>/g, '').replace(/\b(?:implements|extends|public|private|protected|virtual|where|with)\b/g, ',').split(',');
@@ -1928,6 +1934,7 @@ export function analyze(files, rootName, progress = () => {}) {
               : cands.filter(c => nodes[nodes[c].file].parent === fdir && (!member || nf(c)));
             if (!srcTest && targets.length) targets = targets.filter(c => !TEST_PATH.test(nodes[c].path));
           }
+          if (!targets.length && L.group === 'gd' && !member) targets = cands.filter(c => isClassy(nodes[c].kind) && nodes[c].parent === nodes[c].file);
           if (!targets.length) {
             if (cands.length > MAXC || L.group === 'tf') continue;
             targets = L.group === 'c' ? cands.filter(c => isFn(nodes[c].kind) && !privC.has(c) && (!member || prev === 58 || nodes[c].kind === 'method'))
