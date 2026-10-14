@@ -591,7 +591,7 @@ const GENS = [
     },
   },
   gen('jl nim pl pm tf hcl gd cr raku', { line: ['#'] }),
-  gen('clj cljs cljc edn lisp el scm rkt', { line: [';'] }),
+  gen('edn lisp el scm rkt', { line: [';'] }),
   gen('v sol fs fsx wgsl proto graphql gql d', { line: ['//'], block: [['/*', '*/']] }),
 ];
 
@@ -658,7 +658,7 @@ const ZIG = {
 
 const ERL = {
   group: 'erl', exts: 'erl hrl escript', explicit: true, resolve: 'erl', sameName: true,
-  syntax: { line: ['%'], quotes: '"\'', multi: '"', dollarChar: true },
+  syntax: { line: ['%'], quotes: '"\'', multi: '"', charPre: '$' },
   kw: kw(`after and andalso band begin bnot bor bsl bsr bxor case catch cond div end fun if let maybe not of or orelse receive rem try when xor ok error true false undefined self spawn spawn_link exit throw length element setelement hd tl abs min max apply node erlang`),
   defs: [
     [R`^([a-z][\w@]*)\(`, 'function'],
@@ -667,6 +667,48 @@ const ERL = {
     [R`^-define\([ \t]*([A-Za-z_][\w@]*)[ \t]*,`, 'variable'],
   ],
   imports: (raw, m) => grab(grab([], /^-include(?:_lib)?\([ \t]*"([^"]+)"/gm, raw), /^-(?:behaviou?r|import)\([ \t]*([a-z][\w@]*)/gm, raw, m),
+};
+
+const CLJ_ID = String.raw`[A-Za-z_*+!?<>=$&|-][\w*+!?<>=$&|'.-]*`;
+const CLJ_META = String.raw`(?:\^(?:\{[^}\n]*\}|[^ \t\n]+)[ \t]+)*`;
+function cljRequires(src, alias) {
+  const out = [];
+  for (const x of src.matchAll(/\((?::require|:use|require|use)(?![\w-])/g)) {
+    let d = 1, i = x.index + x[0].length, first = false, ns = '', key = '';
+    for (const end = Math.min(src.length, i + 6000); i < end && d > 0; i++) {
+      const c = src[i];
+      if (c === '(' || c === '[' || c === '{') { d++; if (d === 2) { first = true; ns = ''; } key = ''; continue; }
+      if (c === ')' || c === ']' || c === '}') { d--; continue; }
+      if (c === ';') { while (i < end && src[i] !== '\n') i++; continue; }
+      if (/[\s,'#"]/.test(c)) continue;
+      let j = i;
+      while (j < end && !/[\s,()[\]{}"]/.test(src[j])) j++;
+      const tok = src.slice(i, j);
+      i = j - 1;
+      if (tok[0] === ':') { key = tok; first = false; continue; }
+      if (d === 1) out.push(tok);
+      else if (d === 2) {
+        if (first) { ns = tok; out.push(tok); first = false; }
+        else if (alias && ns && (key === ':as' || key === ':as-alias')) alias.set(tok, ns);
+      }
+      key = '';
+    }
+  }
+  return out;
+}
+const CLJ = {
+  group: 'clj', exts: 'clj cljs cljc bb', explicit: true, resolve: 'clj',
+  syntax: { line: [';'], quotes: '"', multi: '"', charPre: '\\' },
+  id: /[A-Za-z_*+!?<>=$&|-][\w*+!?<>=$&|'.-]*(?:\/[A-Za-z_*+!?<>=$&|-][\w*+!?<>=$&|'-]*)?/g,
+  priv: /^[ \t]*\((?:defn-|def[a-z]*[ \t]+(?:\^:private|\^\{[^}\n]*:private[ \t]+true))/,
+  kw: kw(`def defn defn- defmacro let letfn fn if do when when-not when-let if-let cond condp case loop recur nil true false and or not ns require import try catch finally throw quote var new set! binding doseq dotimes for map filter reduce first rest next cons conj assoc dissoc get get-in assoc-in update update-in keys vals str println apply partial comp identity some-> some->> -> ->> doto`),
+  defs: [
+    [R`^[ \t]*\((?:defn-?|defmacro|defmulti|deftest|defspec)[ \t]+${CLJ_META}(${CLJ_ID})`, 'function'],
+    [R`^[ \t]*\((?:def|defonce)[ \t]+${CLJ_META}(${CLJ_ID})`, 'variable'],
+    [R`^[ \t]*\((?:defprotocol|definterface|defrecord|deftype|defstruct)[ \t]+${CLJ_META}(${CLJ_ID})`, 'class'],
+  ],
+  imports: (raw, m) => cljRequires(m || raw),
+  aliases: raw => { const a = new Map(); cljRequires(raw, a); return a.size ? a : null; },
 };
 
 const RLANG = {
@@ -698,7 +740,7 @@ const TEXT = {
   names: ['makefile', 'dockerfile', 'license', 'readme', 'procfile', 'justfile', 'containerfile', 'go.mod'],
 };
 
-export const LANGS = [JS, PY, GO, RS, C, JVM, CS, SWIFT, DART, RB, PHP, LUA, SH, SQL, HS, ML, ZIG, RLANG, ERL, ...GENS, MD, HTML, CSS, TEXT];
+export const LANGS = [JS, PY, GO, RS, C, JVM, CS, SWIFT, DART, RB, PHP, LUA, SH, SQL, HS, ML, ZIG, RLANG, ERL, CLJ, ...GENS, MD, HTML, CSS, TEXT];
 const BY_EXT = new Map(), BY_NAME = new Map();
 for (const L of LANGS) {
   for (const e of L.exts.split(' ')) BY_EXT.set(e, L);
@@ -801,7 +843,7 @@ export function mask(text, L, cls) {
   scan: while (i < n) {
     const code = out[i];
     if (code >= 128 || !first[code]) { i++; continue; }
-    if (S.dollarChar && i > 0 && (text[i - 1] === '$' || (text[i - 1] === '\\' && text[i - 2] === '$'))) { i++; continue; }
+    if (S.charPre && i > 0 && (text[i - 1] === S.charPre || (text[i - 1] === '\\' && text[i - 2] === S.charPre))) { i++; continue; }
     for (const [o, c] of block) {
       if (text.startsWith(o, i)) {
         const j = text.indexOf(c, i + o.length);

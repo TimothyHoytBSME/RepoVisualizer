@@ -70,6 +70,7 @@ const STD_SETS = {
   swift: 'Foundation UIKit SwiftUI AppKit Combine Dispatch os Darwin Glibc CoreGraphics CoreFoundation CoreServices XCTest Network Security CoreImage AVFoundation QuartzCore ObjectiveC MobileCoreServices UniformTypeIdentifiers FoundationNetworking FoundationEssentials SystemConfiguration CoreData CoreLocation MapKit WebKit Photos StoreKit UserNotifications Accelerate Metal MetalKit SceneKit SpriteKit GameKit CryptoKit OSLog Observation',
   lua: 'string table math io os coroutine debug utf8 package bit jit ffi',
   erl: 'kernel stdlib erts compiler crypto ssl public_key inets ssh sasl mnesia observer runtime_tools tools common_test eunit xmerl asn1 os_mon syntax_tools parsetools lists maps proplists io io_lib erlang gen_server gen_statem gen_event gen_fsm supervisor application ets dets string binary file filename filelib os timer re math logger sys proc_lib unicode calendar queue sets ordsets orddict dict gb_trees gb_sets array code rand persistent_term atomics counters gen_tcp gen_udp inet uri_string base64 zlib erl_eval erl_scan erl_parse error_logger rpc net_kernel global pg digraph epp',
+  clj: 'clojure cljs java javax goog',
   ex: 'Kernel Enum Map MapSet String List Keyword GenServer Supervisor DynamicSupervisor Agent Task Logger Application Process Registry IO File Path System Code Module Atom Integer Float Tuple Stream Access Inspect Protocol Exception ExUnit Mix Regex URI Base Bitwise Calendar Date DateTime NaiveDateTime Time Version Node Port Function Range StringIO OptionParser EEx',
 };
 const STD = Object.fromEntries(Object.entries(STD_SETS).map(([k, v]) => [k, new Set(v.split(' '))]));
@@ -349,6 +350,23 @@ const VAR_TYPES = [
 ];
 
 function params(t, from, L, types) {
+  if (L.group === 'clj') {
+    const out = [], end = Math.min(t.length, from + 1500);
+    let d = 1, open = false;
+    for (let i = from; i < end && d > 0; i++) {
+      const c = t[i];
+      if (c === '[' && (d === 1 || (d === 2 && open))) {
+        let j = i + 1, e = 1;
+        while (j < end && e) { if (t[j] === '[' || t[j] === '{') e++; else if (t[j] === ']' || t[j] === '}') e--; j++; }
+        for (const w of t.slice(i + 1, j - 1).matchAll(/(?<![:\w*+!?<>=$&|'.-])[A-Za-z_*+!?<>=$&|-][\w*+!?<>=$&|'.-]*/g)) if (w[0] !== '&') out.push(w[0]);
+        i = j - 1; open = false; continue;
+      }
+      open = c === '(' && d === 1;
+      if (c === '(' || c === '{' || c === '[') d++;
+      else if (c === ')' || c === '}' || c === ']') d--;
+    }
+    return out;
+  }
   if (L.group === 'erl') { const e = t.indexOf('->', from); return e < 0 || e - from > 400 ? [] : t.slice(from, e).match(/\b[A-Z_]\w*/g) || []; }
   if (L.group === 'ml' || L.group === 'hs') {
     const e = t.indexOf('\n', from), head = t.slice(from, e < 0 ? t.length : e).split(/=|->/)[0];
@@ -722,6 +740,10 @@ function makeResolver({ nodes, fileIds, dirs, dirFiles, csNs, phpNs, phpNsFiles,
       const p = spec.replace(/\./g, '/');
       return suf(p + '.hs', info) ?? suf(p + '.lhs', info) ?? spec.split('.').slice(0, 2).join('.');
     },
+    clj(spec, info) {
+      const p = spec.replace(/\./g, '/').replace(/-/g, '_');
+      return exMods.get(spec) ?? suf(p + '.clj', info) ?? suf(p + '.cljc', info) ?? suf(p + '.cljs', info) ?? spec.split('.')[0];
+    },
     ex(spec) {
       return exMods.get(spec) ?? spec.split('.')[0];
     },
@@ -859,6 +881,7 @@ export function analyze(files, rootName, progress = () => {}) {
     }
     if (L.group === 'cs' && masked) for (const m of masked.matchAll(/\bnamespace[ \t]+([\w.]+)/g)) csNs.add(m[1]);
     if (L.group === 'ml' || (L.group === 'erl' && /\.erl$/.test(nodes[info.id].name))) { const b = nodes[info.id].name.replace(/\.(?:mli?|erl)$/, ''), k = L.group === 'erl' ? b : b[0].toUpperCase() + b.slice(1), l = mlMods.get(k); if (!l) mlMods.set(k, [info.id]); else if (!l.includes(info.id)) l.push(info.id); }
+    if (L.group === 'clj' && masked) { const m = /^\((?:ns|in-ns)[ \t\n]+'?(?:\^(?:\{[^}\n]*\}|\S+)\s+)*([\w.*+!?-]+)/m.exec(masked); if (m && !exMods.has(m[1])) exMods.set(m[1], info.id); info.alias = L.aliases(text); }
     if (L.group === 'ex' && masked) { for (const m of masked.matchAll(/\bdefmodule[ \t]+([A-Z][\w.]*)/g)) if (!exMods.has(m[1])) exMods.set(m[1], info.id); if (L.aliases) info.alias = L.aliases(text); }
     if (L.group === 'php' && masked) { const m = /^namespace[ \t]+([\w\\]+)/m.exec(masked); if (m) { phpNsFiles.add(info.id); const l = phpNs.get(m[1]); if (l) l.push(info.id); else phpNs.set(m[1], [info.id]); } }
     if (L.strip && masked) masked = masked.replace(L.strip, x => ' '.repeat(x.length));
@@ -1540,8 +1563,19 @@ export function analyze(files, rootName, progress = () => {}) {
       const name = m[0];
       if (name.length < 2) continue;
       if (countWords && !L.kw.has(name)) idc.set(name, (idc.get(name) || 0) + 1);
-      let look = name;
-      if (info.alias && name.charCodeAt(0) < 91) { const d = name.indexOf('.'), h = info.alias.get(d < 0 ? name : name.slice(0, d)); if (h) look = d < 0 ? h : h + name.slice(d); }
+      let look = name, cljHit = null;
+      if (L.group === 'clj') {
+        const pc = m.index > 0 ? masked.charCodeAt(m.index - 1) : 0;
+        if (pc === 58 || pc === 46) continue;
+        const sl = name.indexOf('/');
+        if (sl > 0) {
+          const ns = name.slice(0, sl), f = exMods.get(info.alias?.get(ns) || ns);
+          cljHit = f != null ? inFile(f, name.slice(sl + 1)) : null;
+          if (!cljHit) continue;
+          look = name.slice(sl + 1);
+        }
+      }
+      if (info.alias && L.group === 'ex' && name.charCodeAt(0) < 91) { const d = name.indexOf('.'), h = info.alias.get(d < 0 ? name : name.slice(0, d)); if (h) look = d < 0 ? h : h + name.slice(d); }
       if (L.group === 'ml' && name.charCodeAt(0) < 91 && masked.charCodeAt(m.index + name.length) === 46) {
         const f = mlNear(name, fid);
         if (f != null && f !== fid) {
@@ -1562,6 +1596,7 @@ export function analyze(files, rootName, progress = () => {}) {
       while (ln + 1 < starts.length && starts[ln + 1] <= at) ln++;
       const src = owner[ln];
       let member = false, recv = '', recvCall = '', recvIdx = '', chainT = null, keyHit = null;
+      if (cljHit) { member = true; recv = name.slice(0, name.indexOf('/')); keyHit = cljHit; }
       if (prev === 64 && L.group === 'rb') {
         let cls = src;
         while (cls !== fid && cls >= 0 && !isClassy(nodes[cls].kind)) cls = nodes[cls].parent;
